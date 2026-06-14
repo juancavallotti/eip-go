@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/juancavallotti/eip-go/types"
 )
 
 // BlockRegistry holds leaf block factories keyed by block type. Composite kinds
@@ -49,7 +51,7 @@ func (r *BlockRegistry) MustRegister(name string, factory BlockFactory) {
 // New constructs a leaf processor for the registered block type.
 //
 //nolint:ireturn // a factory intentionally returns the MessageProcessor interface
-func (r *BlockRegistry) New(name string, settings map[string]any) (MessageProcessor, error) {
+func (r *BlockRegistry) New(name string, settings types.Settings) (MessageProcessor, error) {
 	r.mu.RLock()
 	factory, ok := r.factories[name]
 	r.mu.RUnlock()

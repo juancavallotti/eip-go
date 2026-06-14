@@ -29,4 +29,4 @@ type Block struct {
 // BlockFactory builds a leaf processor from its settings. Composite kinds (scope,
 // fork) are not built through the block registry; the flow builder recognizes
 // them and constructs their typed sub-flows directly.
-type BlockFactory func(settings map[string]any) (MessageProcessor, error)
+type BlockFactory func(settings types.Settings) (MessageProcessor, error)

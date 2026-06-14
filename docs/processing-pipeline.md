@@ -4,10 +4,13 @@ This document describes the runtime building blocks that turn connector events
 into messages and process them concurrently. It covers the conceptual model, the
 configuration schema, the concurrency model, and the start/stop lifecycle.
 
-> **Status.** The *structure* below is stable. The *execution model* of composite
-> blocks (how `scope`/`fork`/future `loop` actually run, and what a multi-output
-> processor returns) is intentionally deferred to a later iteration. Composite
-> blocks are wired structurally today with provisional run semantics.
+> **Status.** The structure and the composite *execution model* are now defined:
+> processing is a hybrid of single-threaded composition and opt-in concurrency
+> (see [Execution model](#execution-model)). `scope` runs sequentially; `fork`
+> runs its branches concurrently on a flow-owned worker pool. Still deferred:
+> multi-output processors (what a block returns when it emits more than one
+> message), fire-and-forget stages, cross-composite backpressure, and the `loop`
+> composite.
 
 ## Concepts
 
@@ -40,9 +43,13 @@ sub-flows. Composite kinds use **explicit typed slots**, so the YAML schema is
 self-documenting and the builder knows each kind's shape:
 
 - **`scope`** — an error/transaction boundary. Slots: `main` (the protected flow)
-  and optional `alternative` (the catch / recovery / compensation flow).
+  and optional `alternative` (the catch / recovery / compensation flow). Runs
+  **sequentially** (`main`, then `alternative` on failure).
 - **`fork`** — a scatter / multi-branch block. Slot: `branches` (an array of
-  flows).
+  flows). Runs its branches **concurrently** on the flow's shared pool, each
+  branch operating on its own `msg.Clone()`; it joins before returning and passes
+  the input message through unchanged. The first branch error aborts the fork and
+  cancels the rest.
 
 The flow builder **dispatches on block type**: composite kinds build their typed
 sub-flows directly; every other (leaf) block type is resolved through the
@@ -53,11 +60,26 @@ an `init` function, the same pattern connectors use.
 > config, not just registering a factory. This is the accepted cost of explicit
 > typed slots while the set of composite kinds is small.
 
-## Concurrency model
+## Execution model
 
-Each top-level flow is run by a **dedicated pool of worker goroutines** all
-reading the same channel the source emits on. A worker takes a message and runs
-it through the root flow's block chain.
+Processing is a **hybrid of single-threaded composition and opt-in concurrency**.
+The composition seam, `MessageProcessor.Process(ctx, *Message) (*Message, error)`,
+is synchronous and one-in / one-out, so a `Flow` runs its blocks in order — the
+simple, single-threaded path. A composite block may *opt into* concurrency
+internally and **join before it returns**, keeping the seam (and the one-terminal-
+event-per-message guarantee) intact. `scope` proves the simple half (sequential);
+`fork` proves the concurrent half.
+
+### Two levels of concurrency
+
+1. **Per-flow worker pool.** Each top-level flow is run by a **dedicated pool of
+   worker goroutines** all reading the same channel the source emits on (`workers`,
+   `buffer`). A worker takes a message and runs it through the root block chain.
+2. **Shared flow pool.** Each flow also owns a **single shared worker pool**
+   (`pool`) that is started with the flow and threaded down through the build, so
+   composite blocks that parallelize (e.g. `fork`) schedule work on it instead of
+   each spawning its own goroutines. The pool is started before the source emits
+   and stopped after the per-flow workers drain.
 
 - **No cross-flow ordering.** With more than one worker, messages may complete out
   of order. Set `workers: 1` for FIFO processing within a flow.
@@ -65,6 +87,10 @@ it through the root flow's block chain.
   fall behind, the channel fills and the source blocks.
 - A failing message aborts only that message — the worker survives poison
   messages and keeps processing.
+- **Pool exhaustion.** The shared pool has a bounded task queue. If a composite
+  submits more work than the pool can accept (e.g. deeply nested forks), the pool
+  is exhausted and **panics** rather than risk a silent deadlock. Size `pool` for
+  the flow's fan-out. This is a deliberate limitation of the current model.
 
 ## Flow events
 
@@ -92,9 +118,9 @@ stopping the source — following "whoever creates the channel closes it".
 
 ## Configuration
 
-Flows live under the top-level `flows:` key. A root flow binds a `source` and a
-worker-pool size; sub-flows nested inside composite blocks must not declare
-`source`, `workers`, or `buffer`.
+Flows live under the top-level `flows:` key. A root flow binds a `source`, a
+worker-pool size, and a shared-pool size; sub-flows nested inside composite blocks
+must not declare `source`, `workers`, `buffer`, or `pool`.
 
 ```yaml
 service:
@@ -109,8 +135,9 @@ connectors:
 
 flows:
   - name: ingest-orders
-    workers: 8          # pool size; defaults to 1 (FIFO)
-    buffer: 128         # source -> pool channel depth; defaults to 64
+    workers: 8          # per-flow worker pool size; defaults to 1 (FIFO)
+    buffer: 128         # source -> worker channel depth; defaults to 64
+    pool: 16            # shared pool for concurrent composites; defaults to 8
     source:
       connector: orders-kafka   # references connectors[].name
       type: topic               # interpreted by the connector

@@ -50,6 +50,7 @@ type builder struct {
 	reg  *BlockRegistry
 	pool *pool
 	defs map[string]types.ProcessorConfig
+	deps BlockDeps
 }
 
 // processorDefs indexes named processor definitions by name, rejecting
@@ -141,7 +142,7 @@ func (b *builder) processor(cfg types.BlockConfig, effType string, effSettings t
 		if err := rejectCompositeSlots(cfg); err != nil {
 			return nil, err
 		}
-		return b.reg.New(effType, effSettings)
+		return b.reg.New(effType, effSettings, b.deps)
 	}
 }
 

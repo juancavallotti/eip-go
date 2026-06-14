@@ -11,7 +11,7 @@ import (
 // with, so tests can assert how a ref resolves to effective settings.
 func captureRegistry(into *types.Settings) *BlockRegistry {
 	reg := NewBlockRegistry()
-	reg.MustRegister("capture", func(settings types.Settings) (MessageProcessor, error) {
+	reg.MustRegister("capture", func(settings types.Settings, _ BlockDeps) (MessageProcessor, error) {
 		*into = settings
 		return processorFunc(func(_ context.Context, msg *types.Message) (*types.Message, error) {
 			return msg, nil

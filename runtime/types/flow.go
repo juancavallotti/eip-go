@@ -10,6 +10,10 @@ type FlowConfig struct {
 	Process []BlockConfig `yaml:"process"`
 	Workers int           `yaml:"workers,omitempty"`
 	Buffer  int           `yaml:"buffer,omitempty"`
+	// Pool sizes the shared worker pool the root flow owns and passes down to
+	// composite blocks that schedule work concurrently (e.g. a fork's branches).
+	// Root flows only; defaults when unset.
+	Pool int `yaml:"pool,omitempty"`
 }
 
 // SourceConfig binds a flow's entry point to a connector instance and a

@@ -1,102 +1,82 @@
 package core
 
 import (
-	"context"
-	"log/slog"
+	"fmt"
 	"sync"
-	"time"
-
-	"github.com/juancavallotti/eip-go/types"
 )
 
 const (
-	defaultWorkers = 1
-	defaultBuffer  = 64
+	defaultPoolWorkers = 8
+	defaultPoolQueue   = 64
 )
 
-// boundFlow is a runnable top-level pipeline: a source feeding a root Flow, run
-// by a dedicated pool of workers all reading the same channel. It is assembled
-// by the Service.
-type boundFlow struct {
-	name    string
-	source  MessageSource
-	root    *Flow
+// pool runs tasks on a fixed set of worker goroutines reading a bounded queue.
+// It is owned by the main flow and shared by any block that needs parallelism
+// (e.g. a fork running its branches concurrently), so simple flows stay
+// single-threaded while concurrent composites schedule work without each owning
+// its own goroutines.
+type pool struct {
 	workers int
-	in      chan *types.Message
-	bus     *EventBus
+	tasks   chan func()
 	wg      sync.WaitGroup
 }
 
-// resolveWorkers returns the configured worker count or the default.
-func resolveWorkers(configured int) int {
+// resolvePoolWorkers returns the configured worker count or the default.
+func resolvePoolWorkers(configured int) int {
 	if configured > 0 {
 		return configured
 	}
-	return defaultWorkers
+	return defaultPoolWorkers
 }
 
-// resolveBuffer returns the configured channel depth or the default.
-func resolveBuffer(configured int) int {
-	if configured > 0 {
-		return configured
+// newPool builds a pool with a bounded task queue. workers and queue are clamped
+// to their defaults when non-positive.
+func newPool(workers, queue int) *pool {
+	if workers <= 0 {
+		workers = defaultPoolWorkers
 	}
-	return defaultBuffer
-}
-
-// start spawns the worker pool and then starts the source. Workers are ready
-// before any message is produced.
-func (bf *boundFlow) start(ctx context.Context) error {
-	bf.wg.Add(bf.workers)
-	for i := 0; i < bf.workers; i++ {
-		go bf.worker(ctx)
+	if queue <= 0 {
+		queue = defaultPoolQueue
 	}
-	return bf.source.Start(ctx)
-}
-
-// stop stops the source, closes the channel, and drains in-flight messages.
-func (bf *boundFlow) stop(ctx context.Context) error {
-	if err := bf.source.Stop(ctx); err != nil {
-		return err
-	}
-	close(bf.in)
-	bf.wg.Wait()
-	return nil
-}
-
-// worker processes messages until the channel is closed and drained.
-func (bf *boundFlow) worker(ctx context.Context) {
-	defer bf.wg.Done()
-	for msg := range bf.in {
-		bf.handle(ctx, msg)
+	return &pool{
+		workers: workers,
+		tasks:   make(chan func(), queue),
 	}
 }
 
-// handle runs one message through the root flow and publishes its outcome.
-func (bf *boundFlow) handle(ctx context.Context, msg *types.Message) {
-	bf.publish(types.FlowEventStarted, msg.EventID, nil)
+// start spawns the worker goroutines. They are ready before any task is
+// submitted.
+func (p *pool) start() {
+	p.wg.Add(p.workers)
+	for i := 0; i < p.workers; i++ {
+		go p.worker()
+	}
+}
 
-	out, err := bf.root.Process(ctx, msg)
-	switch {
-	case err != nil:
-		slog.Error("flow processing failed", "flow", bf.name, "event_id", msg.EventID, "error", err)
-		bf.publish(types.FlowEventFailed, msg.EventID, err)
-	case out == nil:
-		bf.publish(types.FlowEventDropped, msg.EventID, nil)
+// worker runs tasks until the queue is closed and drained.
+func (p *pool) worker() {
+	defer p.wg.Done()
+	for task := range p.tasks {
+		task()
+	}
+}
+
+// submit enqueues a task without blocking. A full queue means the pool is
+// exhausted; rather than risk a silent deadlock (a caller waiting on a task that
+// can never be scheduled), submit panics. This is a deliberate, documented
+// limitation of the current model: size the pool for the flow's fan-out.
+func (p *pool) submit(task func()) {
+	select {
+	case p.tasks <- task:
 	default:
-		bf.publish(types.FlowEventCompleted, out.EventID, nil)
+		panic(fmt.Sprintf("flow pool exhausted: queue of %d full with %d workers", cap(p.tasks), p.workers))
 	}
 }
 
-// publish emits a flow event if a bus is configured.
-func (bf *boundFlow) publish(kind types.FlowEventKind, eventID string, err error) {
-	if bf.bus == nil {
-		return
-	}
-	bf.bus.Publish(types.FlowEvent{
-		Kind:       kind,
-		Flow:       bf.name,
-		EventID:    eventID,
-		OccurredAt: time.Now(),
-		Err:        err,
-	})
+// stop closes the task queue and waits for in-flight tasks to finish. It must be
+// called only after every submitter has stopped (i.e. after the outer workers
+// drain).
+func (p *pool) stop() {
+	close(p.tasks)
+	p.wg.Wait()
 }

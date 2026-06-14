@@ -112,7 +112,8 @@ func (s *Service) buildFlow(cfg types.FlowConfig, byName map[string]Connector) (
 		return nil, err
 	}
 
-	root, err := buildFlow(cfg, s.blocks)
+	p := newPool(resolvePoolWorkers(cfg.Pool), defaultPoolQueue)
+	root, err := buildFlow(cfg, s.blocks, p)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +125,7 @@ func (s *Service) buildFlow(cfg types.FlowConfig, byName map[string]Connector) (
 		workers: resolveWorkers(cfg.Workers),
 		in:      in,
 		bus:     s.bus,
+		pool:    p,
 	}, nil
 }
 

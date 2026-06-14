@@ -211,11 +211,55 @@ they slot straight into a message body. Each call site decides which variables i
 exposes:
 
 - **`log` block** (`message` setting) sees `body`, `vars`, `eventID`,
-  `correlationID`. With no `message` it logs the JSON body. `level` is one of
-  `debug`/`info`/`warn`/`error` (default `info`). It is a pass-through wire tap:
-  it logs and forwards the message unchanged.
+  `correlationID`. With no `message` it logs the JSON body. `level` is the level
+  this line is emitted at (`debug`/`info`/`warn`/`error`, default `info`). It is a
+  pass-through wire tap: it logs and forwards the message unchanged.
 - **`cron` source** (`payload` setting) sees `now` (the fire time) and the
   source's static `settings`. The result becomes the message body.
+
+### The `log` block and `logger` connectors
+
+The `log` block writes through a logger. By default — no `logger` set — it uses
+the process default logger. To control the output, declare a `logger` connector
+and reference it by name. The connector **owns its output**: it opens a file on
+start and closes it on shutdown, following the same acquire/release discipline as
+any other connector.
+
+Logger settings are the common slog knobs, and every one defaults, so a logger
+can be declared with no settings at all (`output: stdout`, `format: text`,
+`level: info`):
+
+| setting     | values                          | default  |
+| ----------- | ------------------------------- | -------- |
+| `output`    | `stdout`, `stderr`, a file path | `stdout` |
+| `format`    | `text`, `json`                  | `text`   |
+| `level`     | `debug`/`info`/`warn`/`error`   | `info`   |
+| `addSource` | `true`/`false`                  | `false`  |
+
+A logger's `level` is the **minimum** level it emits; the `log` block's own
+`level` is the level it emits each line **at**. A block reaching a named logger
+connector is the general pattern for blocks that depend on a connector capability:
+the flow builder hands each block factory a resolver (`core.BlockDeps`) so it can
+look up a connector by name and use the capability it provides (here, a logger).
+
+```yaml
+connectors:
+  - { name: ticker, type: cron }
+  - name: audit
+    type: logger
+    settings:
+      output: /tmp/eip-audit.log
+      format: json
+
+flows:
+  - name: audit-ticks
+    source: { connector: ticker, type: cron, settings: { schedule: "@every 2s", payload: '{"date": string(now)}' } }
+    process:
+      - type: log
+        settings:
+          logger: audit                       # write through the named logger
+          message: '"tick at " + body.date'
+```
 
 ### The `cron` source
 
@@ -241,8 +285,8 @@ flows:
 ```
 
 Runnable samples live under [`samples/`](../samples); run one with
-`go run ./runtime/cli -config samples/hello-world.yaml` (or the **Debug sample**
-launch config in VS Code).
+`task run:sample -- hello-world.yaml` (or the **Debug sample** launch config in
+VS Code).
 
 ## Writing a connector source
 

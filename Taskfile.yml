@@ -77,6 +77,11 @@ tasks:
     cmds:
       - cd runtime/cli && {{.GO}} run . {{.CLI_ARGS}}
 
+  run:sample:
+    desc: 'Run a config from samples/ (e.g. task run:sample -- heartbeat.yaml)'
+    cmds:
+      - cd runtime/cli && {{.GO}} run . -config ../../samples/{{.CLI_ARGS}}
+
   new-connector:
     desc: Interactively scaffold a new connector
     interactive: true

@@ -44,11 +44,12 @@ func (f *Flow) Process(ctx context.Context, msg *types.Message) (*types.Message,
 }
 
 // buildFlow assembles a Flow from a FlowConfig's block chain. It does not look at
-// Source/Workers/Buffer; the caller decides whether those are allowed.
-func buildFlow(cfg types.FlowConfig, reg *BlockRegistry) (*Flow, error) {
+// Source/Workers/Buffer/Pool; the caller decides whether those are allowed. The
+// shared pool is threaded down so composite blocks can schedule concurrent work.
+func buildFlow(cfg types.FlowConfig, reg *BlockRegistry, p *pool) (*Flow, error) {
 	blocks := make([]Block, 0, len(cfg.Process))
 	for i := range cfg.Process {
-		block, err := buildBlock(cfg.Process[i], reg)
+		block, err := buildBlock(cfg.Process[i], reg, p)
 		if err != nil {
 			return nil, err
 		}
@@ -58,24 +59,24 @@ func buildFlow(cfg types.FlowConfig, reg *BlockRegistry) (*Flow, error) {
 }
 
 // buildSubFlow builds a nested flow, rejecting root-only fields.
-func buildSubFlow(cfg types.FlowConfig, reg *BlockRegistry) (*Flow, error) {
+func buildSubFlow(cfg types.FlowConfig, reg *BlockRegistry, p *pool) (*Flow, error) {
 	if cfg.Source != nil {
 		return nil, errors.New("sub-flow must not declare a source")
 	}
-	if cfg.Workers != 0 || cfg.Buffer != 0 {
-		return nil, errors.New("sub-flow must not declare workers or buffer")
+	if cfg.Workers != 0 || cfg.Buffer != 0 || cfg.Pool != 0 {
+		return nil, errors.New("sub-flow must not declare workers, buffer, or pool")
 	}
-	return buildFlow(cfg, reg)
+	return buildFlow(cfg, reg, p)
 }
 
 // buildBlock dispatches on block type: composite kinds build their typed
 // sub-flows; any other type is a leaf resolved through the registry.
-func buildBlock(cfg types.BlockConfig, reg *BlockRegistry) (Block, error) {
+func buildBlock(cfg types.BlockConfig, reg *BlockRegistry, p *pool) (Block, error) {
 	if cfg.Type == "" {
 		return Block{}, errors.New("block type is required")
 	}
 
-	processor, err := buildProcessor(cfg, reg)
+	processor, err := buildProcessor(cfg, reg, p)
 	if err != nil {
 		return Block{}, fmt.Errorf("block %q: %w", blockLabel(cfg.Type, cfg.Name), err)
 	}
@@ -83,12 +84,12 @@ func buildBlock(cfg types.BlockConfig, reg *BlockRegistry) (Block, error) {
 }
 
 //nolint:ireturn // builders intentionally return the MessageProcessor interface
-func buildProcessor(cfg types.BlockConfig, reg *BlockRegistry) (MessageProcessor, error) {
+func buildProcessor(cfg types.BlockConfig, reg *BlockRegistry, p *pool) (MessageProcessor, error) {
 	switch cfg.Type {
 	case blockKindScope:
-		return buildScope(cfg, reg)
+		return buildScope(cfg, reg, p)
 	case blockKindFork:
-		return buildFork(cfg, reg)
+		return buildFork(cfg, reg, p)
 	default:
 		if err := rejectCompositeSlots(cfg); err != nil {
 			return nil, err

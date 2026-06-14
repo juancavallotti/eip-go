@@ -61,7 +61,7 @@ func TestFlowProcessOutcomes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flow, err := buildFlow(types.FlowConfig{Process: tt.blocks}, reg)
+			flow, err := buildFlow(types.FlowConfig{Process: tt.blocks}, reg, newPool(0, 0))
 			if err != nil {
 				t.Fatalf("buildFlow: %v", err)
 			}
@@ -105,7 +105,7 @@ func TestBuildBlockValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := buildBlock(tt.block, reg); err == nil {
+			if _, err := buildBlock(tt.block, reg, newPool(0, 0)); err == nil {
 				t.Errorf("expected error for %s, got nil", tt.name)
 			}
 		})
@@ -122,7 +122,7 @@ func TestBuildCompositeDispatch(t *testing.T) {
 			Process: []types.BlockConfig{{Type: "pass"}},
 		},
 	}
-	block, err := buildBlock(cfg, reg)
+	block, err := buildBlock(cfg, reg, newPool(0, 0))
 	if err != nil {
 		t.Fatalf("buildBlock: %v", err)
 	}

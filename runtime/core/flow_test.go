@@ -18,17 +18,17 @@ func (f processorFunc) Process(ctx context.Context, msg *types.Message) (*types.
 // testRegistry returns a registry with leaf blocks used across flow tests.
 func testRegistry() *BlockRegistry {
 	reg := NewBlockRegistry()
-	reg.MustRegister("pass", func(types.Settings) (MessageProcessor, error) {
+	reg.MustRegister("pass", func(types.Settings, BlockDeps) (MessageProcessor, error) {
 		return processorFunc(func(_ context.Context, msg *types.Message) (*types.Message, error) {
 			return msg, nil
 		}), nil
 	})
-	reg.MustRegister("drop", func(types.Settings) (MessageProcessor, error) {
+	reg.MustRegister("drop", func(types.Settings, BlockDeps) (MessageProcessor, error) {
 		return processorFunc(func(context.Context, *types.Message) (*types.Message, error) {
 			return nil, nil
 		}), nil
 	})
-	reg.MustRegister("fail", func(types.Settings) (MessageProcessor, error) {
+	reg.MustRegister("fail", func(types.Settings, BlockDeps) (MessageProcessor, error) {
 		return processorFunc(func(context.Context, *types.Message) (*types.Message, error) {
 			return nil, errors.New("boom")
 		}), nil

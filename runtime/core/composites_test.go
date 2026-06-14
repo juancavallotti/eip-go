@@ -12,7 +12,7 @@ import (
 // to the message it receives, so tests can observe per-branch clone isolation.
 func forkRegistry() *BlockRegistry {
 	reg := testRegistry()
-	reg.MustRegister("mutate", func(types.Settings) (MessageProcessor, error) {
+	reg.MustRegister("mutate", func(types.Settings, BlockDeps) (MessageProcessor, error) {
 		return processorFunc(func(_ context.Context, msg *types.Message) (*types.Message, error) {
 			msg.Variables.Set("touched", true)
 			return msg, nil

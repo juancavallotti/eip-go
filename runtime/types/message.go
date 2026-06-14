@@ -64,6 +64,42 @@ func newEventID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// Clone returns a copy of the message safe for concurrent use by independent
+// branches (e.g. a fork's parallel flows). The copy gets fresh Variables and
+// BodySchema backing storage and a deep copy of Body via a JSON round-trip, so
+// top-level mutations on the copy do not affect the original.
+//
+// Body is JSON-only by the type's contract, so the round-trip is well defined;
+// as with SetBodyJSON it normalizes Body to decoded-JSON kinds (numbers become
+// float64, objects map[string]any, arrays []any). Values stored inside Variables
+// are copied shallowly, so deeply nested reference values remain shared.
+func (m *Message) Clone() *Message {
+	clone := *m
+
+	if m.Variables != nil {
+		clone.Variables = make(Variables, len(m.Variables))
+		for k, v := range m.Variables {
+			clone.Variables[k] = v
+		}
+	}
+
+	if len(m.BodySchema) > 0 {
+		clone.BodySchema = make(json.RawMessage, len(m.BodySchema))
+		copy(clone.BodySchema, m.BodySchema)
+	}
+
+	if m.Body != nil {
+		if raw, err := json.Marshal(m.Body); err == nil {
+			var decoded any
+			if json.Unmarshal(raw, &decoded) == nil {
+				clone.Body = decoded
+			}
+		}
+	}
+
+	return &clone
+}
+
 // SetBodyJSON decodes raw JSON into Body. Per encoding/json rules numbers
 // become float64, objects map[string]any and arrays []any.
 func (m *Message) SetBodyJSON(raw []byte) error {

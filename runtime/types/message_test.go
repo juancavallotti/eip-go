@@ -127,6 +127,78 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMessageClone(t *testing.T) {
+	t.Run("variables are independent", func(t *testing.T) {
+		msg, err := NewMessage("corr-1")
+		if err != nil {
+			t.Fatalf("NewMessage returned error: %v", err)
+		}
+		msg.Variables.Set("flag", true)
+
+		clone := msg.Clone()
+		clone.Variables.Set("flag", false)
+		clone.Variables.Set("extra", "added")
+
+		if got, _ := msg.Variables.Bool("flag"); !got {
+			t.Error("mutating clone variables changed the original")
+		}
+		if _, ok := msg.Variables.String("extra"); ok {
+			t.Error("adding a clone variable leaked into the original")
+		}
+	})
+
+	t.Run("body is independent", func(t *testing.T) {
+		msg := &Message{}
+		if err := msg.SetBodyJSON([]byte(`{"k":"v"}`)); err != nil {
+			t.Fatalf("SetBodyJSON returned error: %v", err)
+		}
+
+		clone := msg.Clone()
+		body, ok := clone.Body.(map[string]any)
+		if !ok {
+			t.Fatalf("clone Body is %T, want map[string]any", clone.Body)
+		}
+		body["k"] = "mutated"
+
+		original, _ := msg.Body.(map[string]any)
+		if original["k"] != "v" {
+			t.Errorf("mutating clone body changed the original: %v", original["k"])
+		}
+	})
+
+	t.Run("body schema bytes are independent", func(t *testing.T) {
+		msg := &Message{BodySchema: json.RawMessage(`{"type":"object"}`)}
+
+		clone := msg.Clone()
+		clone.BodySchema[0] = 'X'
+
+		if msg.BodySchema[0] == 'X' {
+			t.Error("mutating clone body schema changed the original")
+		}
+	})
+
+	t.Run("identity fields are preserved", func(t *testing.T) {
+		msg, err := NewMessage("corr-1")
+		if err != nil {
+			t.Fatalf("NewMessage returned error: %v", err)
+		}
+
+		clone := msg.Clone()
+		if clone.EventID != msg.EventID || clone.CorrelationID != msg.CorrelationID {
+			t.Errorf("clone identity mismatch: got %+v, want %+v", clone, msg)
+		}
+	})
+
+	t.Run("nil body and variables do not panic", func(t *testing.T) {
+		msg := &Message{EventID: "id"}
+
+		clone := msg.Clone()
+		if clone.Variables != nil || clone.Body != nil {
+			t.Errorf("clone of empty message = %+v, want nil body and variables", clone)
+		}
+	})
+}
+
 func TestVariablesTypedAccessors(t *testing.T) {
 	t.Run("native int via Set", func(t *testing.T) {
 		var v Variables

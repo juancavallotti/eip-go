@@ -11,13 +11,14 @@
   ],
   "configurations": [
     {
-      "name": "Debug sample",
+      "name": "Debug CLI with sample config",
       "type": "go",
       "request": "launch",
       "mode": "debug",
       "program": "${workspaceFolder}/runtime/cli",
-      "cwd": "${workspaceFolder}/runtime/cli",
-      "args": ["-config", "${workspaceFolder}/samples/${input:sample}.yaml"]
+      "cwd": "${workspaceFolder}",
+      "args": ["-config", "${workspaceFolder}/samples/${input:sample}.yaml"],
+      "showLog": true
     }
   ]
 }

@@ -11,5 +11,13 @@ Required reading:
 - [docs/commit-and-review-policy.md](docs/commit-and-review-policy.md)
 - [docs/release-process.md](docs/release-process.md)
 
-Use incremental commits for implementation work.
+## Workflow rules (always apply)
+
+- Break every implementation plan down into a sequence of small, logical commits.
+- **Always stop before committing.** Do not run `git commit` or `git push` until the
+  human has reviewed the staged increment and explicitly approved it. Present each
+  increment (what changed, why, test coverage) and wait. This applies even to trivial
+  changes. See [docs/commit-and-review-policy.md](docs/commit-and-review-policy.md).
+- Use Conventional Commit messages — release automation depends on them.
+
 The initial baseline is expected to be committed directly, not through a pull request.

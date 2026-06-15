@@ -110,6 +110,39 @@ func TestLogBindsNamedLogger(t *testing.T) {
 	}
 }
 
+func TestLogFullDumpsMessage(t *testing.T) {
+	fake := &fakeLogger{buf: &bytes.Buffer{}}
+	deps := core.BlockDeps{Connector: func(name string) (core.Connector, bool) {
+		if name == "debug" {
+			return fake, true
+		}
+		return nil, false
+	}}
+
+	proc, err := newLog(map[string]any{"logger": "debug", "full": true}, deps)
+	if err != nil {
+		t.Fatalf("newLog: %v", err)
+	}
+
+	msg, err := types.NewMessage("corr-1")
+	if err != nil {
+		t.Fatalf("NewMessage: %v", err)
+	}
+	msg.Body = map[string]any{"who": "world"}
+	msg.Variables.Set("tenant", "acme")
+
+	if _, err := proc.Process(context.Background(), msg); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	got := fake.buf.String()
+	for _, want := range []string{"correlation_id=corr-1", "tenant", "event_id=" + msg.EventID} {
+		if !strings.Contains(got, want) {
+			t.Errorf("full dump missing %q, got %q", want, got)
+		}
+	}
+}
+
 func TestLogUnknownLoggerErrors(t *testing.T) {
 	deps := core.BlockDeps{Connector: func(string) (core.Connector, bool) { return nil, false }}
 	if _, err := newLog(map[string]any{"logger": "missing"}, deps); err == nil {

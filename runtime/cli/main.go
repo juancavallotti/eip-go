@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	_ "github.com/juancavallotti/eip-go/connectors/cron"
+	_ "github.com/juancavallotti/eip-go/connectors/http"
 	_ "github.com/juancavallotti/eip-go/connectors/logger"
 	_ "github.com/juancavallotti/eip-go/connectors/processors/log"
 	"github.com/juancavallotti/eip-go/core"

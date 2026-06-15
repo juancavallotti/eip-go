@@ -72,45 +72,80 @@ func isYAML(name string) bool {
 // connector, processor, and flow stays uniquely addressable. The service
 // identity may be declared in at most one file.
 func MergeConfigs(configs []types.Config) (types.Config, error) {
-	merged := types.Config{}
-	serviceSet := false
-	connectorNames := make(map[string]struct{})
-	processorNames := make(map[string]struct{})
-	flowNames := make(map[string]struct{})
-
+	m := newConfigMerger()
 	for _, cfg := range configs {
-		if cfg.Service != (types.ServiceConfig{}) {
-			if serviceSet {
-				return types.Config{}, fmt.Errorf("service identity is declared in more than one config file")
-			}
-			merged.Service = cfg.Service
-			serviceSet = true
-		}
-
-		for _, c := range cfg.Connectors {
-			if _, dup := connectorNames[c.Name]; dup {
-				return types.Config{}, fmt.Errorf("connector %q is defined more than once", c.Name)
-			}
-			connectorNames[c.Name] = struct{}{}
-			merged.Connectors = append(merged.Connectors, c)
-		}
-		for _, p := range cfg.Processors {
-			if _, dup := processorNames[p.Name]; dup {
-				return types.Config{}, fmt.Errorf("processor %q is defined more than once", p.Name)
-			}
-			processorNames[p.Name] = struct{}{}
-			merged.Processors = append(merged.Processors, p)
-		}
-		for _, f := range cfg.Flows {
-			if f.Name != "" {
-				if _, dup := flowNames[f.Name]; dup {
-					return types.Config{}, fmt.Errorf("flow %q is defined more than once", f.Name)
-				}
-				flowNames[f.Name] = struct{}{}
-			}
-			merged.Flows = append(merged.Flows, f)
+		if err := m.add(cfg); err != nil {
+			return types.Config{}, err
 		}
 	}
+	return m.merged, nil
+}
 
-	return merged, nil
+// configMerger accumulates configs while enforcing unique names per kind.
+type configMerger struct {
+	merged     types.Config
+	serviceSet bool
+	connectors map[string]struct{}
+	processors map[string]struct{}
+	flows      map[string]struct{}
+}
+
+func newConfigMerger() *configMerger {
+	return &configMerger{
+		connectors: make(map[string]struct{}),
+		processors: make(map[string]struct{}),
+		flows:      make(map[string]struct{}),
+	}
+}
+
+// add folds one config into the merge, rejecting duplicate names and a second
+// service declaration.
+func (m *configMerger) add(cfg types.Config) error {
+	if err := m.addService(cfg.Service); err != nil {
+		return err
+	}
+	for _, c := range cfg.Connectors {
+		if err := claimName(m.connectors, c.Name, "connector"); err != nil {
+			return err
+		}
+		m.merged.Connectors = append(m.merged.Connectors, c)
+	}
+	for _, p := range cfg.Processors {
+		if err := claimName(m.processors, p.Name, "processor"); err != nil {
+			return err
+		}
+		m.merged.Processors = append(m.merged.Processors, p)
+	}
+	for _, f := range cfg.Flows {
+		if f.Name != "" {
+			if err := claimName(m.flows, f.Name, "flow"); err != nil {
+				return err
+			}
+		}
+		m.merged.Flows = append(m.merged.Flows, f)
+	}
+	return nil
+}
+
+// addService records the service identity, rejecting a second declaration.
+func (m *configMerger) addService(svc types.ServiceConfig) error {
+	if svc == (types.ServiceConfig{}) {
+		return nil
+	}
+	if m.serviceSet {
+		return fmt.Errorf("service identity is declared in more than one config file")
+	}
+	m.merged.Service = svc
+	m.serviceSet = true
+	return nil
+}
+
+// claimName records name in seen, erroring if it was already present. kind labels
+// the error.
+func claimName(seen map[string]struct{}, name, kind string) error {
+	if _, dup := seen[name]; dup {
+		return fmt.Errorf("%s %q is defined more than once", kind, name)
+	}
+	seen[name] = struct{}{}
+	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,57 +22,70 @@ const watchDebounce = 200 * time.Millisecond
 func watchConfig(ctx context.Context, path string) (<-chan struct{}, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new watcher: %w", err)
 	}
-
-	// Watch the directory containing the target so atomic-rename saves (common in
-	// editors, which replace rather than write in place) are still observed. For a
-	// directory target we watch it directly.
-	watchTarget := path
-	info, err := os.Stat(path)
-	if err == nil && !info.IsDir() {
-		watchTarget = filepath.Dir(path)
-	}
-	if err := watcher.Add(watchTarget); err != nil {
+	if err := watcher.Add(watchTarget(path)); err != nil {
 		_ = watcher.Close()
-		return nil, err
+		return nil, fmt.Errorf("watch %q: %w", path, err)
 	}
 
 	changed := make(chan struct{}, 1)
-	go func() {
-		defer watcher.Close()
-		var timer *time.Timer
-		var timerC <-chan time.Time
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case _, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				// (Re)arm the debounce timer on every event.
-				if timer == nil {
-					timer = time.NewTimer(watchDebounce)
-					timerC = timer.C
-				} else {
-					timer.Reset(watchDebounce)
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				slog.Warn("config watcher error", "error", err)
-			case <-timerC:
-				timer = nil
-				timerC = nil
-				select {
-				case changed <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
-
+	go watchLoop(ctx, watcher, changed)
 	return changed, nil
+}
+
+// watchTarget returns the path to register with the watcher. For a file we watch
+// its parent directory so atomic-rename saves (editors replacing rather than
+// writing in place) are still observed; for a directory we watch it directly.
+func watchTarget(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		return filepath.Dir(path)
+	}
+	return path
+}
+
+// watchLoop forwards debounced change notifications until ctx is cancelled or the
+// watcher closes, then closes the watcher.
+func watchLoop(ctx context.Context, watcher *fsnotify.Watcher, changed chan<- struct{}) {
+	defer func() { _ = watcher.Close() }()
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			timer, timerC = armDebounce(timer)
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			slog.Warn("config watcher error", "error", err)
+		case <-timerC:
+			timer, timerC = nil, nil
+			notify(changed)
+		}
+	}
+}
+
+// armDebounce (re)starts the debounce timer, returning it and its channel.
+func armDebounce(timer *time.Timer) (*time.Timer, <-chan time.Time) {
+	if timer == nil {
+		timer = time.NewTimer(watchDebounce)
+	} else {
+		timer.Reset(watchDebounce)
+	}
+	return timer, timer.C
+}
+
+// notify sends a non-blocking change signal (coalescing if one is pending).
+func notify(changed chan<- struct{}) {
+	select {
+	case changed <- struct{}{}:
+	default:
+	}
 }

@@ -31,7 +31,7 @@ func newDeps(t *testing.T) core.BlockDeps {
 	if err != nil {
 		t.Fatalf("DB: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, amount REAL NOT NULL)`); err != nil {
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, amount REAL NOT NULL)`); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
 

@@ -1,7 +1,9 @@
 // Package log provides the "log" leaf block: a pass-through wire tap that logs a
 // line for each message and forwards the message unchanged. The logged line is a
 // CEL expression evaluated against the message, or the JSON body when no
-// expression is configured.
+// expression is configured. Setting "full" additionally attaches the whole
+// message (correlation id, variables, body, schema) as structured attributes for
+// debugging.
 package log
 
 import (
@@ -36,14 +38,20 @@ type settings struct {
 	// Logger names a logger connector to write through. When empty the process
 	// default logger is used.
 	Logger string `json:"logger"`
+	// Full, when true, attaches the entire message (correlation id, variables,
+	// body, and schema) as structured log attributes, for debugging. The line
+	// text still comes from Message, defaulting to "message" when none is set.
+	Full bool `json:"full"`
 }
 
 // processor logs each message and passes it through unchanged. message is nil
-// when no expression is configured, in which case the JSON body is logged.
+// when no expression is configured, in which case the JSON body is logged. When
+// full is set, the whole message is attached as structured attributes.
 type processor struct {
 	level   slog.Level
 	message *expr.Program
 	logger  *slog.Logger
+	full    bool
 }
 
 // newLog builds a log processor, resolving its logger and compiling the optional
@@ -67,7 +75,7 @@ func newLog(raw types.Settings, deps core.BlockDeps) (core.MessageProcessor, err
 		return nil, err
 	}
 
-	p := &processor{level: level, logger: logger}
+	p := &processor{level: level, logger: logger, full: cfg.Full}
 	if cfg.Message != "" {
 		program, compileErr := expr.Compile(cfg.Message, "body", "vars", "eventID", "correlationID")
 		if compileErr != nil {
@@ -106,21 +114,43 @@ func (p *processor) Process(ctx context.Context, msg *types.Message) (*types.Mes
 	if err != nil {
 		return nil, fmt.Errorf("render log message: %w", err)
 	}
-	p.logger.Log(ctx, p.level, line, "event_id", msg.EventID)
+	attrs := []any{"event_id", msg.EventID}
+	if p.full {
+		attrs = append(attrs, messageAttrs(msg)...)
+	}
+	p.logger.Log(ctx, p.level, line, attrs...)
 	return msg, nil
 }
 
 // render evaluates the message expression, or falls back to the JSON body when
-// no expression is configured.
+// no expression is configured. In full mode without an expression the line is a
+// fixed label, since the body is already attached as a structured attribute.
 func (p *processor) render(msg *types.Message) (string, error) {
-	if p.message == nil {
-		raw, err := msg.BodyJSON()
-		if err != nil {
-			return "", err
-		}
-		return string(raw), nil
+	if p.message != nil {
+		return p.message.EvalString(activation(msg))
 	}
-	return p.message.EvalString(activation(msg))
+	if p.full {
+		return "message", nil
+	}
+	raw, err := msg.BodyJSON()
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// messageAttrs renders the whole message as structured slog attributes. They
+// serialize cleanly through a JSON logger and read well in text mode.
+func messageAttrs(msg *types.Message) []any {
+	attrs := []any{
+		"correlation_id", msg.CorrelationID,
+		"variables", map[string]any(msg.Variables),
+		"body", msg.Body,
+	}
+	if len(msg.BodySchema) > 0 {
+		attrs = append(attrs, "body_schema", string(msg.BodySchema))
+	}
+	return attrs
 }
 
 // activation maps a message onto the variables a log expression can reference.

@@ -212,8 +212,11 @@ exposes:
 
 - **`log` block** (`message` setting) sees `body`, `vars`, `eventID`,
   `correlationID`. With no `message` it logs the JSON body. `level` is the level
-  this line is emitted at (`debug`/`info`/`warn`/`error`, default `info`). It is a
-  pass-through wire tap: it logs and forwards the message unchanged.
+  this line is emitted at (`debug`/`info`/`warn`/`error`, default `info`). Setting
+  `full: true` additionally attaches the whole message (correlation id, variables,
+  body, schema) as structured attributes for debugging — pair it with a `json`
+  logger for a clean dump. It is a pass-through wire tap: it logs and forwards the
+  message unchanged.
 - **`cron` source** (`payload` setting) sees `now` (the fire time) and the
   source's static `settings`. The result becomes the message body.
 
@@ -287,6 +290,86 @@ flows:
 Runnable samples live under [`samples/`](../samples); run one with
 `task run:sample -- hello-world.yaml` (or the **Debug sample** launch config in
 VS Code).
+
+### The `http` connector and source
+
+The `http` connector turns synchronous HTTP requests into flow executions and
+returns the result to the caller. The **connector** owns one HTTP server; its
+**sources** register routes on it. A request builds a message, the flow runs, and
+the **final message body is written back as JSON** — so an HTTP source is
+request/response, unlike the fire-and-forget `cron` source.
+
+Connector settings (the HTTP server, all optional):
+
+| setting          | meaning                                   | default        |
+| ---------------- | ----------------------------------------- | -------------- |
+| `host`           | bind address                              | all interfaces |
+| `port`           | bind port (`0` = OS-assigned)             | `8080`         |
+| `basePath`       | prefix prepended to every source path     | none           |
+| `keepAlive`      | enable HTTP keep-alives                   | Go default     |
+| `requestTimeout` | how long a handler waits for the flow     | `30s`          |
+| `readTimeout` / `writeTimeout` / `idleTimeout` | server timeouts             | unset          |
+
+Source settings (one route bound to the flow):
+
+| setting               | meaning                                                    | default |
+| --------------------- | ---------------------------------------------------------- | ------- |
+| `path`                | route pattern, e.g. `/orders/{id}` (required)              | —       |
+| `headers`             | request headers to copy into variables                     | none    |
+| `correlationIdHeader` | header to source the message `CorrelationID` from          | none    |
+| `timeout`             | per-route wait for the flow                                | connector `requestTimeout` |
+| `maxBodyBytes`        | request body size cap                                       | 1 MiB   |
+
+The route catches **all methods**, so content-based routing is done in-flow with
+`switch`/`if` against the variables the source sets:
+
+- **path params** → top-level vars (`/orders/{id}` → `vars.id`),
+- **`vars.method`** → the HTTP method,
+- **`vars.query`** → always a map (empty when there is no query string), so
+  `has(vars.query.x)` is safe,
+- **configured `headers`** → always set (empty string when absent); read them in
+  CEL by index, e.g. `vars["X-Tenant"]`, since header names contain dashes.
+
+The JSON request body becomes `body`; a malformed body is rejected with **400**
+before the flow runs. The flow outcome maps to the response: **completed → 200**
+with the final body, **dropped → 204**, **failed → 500**. A handler that outlives
+its `timeout` returns **504**. Correlation rides the flow-event bus: the connector
+subscribes once and matches each terminal `FlowEvent` (which now carries the
+message in `Result`) back to the waiting request by `EventID`.
+
+> **Status / future work.** This is the foundation, not a complete HTTP stack. A
+> logical-error branch (e.g. the `default` case of a method `switch`) still returns
+> 200 today; mapping a flow result to an arbitrary HTTP status code is deferred.
+
+```yaml
+connectors:
+  - name: api
+    type: http
+    settings: { basePath: /api/v1, port: 8080, requestTimeout: 5s }
+
+flows:
+  - name: orders-api
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /orders/{id}
+        headers: [X-Tenant]
+        correlationIdHeader: X-Request-Id
+    process:
+      - type: switch
+        name: route-by-method
+        cases:
+          - when: 'vars.method == "POST"'
+            process:
+              - { type: set-payload, settings: { value: '{"order": body, "status": "accepted"}' } }
+        default:
+          process:
+            - { type: set-payload, settings: { value: '{"error": "unsupported"}' } }
+```
+
+See [`samples/http-orders.yaml`](../samples/http-orders.yaml) for a fuller example
+(query-param defaulting, POST-body transform, conditional priority flag).
 
 ## Writing a connector source
 

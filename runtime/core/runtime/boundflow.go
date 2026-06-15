@@ -79,24 +79,27 @@ func (bf *boundFlow) worker(ctx context.Context) {
 	}
 }
 
-// handle runs one message through the root flow and publishes its outcome.
+// handle runs one message through the root flow and publishes its outcome. All
+// events key on the inbound EventID (stable for the message's life, so it equals
+// out.EventID) to keep correlation consistent for request/response sources.
 func (bf *boundFlow) handle(ctx context.Context, msg *types.Message) {
-	bf.publish(types.FlowEventStarted, msg.EventID, nil)
+	bf.publish(types.FlowEventStarted, msg.EventID, nil, nil)
 
 	out, err := bf.root.Process(ctx, msg)
 	switch {
 	case err != nil:
 		slog.Error("flow processing failed", "flow", bf.name, "event_id", msg.EventID, "error", err)
-		bf.publish(types.FlowEventFailed, msg.EventID, err)
+		bf.publish(types.FlowEventFailed, msg.EventID, err, msg)
 	case out == nil:
-		bf.publish(types.FlowEventDropped, msg.EventID, nil)
+		bf.publish(types.FlowEventDropped, msg.EventID, nil, msg)
 	default:
-		bf.publish(types.FlowEventCompleted, out.EventID, nil)
+		bf.publish(types.FlowEventCompleted, msg.EventID, nil, out)
 	}
 }
 
-// publish emits a flow event if a bus is configured.
-func (bf *boundFlow) publish(kind types.FlowEventKind, eventID string, err error) {
+// publish emits a flow event if a bus is configured. result is the message to
+// attach to the event (nil for the started event).
+func (bf *boundFlow) publish(kind types.FlowEventKind, eventID string, err error, result *types.Message) {
 	if bf.bus == nil {
 		return
 	}
@@ -106,5 +109,6 @@ func (bf *boundFlow) publish(kind types.FlowEventKind, eventID string, err error
 		EventID:    eventID,
 		OccurredAt: time.Now(),
 		Err:        err,
+		Result:     result,
 	})
 }

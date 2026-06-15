@@ -34,4 +34,10 @@ type FlowEvent struct {
 	OccurredAt time.Time
 	// Err is set only for FlowEventFailed.
 	Err error
+	// Result is the message at the terminal event: the flow's output for
+	// FlowEventCompleted, or the input message for FlowEventDropped and
+	// FlowEventFailed. It is nil for FlowEventStarted. Subscribers must treat
+	// it as read-only; it lets request/response sources return the final
+	// payload to a caller correlated by EventID.
+	Result *Message
 }

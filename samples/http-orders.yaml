@@ -1,0 +1,104 @@
+service:
+  name: http-orders
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      host: 0.0.0.0
+      port: 8080
+      basePath: /api/v1
+      keepAlive: true
+      requestTimeout: 5s        # how long a handler waits for the flow to finish
+      readTimeout: 10s
+      writeTimeout: 10s
+      idleTimeout: 60s
+  - name: debug
+    type: logger
+    settings:
+      format: json              # structured output, clean for full message dumps
+      level: debug
+
+flows:
+  - name: orders-api
+    workers: 8
+    buffer: 128
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /orders/{id}            # {id} -> vars.id
+        correlationIdHeader: X-Request-Id
+        headers: [X-Tenant]           # captured as vars["X-Tenant"]
+        timeout: 5s
+        maxBodyBytes: 1048576         # 1 MiB, via http.MaxBytesReader
+    process:
+      # --- Inbound dump: log the whole message exactly as it arrives ---
+      - type: log
+        name: dump-inbound
+        settings:
+          logger: debug
+          level: debug
+          full: true            # event id, correlation id, variables, body
+
+      # --- Query parameters: vars.query is always a (possibly empty) map ---
+      - type: set-variable
+        name: resolve-currency
+        settings:
+          name: currency
+          value: 'has(vars.query.currency) ? vars.query.currency : "USD"'
+
+      # --- Content-based routing on the HTTP method ---
+      - type: switch
+        name: route-by-method
+        cases:
+          # Read POST data and transform it into a normalized order document.
+          - when: 'vars.method == "POST"'
+            process:
+              - type: set-payload
+                name: normalize-order
+                settings:
+                  value: >
+                    {
+                      "orderId":   vars.id,
+                      "tenant":    vars["X-Tenant"],
+                      "item":      body.item,
+                      "amount":    body.amount,
+                      "currency":  vars.currency,
+                      "requestId": correlationID
+                    }
+              # Conditional transform: flag high-value orders.
+              - type: if
+                name: priority-check
+                condition: 'body.amount >= 1000.0'
+                then:
+                  process:
+                    - type: set-variable
+                      settings: { name: priority, value: '"high"' }
+                else:
+                  process:
+                    - type: set-variable
+                      settings: { name: priority, value: '"normal"' }
+              - type: set-payload
+                name: wrap-response
+                settings:
+                  value: '{"order": body, "priority": vars.priority, "status": "accepted"}'
+
+          # A GET reflects the path + resolved query back (a stub lookup).
+          - when: 'vars.method == "GET"'
+            process:
+              - type: set-payload
+                name: lookup-order
+                settings:
+                  value: '{"orderId": vars.id, "currency": vars.currency, "status": "found"}'
+        default:
+          process:
+            - type: set-payload
+              name: method-not-supported
+              settings:
+                value: '{"error": "method " + vars.method + " not supported"}'
+
+      # Wire tap: the final body is what gets written back to the caller as JSON 200.
+      - type: log
+        settings:
+          message: '"responding to " + vars.method + " /orders/" + vars.id'

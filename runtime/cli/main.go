@@ -23,6 +23,9 @@ import (
 	"github.com/juancavallotti/eip-go/types"
 )
 
+// defaultInvokeTimeout bounds how long `invoke` waits for the flow by default.
+const defaultInvokeTimeout = 30 * time.Second
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
@@ -59,7 +62,7 @@ func runCommand(args []string) error {
 	configPath := fs.String("config", "", "path to the runtime config (file or directory)")
 	watch := fs.Bool("watch", false, "reload the config when it changes")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse run flags: %w", err)
 	}
 	if *configPath == "" {
 		return errors.New("config path is required")
@@ -104,43 +107,60 @@ func runWithReload(ctx context.Context, configPath string) error {
 		config, loadErr := runtime.LoadConfig(configPath)
 		if loadErr != nil {
 			slog.Error("config load failed, waiting for next change", "error", loadErr)
-			select {
-			case <-ctx.Done():
+			if !waitForChange(ctx, changed) {
 				return nil
-			case <-changed:
-				continue
 			}
+			continue
 		}
 
-		slog.Info("starting runtime", "connectors", len(config.Connectors), "flows", len(config.Flows))
-		runCtx, cancel := context.WithCancel(ctx)
-		done := make(chan error, 1)
-		service := runtime.NewService(config, core.DefaultRegistry())
-		go func() { done <- service.Run(runCtx) }()
-
-		select {
-		case <-ctx.Done():
-			cancel()
-			<-done
+		reload, runErr := runGeneration(ctx, config, changed)
+		if runErr != nil {
+			return runErr
+		}
+		if !reload {
 			slog.Info("runtime stopped")
 			return nil
-		case <-changed:
-			slog.Info("config changed, reloading")
-			cancel()
-			<-done
-		case runErr := <-done:
-			cancel()
-			if runErr != nil && !errors.Is(runErr, context.Canceled) {
-				return runErr
-			}
-			// The service exited on its own without an error; wait for a change
-			// before rebuilding so we do not spin.
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-changed:
-			}
 		}
+	}
+}
+
+// runGeneration runs one service generation and returns whether the caller should
+// reload (rebuild from config) or stop.
+func runGeneration(ctx context.Context, config types.Config, changed <-chan struct{}) (bool, error) {
+	slog.Info("starting runtime", "connectors", len(config.Connectors), "flows", len(config.Flows))
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	service := runtime.NewService(config, core.DefaultRegistry())
+	go func() { done <- service.Run(runCtx) }()
+
+	select {
+	case <-ctx.Done():
+		<-done
+		return false, nil
+	case <-changed:
+		slog.Info("config changed, reloading")
+		cancel()
+		<-done
+		return true, nil
+	case runErr := <-done:
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			return false, runErr
+		}
+		// The service exited on its own without an error; wait for a change
+		// before rebuilding so we do not spin.
+		return waitForChange(ctx, changed), nil
+	}
+}
+
+// waitForChange blocks until a config change arrives (true) or ctx is cancelled
+// (false).
+func waitForChange(ctx context.Context, changed <-chan struct{}) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-changed:
+		return true
 	}
 }
 
@@ -151,9 +171,9 @@ func invokeCommand(args []string) error {
 	configPath := fs.String("config", "", "path to the runtime config (file or directory)")
 	flowName := fs.String("flow", "", "name of the flow to invoke")
 	data := fs.String("data", "", "JSON request body (reads stdin when omitted)")
-	timeout := fs.Duration("timeout", 30*time.Second, "max time to wait for the flow")
+	timeout := fs.Duration("timeout", defaultInvokeTimeout, "max time to wait for the flow")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse invoke flags: %w", err)
 	}
 	if *configPath == "" {
 		return errors.New("config path is required")
@@ -166,7 +186,6 @@ func invokeCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-
 	config, err := runtime.LoadConfig(*configPath)
 	if err != nil {
 		return err
@@ -175,50 +194,9 @@ func invokeCommand(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	service := runtime.NewService(config, core.DefaultRegistry(), runtime.WithInvokeMode())
-	runCtx, cancel := context.WithCancel(ctx)
-	done := make(chan error, 1)
-	go func() { done <- service.Run(runCtx) }()
-
-	// Wait until the flows are started (and thus callable) before invoking.
-	select {
-	case <-service.Started():
-	case runErr := <-done:
-		cancel()
-		if runErr != nil && !errors.Is(runErr, context.Canceled) {
-			return runErr
-		}
-		return errors.New("service stopped before the flow could be invoked")
-	case <-ctx.Done():
-		cancel()
-		<-done
-		return nil
-	}
-
-	msg, err := types.NewMessage("")
+	result, err := invokeFlow(ctx, config, *flowName, body, *timeout)
 	if err != nil {
-		cancel()
-		<-done
 		return err
-	}
-	if len(body) > 0 {
-		if err := msg.SetBodyJSON(body); err != nil {
-			cancel()
-			<-done
-			return err
-		}
-	}
-
-	callCtx, callCancel := context.WithTimeout(ctx, *timeout)
-	result, callErr := service.Flows().Call(callCtx, *flowName, msg)
-	callCancel()
-
-	// Tear the service down before reporting.
-	cancel()
-	<-done
-
-	if callErr != nil {
-		return callErr
 	}
 	if result == nil {
 		slog.Info("flow dropped the message", "flow", *flowName)
@@ -233,6 +211,77 @@ func invokeCommand(args []string) error {
 	return nil
 }
 
+// invokeFlow runs the service in invoke mode, waits until it is ready, calls the
+// named flow with body, then tears the service down. It returns the flow's result
+// (nil when the flow dropped the message).
+func invokeFlow(
+	ctx context.Context, config types.Config, flowName string, body []byte, timeout time.Duration,
+) (*types.Message, error) {
+	service := runtime.NewService(config, core.DefaultRegistry(), runtime.WithInvokeMode())
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- service.Run(runCtx) }()
+
+	ready, err := awaitReady(ctx, service, done)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	if !ready {
+		cancel()
+		return nil, nil //nolint:nilnil // ctx cancelled before invocation: no result, no error
+	}
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	msg, err := buildMessage(body)
+	if err != nil {
+		return nil, err
+	}
+
+	callCtx, callCancel := context.WithTimeout(ctx, timeout)
+	defer callCancel()
+	result, err := service.Flows().Call(callCtx, flowName, msg)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// awaitReady waits until the service's flows are started. It returns ready=true
+// when callable; otherwise it drains the run goroutine and returns ready=false
+// with any fatal run error (nil when ctx was cancelled first).
+func awaitReady(ctx context.Context, service *runtime.Service, done <-chan error) (bool, error) {
+	select {
+	case <-service.Started():
+		return true, nil
+	case runErr := <-done:
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			return false, runErr
+		}
+		return false, errors.New("service stopped before the flow could be invoked")
+	case <-ctx.Done():
+		<-done
+		return false, nil
+	}
+}
+
+// buildMessage creates a message, decoding body into it when non-empty.
+func buildMessage(body []byte) (*types.Message, error) {
+	msg, err := types.NewMessage("")
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > 0 {
+		if err := msg.SetBodyJSON(body); err != nil {
+			return nil, err
+		}
+	}
+	return msg, nil
+}
+
 // resolveData returns the request body bytes: the literal -data value, or stdin
 // when -data is empty and stdin is piped. An empty result means no body.
 func resolveData(data string) ([]byte, error) {
@@ -241,7 +290,7 @@ func resolveData(data string) ([]byte, error) {
 	}
 	info, err := os.Stdin.Stat()
 	if err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // cannot stat stdin: treat as no body, not an error
 	}
 	// Only read stdin when it is piped/redirected, not an interactive terminal.
 	if info.Mode()&os.ModeCharDevice != 0 {

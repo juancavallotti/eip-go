@@ -84,14 +84,27 @@ func runOnce(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("starting runtime", "connectors", len(config.Connectors), "flows", len(config.Flows))
+	slog.Info("starting runtime", "version", Version, "connectors", len(config.Connectors), "flows", len(config.Flows))
 
 	service := runtime.NewService(config, core.DefaultRegistry())
+	go announceWhenReady(ctx, service)
 	if err := service.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	slog.Info("runtime stopped")
 	return nil
+}
+
+// announceWhenReady prints the friendly startup banner once the service reports
+// it is ready (every connector and flow started). It returns without printing if
+// the context is cancelled first — including a failed startup, where the run path
+// surfaces the error and cancels the context on the way out.
+func announceWhenReady(ctx context.Context, service *runtime.Service) {
+	select {
+	case <-service.Started():
+		fmt.Println(readyBanner())
+	case <-ctx.Done():
+	}
 }
 
 // runWithReload runs the service, tearing it down and rebuilding from the config
@@ -128,11 +141,12 @@ func runWithReload(ctx context.Context, configPath string) error {
 // runGeneration runs one service generation and returns whether the caller should
 // reload (rebuild from config) or stop.
 func runGeneration(ctx context.Context, config types.Config, changed <-chan struct{}) (bool, error) {
-	slog.Info("starting runtime", "connectors", len(config.Connectors), "flows", len(config.Flows))
+	slog.Info("starting runtime", "version", Version, "connectors", len(config.Connectors), "flows", len(config.Flows))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
 	service := runtime.NewService(config, core.DefaultRegistry())
+	go announceWhenReady(runCtx, service)
 	go func() { done <- service.Run(runCtx) }()
 
 	select {

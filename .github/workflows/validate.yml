@@ -26,3 +26,21 @@ jobs:
       - run: task lint
       - run: task test
       - run: task build
+
+  editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+        working-directory: editor
+      - run: npm run lint
+        working-directory: editor
+      - run: npm test
+        working-directory: editor
+      - run: npm run build
+        working-directory: editor

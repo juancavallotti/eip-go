@@ -14,12 +14,14 @@ export default function EditorShell() {
       <div className="flex flex-1 flex-col h-full">
         {/* Top bar */}
         <header className="flex items-center gap-2 border-b border-black/10 dark:border-white/10 px-4 h-12 shrink-0">
+          {/* h-6 w-auto controls both axes so Tailwind's `img { height: auto }`
+              reset doesn't trigger Next's aspect-ratio warning. */}
           <Image
             src="/octo-logo.png"
             alt="Octo logo"
             width={24}
             height={24}
-            className="object-contain"
+            className="h-6 w-auto"
             priority
           />
           <span className="font-semibold tracking-tight">Octo</span>

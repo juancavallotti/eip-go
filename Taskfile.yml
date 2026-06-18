@@ -83,3 +83,28 @@ tasks:
     interactive: true
     cmds:
       - ./scripts/new-connector.sh {{.CLI_ARGS}}
+
+  editor:install:
+    desc: Install the Octo editor (Next.js) dependencies
+    cmds:
+      - cd editor && npm install
+
+  editor:dev:
+    desc: Run the Octo editor dev server
+    cmds:
+      - cd editor && npm run dev
+
+  editor:lint:
+    desc: Lint the Octo editor
+    cmds:
+      - cd editor && npm run lint
+
+  editor:test:
+    desc: Run the Octo editor unit tests
+    cmds:
+      - cd editor && npm test
+
+  editor:build:
+    desc: Build the Octo editor for production
+    cmds:
+      - cd editor && npm run build

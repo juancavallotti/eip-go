@@ -18,6 +18,7 @@ import type {
   RemoveBlockPayload,
   RemoveFlowPayload,
   RenameBlockPayload,
+  RenameFlowPayload,
   UpdateBlockSettingPayload,
 } from "./actions";
 
@@ -146,6 +147,17 @@ export function removeFlow(
       ? state.selectedBlockId
       : null;
   return { ...state, document, activeFlowId, selectedBlockId };
+}
+
+export function renameFlow(
+  state: EditorState,
+  p: RenameFlowPayload,
+): EditorState {
+  const document = mapFlow(state.document, p.flowId, (flow) => ({
+    ...flow,
+    name: p.name,
+  }));
+  return { ...state, document };
 }
 
 export function updateBlockSetting(

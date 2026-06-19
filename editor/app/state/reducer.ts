@@ -10,6 +10,7 @@ import {
   RemoveBlockPayload,
   RemoveFlowPayload,
   RenameBlockPayload,
+  RenameFlowPayload,
   SelectBlockPayload,
   SetActiveFlowPayload,
   UpdateBlockSettingPayload,
@@ -64,6 +65,8 @@ export function reducer(
       return handlers.removeBlock(state, action.data as RemoveBlockPayload);
     case EditorActionType.REMOVE_FLOW:
       return handlers.removeFlow(state, action.data as RemoveFlowPayload);
+    case EditorActionType.RENAME_FLOW:
+      return handlers.renameFlow(state, action.data as RenameFlowPayload);
     case EditorActionType.SELECT_BLOCK:
       return {
         ...state,

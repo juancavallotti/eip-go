@@ -18,6 +18,8 @@ export enum EditorActionType {
   REMOVE_BLOCK = "REMOVE_BLOCK",
   /** Remove a top-level flow from the document by id. */
   REMOVE_FLOW = "REMOVE_FLOW",
+  /** Rename a flow (by id). */
+  RENAME_FLOW = "RENAME_FLOW",
   /** Mark a canvas block as selected (or clear with null). */
   SELECT_BLOCK = "SELECT_BLOCK",
   /** Update one setting field of a block (by id). */
@@ -64,6 +66,11 @@ export interface RemoveBlockPayload {
 
 export interface RemoveFlowPayload {
   flowId: string;
+}
+
+export interface RenameFlowPayload {
+  flowId: string;
+  name: string;
 }
 
 export interface SelectBlockPayload {

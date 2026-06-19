@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/juancavallotti/eip-go/orchestrator/internal/db"
+	"github.com/juancavallotti/eip-go/orchestrator/internal/folder"
 	httpx "github.com/juancavallotti/eip-go/orchestrator/internal/http"
 	"github.com/juancavallotti/eip-go/orchestrator/internal/integration"
 )
@@ -118,12 +119,18 @@ func newServer(database *db.DB) http.Handler {
 	})
 
 	if database != nil {
-		svc := integration.NewService(integration.NewRepo(database.Pool()))
-		integration.NewHandler(svc).Register(mux)
+		integrationSvc := integration.NewService(integration.NewRepo(database.Pool()))
+		integration.NewHandler(integrationSvc).Register(mux)
 		slog.Info("integration routes registered",
 			"endpoints", "POST/GET /integrations, GET/PUT/DELETE /integrations/{id}")
+
+		folderSvc := folder.NewService(folder.NewRepo(database.Pool()))
+		folder.NewHandler(folderSvc).Register(mux)
+		slog.Info("folder routes registered",
+			"endpoints", "POST/GET /folders, GET/PUT/DELETE /folders/{id}, "+
+				"GET /folders/{id}/integrations, PUT/DELETE /folders/{id}/integrations/{integrationId}")
 	} else {
-		slog.Warn("DATABASE_URL not set; integration routes disabled")
+		slog.Warn("DATABASE_URL not set; integration and folder routes disabled")
 	}
 
 	return mux

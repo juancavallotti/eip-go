@@ -12,6 +12,16 @@ includes:
     taskfile: ./editor/Taskfile.yml
     dir: ./editor
 
+# Global env reaches every task, including those in included taskfiles (task-level
+# env does not propagate to called tasks). The editor reads these server-side to
+# enable its dev RUN feature: OCTO_BIN_PATH is the runner spawned on RUN, and
+# OCTO_RUN_DIR is where the rendered config is written for `octo -watch`. Running
+# the editor directly inside the module (bypassing this root Taskfile) leaves them
+# unset, which simply disables RUN.
+env:
+  OCTO_BIN_PATH: '{{.ROOT_DIR}}/bin/octo'
+  OCTO_RUN_DIR: '{{.ROOT_DIR}}/.octo-run'
+
 tasks:
   fmt:
     desc: Format all Go modules
@@ -29,6 +39,12 @@ tasks:
     cmds:
       - task: runtime:build
       - task: editor:build
+
+  dev:
+    desc: Build the runner, then run the editor dev server (RUN button enabled)
+    cmds:
+      - task: runtime:build
+      - task: editor:dev
 
   tidy:
     desc: Tidy all Go modules

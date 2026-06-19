@@ -55,13 +55,14 @@ CREATE TABLE IF NOT EXISTS integration_idx_structure (
 CREATE INDEX IF NOT EXISTS idx_integration_idx_structure_parent
     ON integration_idx_structure (parent_id);
 
--- integration_folder_members maps which folder holds which integrations. The composite PK
--- prevents duplicate membership rows.
+-- integration_folder_members maps which folder holds which integrations. An
+-- integration lives in at most one folder, so integration_id is the primary key;
+-- adding it to a folder moves it. The folder_id index serves "list a folder's
+-- integrations".
 CREATE TABLE IF NOT EXISTS integration_folder_members (
-    folder_id      uuid NOT NULL REFERENCES integration_idx_structure (id) ON DELETE CASCADE,
-    integration_id uuid NOT NULL REFERENCES integrations (id) ON DELETE CASCADE,
-    PRIMARY KEY (folder_id, integration_id)
+    integration_id uuid PRIMARY KEY REFERENCES integrations (id) ON DELETE CASCADE,
+    folder_id      uuid NOT NULL REFERENCES integration_idx_structure (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_integration_folder_members_integration
-    ON integration_folder_members (integration_id);
+CREATE INDEX IF NOT EXISTS idx_integration_folder_members_folder
+    ON integration_folder_members (folder_id);

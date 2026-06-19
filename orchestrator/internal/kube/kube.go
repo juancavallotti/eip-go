@@ -48,8 +48,10 @@ const (
 // Spec describes the workload to create for one deployment.
 type Spec struct {
 	ID            string // deployment uuid; drives resource names and labels
-	IntegrationID string // owning integration uuid (label only)
+	IntegrationID string // owning integration uuid (label + internal Service selector)
 	Definition    string // runtime-loadable integration YAML
+	Replicas      int32  // desired replica count; <1 is treated as 1
+	Slug          string // integration name slug; names the stable internal Service ("" = none)
 }
 
 // Client wraps a Kubernetes clientset scoped to one namespace and runtime image.
@@ -81,6 +83,19 @@ func (c *Client) Namespace() string { return c.namespace }
 // "octo-dep-" + a uuid stays within the 63-char DNS-1123 label limit.
 func resourceName(deploymentID string) string { return "octo-dep-" + deploymentID }
 
+// internalServiceName is the stable, integration-scoped Service name other flows
+// address regardless of which deployment is current. "octo-int-" + a slug (≤54
+// chars; the caller bounds it) stays within the 63-char DNS-1123 label limit.
+func internalServiceName(slug string) string { return "octo-int-" + slug }
+
+// InternalURL is the in-cluster address of the stable internal Service for slug.
+func (c *Client) InternalURL(slug string) string {
+	if slug == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s.%s:%d", internalServiceName(slug), c.namespace, runtimePort)
+}
+
 func (c *Client) labels(spec Spec) map[string]string {
 	return map[string]string{
 		labelManagedBy:     managedByValue,
@@ -109,7 +124,7 @@ func (c *Client) Apply(ctx context.Context, spec Spec) error {
 	}
 
 	deps := c.clientset.AppsV1().Deployments(c.namespace)
-	if _, err := deps.Create(ctx, c.deployment(name, labels), metav1.CreateOptions{}); err != nil {
+	if _, err := deps.Create(ctx, c.deployment(name, labels, spec.Replicas), metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("kube: create deployment: %w", err)
 	}
 
@@ -128,13 +143,66 @@ func (c *Client) Apply(ctx context.Context, spec Spec) error {
 	}, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("kube: create service: %w", err)
 	}
+
+	// Stable, integration-scoped Service so other flows can reach this
+	// integration by a constant name regardless of deployment id, load-balanced
+	// across all its replicas. Idempotent: a prior deployment of the same
+	// integration may already own it.
+	if err := c.ensureInternalService(ctx, spec); err != nil {
+		return fmt.Errorf("kube: ensure internal service: %w", err)
+	}
 	return nil
 }
 
-// deployment builds the Deployment object: one replica of the runtime image with
-// the integration ConfigMap mounted read-only at the config path.
-func (c *Client) deployment(name string, labels map[string]string) *appsv1.Deployment {
-	replicas := int32(1)
+// ensureInternalService creates the stable "octo-int-{slug}" ClusterIP Service
+// that selects every pod of the integration (by integration-id label). It is a
+// no-op when the deployment has no slug or the Service already exists.
+func (c *Client) ensureInternalService(ctx context.Context, spec Spec) error {
+	if spec.Slug == "" {
+		return nil
+	}
+	_, err := c.clientset.CoreV1().Services(c.namespace).Create(ctx, &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: internalServiceName(spec.Slug),
+			Labels: map[string]string{
+				labelManagedBy:     managedByValue,
+				labelIntegrationID: spec.IntegrationID,
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: map[string]string{labelIntegrationID: spec.IntegrationID},
+			Ports: []corev1.ServicePort{{
+				Name:       "http",
+				Port:       runtimePort,
+				TargetPort: intstr.FromInt(runtimePort),
+			}},
+		},
+	}, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
+	return err
+}
+
+// DeleteInternalService removes the stable internal Service for slug. Callers
+// delete it only once the last deployment of the integration is gone; a missing
+// Service is ignored.
+func (c *Client) DeleteInternalService(ctx context.Context, slug string) error {
+	if slug == "" {
+		return nil
+	}
+	err := c.clientset.CoreV1().Services(c.namespace).Delete(ctx, internalServiceName(slug), metav1.DeleteOptions{})
+	return ignoreNotFound(err)
+}
+
+// deployment builds the Deployment object: `replicas` runtime pods (clamped to a
+// minimum of 1) with the integration ConfigMap mounted read-only at the config
+// path.
+func (c *Client) deployment(name string, labels map[string]string, replicas int32) *appsv1.Deployment {
+	if replicas < 1 {
+		replicas = 1
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
 		Spec: appsv1.DeploymentSpec{

@@ -24,14 +24,14 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool}
 }
 
-// Create inserts a new deployment row for integrationID with an initial status
-// and metadata; id, settings (default) and last_updated come back via RETURNING.
-func (r *Repo) Create(ctx context.Context, integrationID, status string, metadata json.RawMessage) (Deployment, error) {
+// Create inserts a new deployment row for integrationID with its settings, an
+// initial status and metadata; id and last_updated come back via RETURNING.
+func (r *Repo) Create(ctx context.Context, integrationID, status string, settings, metadata json.RawMessage) (Deployment, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO integration_deployments (integration_id, status, deployment_metadata)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO integration_deployments (integration_id, settings, status, deployment_metadata)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING `+deploymentColumns,
-		integrationID, status, metadata,
+		integrationID, settings, status, metadata,
 	)
 	d, err := scanDeployment(row)
 	if err != nil {

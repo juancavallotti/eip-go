@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/juancavallotti/eip-go/orchestrator/internal/integration"
 	"github.com/juancavallotti/eip-go/orchestrator/internal/kube"
@@ -14,7 +15,7 @@ import (
 // consumer (and unexported) so service tests can substitute a fake; *Repo
 // satisfies it structurally.
 type repository interface {
-	Create(ctx context.Context, integrationID, status string, metadata json.RawMessage) (Deployment, error)
+	Create(ctx context.Context, integrationID, status string, settings, metadata json.RawMessage) (Deployment, error)
 	Get(ctx context.Context, id string) (Deployment, error)
 	ListByIntegration(ctx context.Context, integrationID string) ([]Deployment, error)
 	UpdateStatus(ctx context.Context, id, status string) error
@@ -33,6 +34,8 @@ type kubeClient interface {
 	Apply(ctx context.Context, spec kube.Spec) error
 	Status(ctx context.Context, deploymentID string) (string, error)
 	Delete(ctx context.Context, deploymentID string) error
+	InternalURL(slug string) string
+	DeleteInternalService(ctx context.Context, slug string) error
 }
 
 // Service holds deployment lifecycle logic: it persists deployment rows and
@@ -49,11 +52,11 @@ func NewService(repo repository, integrations integrationStore, kube kubeClient)
 	return &Service{repo: repo, integrations: integrations, kube: kube}
 }
 
-// Deploy creates a deployment of integrationID: it records the row to mint an
-// id, then creates the cluster resources named/labelled from that id. On a
-// Kubernetes failure it tears down any partial resources and removes the row so
-// a failed deploy leaves nothing behind.
-func (s *Service) Deploy(ctx context.Context, integrationID string) (Deployment, error) {
+// Deploy creates a deployment of integrationID with the given settings: it
+// records the row to mint an id, then creates the cluster resources
+// named/labelled from that id. On a Kubernetes failure it tears down any partial
+// resources and removes the row so a failed deploy leaves nothing behind.
+func (s *Service) Deploy(ctx context.Context, integrationID string, settings Settings) (Deployment, error) {
 	if s.kube == nil {
 		return Deployment{}, ErrUnavailable
 	}
@@ -65,17 +68,37 @@ func (s *Service) Deploy(ctx context.Context, integrationID string) (Deployment,
 		return Deployment{}, err
 	}
 
-	metadata, err := json.Marshal(Metadata{Name: it.Name})
+	replicas := settings.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
+	slug := slugify(it.Name)
+
+	settingsJSON, err := json.Marshal(Settings{Replicas: replicas})
+	if err != nil {
+		return Deployment{}, err
+	}
+	metadata, err := json.Marshal(Metadata{
+		Name:        it.Name,
+		Slug:        slug,
+		InternalURL: s.kube.InternalURL(slug),
+	})
 	if err != nil {
 		return Deployment{}, err
 	}
 
-	dep, err := s.repo.Create(ctx, integrationID, kube.StatusPending, metadata)
+	dep, err := s.repo.Create(ctx, integrationID, kube.StatusPending, settingsJSON, metadata)
 	if err != nil {
 		return Deployment{}, err
 	}
 
-	spec := kube.Spec{ID: dep.ID, IntegrationID: integrationID, Definition: it.Definition}
+	spec := kube.Spec{
+		ID:            dep.ID,
+		IntegrationID: integrationID,
+		Definition:    it.Definition,
+		Replicas:      int32(replicas),
+		Slug:          slug,
+	}
 	if err := s.kube.Apply(ctx, spec); err != nil {
 		// Roll back: remove any partially created resources and the row so the
 		// failure is not left dangling.
@@ -117,18 +140,63 @@ func (s *Service) ListByIntegration(ctx context.Context, integrationID string) (
 }
 
 // Undeploy deletes the cluster resources and then the row. It verifies the row
-// exists first so callers get ErrNotFound for an unknown id.
+// exists first so callers get ErrNotFound for an unknown id. The stable internal
+// Service is shared across an integration's deployments, so it is removed only
+// once the last deployment of that integration is gone.
 func (s *Service) Undeploy(ctx context.Context, id string) error {
 	if s.kube == nil {
 		return ErrUnavailable
 	}
-	if _, err := s.repo.Get(ctx, id); err != nil {
+	dep, err := s.repo.Get(ctx, id)
+	if err != nil {
 		return err
 	}
 	if err := s.kube.Delete(ctx, id); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Drop the integration-scoped internal Service when no deployments remain.
+	if slug := ParseMetadata(dep.Metadata).Slug; slug != "" {
+		remaining, err := s.repo.ListByIntegration(ctx, dep.IntegrationID)
+		if err != nil {
+			slog.Error("undeploy: list remaining deployments", "integrationId", dep.IntegrationID, "error", err)
+			return nil // the row is already gone; the orphaned Service is harmless
+		}
+		if len(remaining) == 0 {
+			if err := s.kube.DeleteInternalService(ctx, slug); err != nil {
+				slog.Error("undeploy: delete internal service", "slug", slug, "error", err)
+			}
+		}
+	}
+	return nil
+}
+
+// slugify reduces an integration name to a DNS-1123 label usable as the internal
+// Service suffix: lowercase, runs of non-alphanumerics collapsed to single
+// dashes, trimmed, and bounded so "octo-int-"+slug stays within 63 chars.
+// Returns "" when nothing usable remains (the caller then skips the Service).
+func slugify(name string) string {
+	const maxLen = 54 // 63 - len("octo-int-")
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > maxLen {
+		out = strings.Trim(out[:maxLen], "-")
+	}
+	return out
 }
 
 // refresh queries the live status and updates the cache, returning the current

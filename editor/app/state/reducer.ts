@@ -3,6 +3,7 @@ import {
   EditorDocument,
   FlowDoc,
   emptyDocument,
+  emptyFlow,
   newBlock,
 } from "@/app/model/document";
 import {
@@ -18,11 +19,12 @@ import {
 /**
  * Editor-wide state. EditorShell is a "large" component, so its state lives in a
  * reducer (per the coding standards). The document is the in-memory editing model
- * (see app/model/document.ts); selection and active-flow are view state.
+ * (see app/model/document.ts); a file holds many flows, all editable at once.
+ * `activeFlowId` is just the target for click-to-add and selection highlighting.
  */
 export interface EditorState {
   document: EditorDocument;
-  /** Which flow the canvas is editing. */
+  /** Target flow for click-to-add; also highlighted on the canvas. */
   activeFlowId: string | null;
   /** Currently selected block on the canvas, or null. */
   selectedBlockId: string | null;
@@ -50,32 +52,43 @@ function arrayMove<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
-/** Apply `fn` to the active flow, returning a new document. */
-function updateActiveFlow(
+/** Apply `fn` to one flow by id, returning a new document. */
+function updateFlow(
   state: EditorState,
+  flowId: string | null,
   fn: (flow: FlowDoc) => FlowDoc,
 ): EditorDocument {
   return {
     ...state.document,
     flows: state.document.flows.map((flow) =>
-      flow.id === state.activeFlowId ? fn(flow) : flow,
+      flow.id === flowId ? fn(flow) : flow,
     ),
   };
 }
 
+function addFlow(state: EditorState): EditorState {
+  const flow = emptyFlow(`Flow ${state.document.flows.length + 1}`);
+  return {
+    ...state,
+    document: { ...state.document, flows: [...state.document.flows, flow] },
+    activeFlowId: flow.id,
+    selectedBlockId: null,
+  };
+}
+
 function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
+  const flowId = p.flowId ?? state.activeFlowId;
   const block = newBlock(p.blockType);
-  const document = updateActiveFlow(state, (flow) => {
+  const document = updateFlow(state, flowId, (flow) => {
     const process = flow.process.slice();
-    const at = p.index ?? process.length;
-    process.splice(at, 0, block);
+    process.splice(p.index ?? process.length, 0, block);
     return { ...flow, process };
   });
-  return { ...state, document, selectedBlockId: block.id };
+  return { ...state, document, activeFlowId: flowId, selectedBlockId: block.id };
 }
 
 function moveBlock(state: EditorState, p: MoveBlockPayload): EditorState {
-  const document = updateActiveFlow(state, (flow) => ({
+  const document = updateFlow(state, p.flowId, (flow) => ({
     ...flow,
     process: arrayMove(flow.process, p.fromIndex, p.toIndex),
   }));
@@ -83,7 +96,7 @@ function moveBlock(state: EditorState, p: MoveBlockPayload): EditorState {
 }
 
 function removeBlock(state: EditorState, p: RemoveBlockPayload): EditorState {
-  const document = updateActiveFlow(state, (flow) => ({
+  const document = updateFlow(state, p.flowId, (flow) => ({
     ...flow,
     process: flow.process.filter((b) => b.id !== p.blockId),
   }));
@@ -106,6 +119,8 @@ export function reducer(
   action: ReducerAction<EditorActionType>,
 ): EditorState {
   switch (action.type) {
+    case EditorActionType.ADD_FLOW:
+      return addFlow(state);
     case EditorActionType.ADD_BLOCK:
       return addBlock(state, action.data as AddBlockPayload);
     case EditorActionType.MOVE_BLOCK:

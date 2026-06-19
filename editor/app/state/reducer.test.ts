@@ -55,7 +55,7 @@ describe("editor reducer", () => {
     }
     state = reducer(state, {
       type: EditorActionType.MOVE_BLOCK,
-      data: { fromIndex: 0, toIndex: 2 },
+      data: { flowId: state.activeFlowId, fromIndex: 0, toIndex: 2 },
     });
     expect(activeFlow(state).process.map((b) => b.type)).toEqual([
       "sql",
@@ -72,10 +72,38 @@ describe("editor reducer", () => {
     const blockId = activeFlow(added).process[0].id;
     const next = reducer(added, {
       type: EditorActionType.REMOVE_BLOCK,
-      data: { blockId },
+      data: { flowId: added.activeFlowId, blockId },
     });
     expect(activeFlow(next).process).toHaveLength(0);
     expect(next.selectedBlockId).toBeNull();
+  });
+
+  it("adds a flow and makes it active", () => {
+    const next = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    expect(next.document.flows).toHaveLength(2);
+    expect(next.activeFlowId).toBe(next.document.flows[1].id);
+  });
+
+  it("adds blocks to the active flow by default", () => {
+    const withFlow = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    const next = reducer(withFlow, {
+      type: EditorActionType.ADD_BLOCK,
+      data: { blockType: "log" },
+    });
+    expect(next.document.flows[0].process).toHaveLength(0);
+    expect(next.document.flows[1].process).toHaveLength(1);
+  });
+
+  it("adds a block to a specific flow when flowId is given", () => {
+    const withFlow = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    const firstId = withFlow.document.flows[0].id;
+    const next = reducer(withFlow, {
+      type: EditorActionType.ADD_BLOCK,
+      data: { blockType: "log", flowId: firstId },
+    });
+    expect(next.document.flows[0].process).toHaveLength(1);
+    expect(next.document.flows[1].process).toHaveLength(0);
+    expect(next.activeFlowId).toBe(firstId);
   });
 
   it("loads a document and activates its first flow", () => {

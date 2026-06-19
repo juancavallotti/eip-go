@@ -6,15 +6,17 @@ import type { EditorDocument } from "@/app/model/document";
  * what `data` holds for each action.
  */
 export enum EditorActionType {
-  /** Append (or insert at `index`) a new block into the active flow. */
+  /** Add an empty flow to the document and make it active. */
+  ADD_FLOW = "ADD_FLOW",
+  /** Append (or insert at `index`) a new block into a flow (active by default). */
   ADD_BLOCK = "ADD_BLOCK",
-  /** Reorder a block within the active flow's process chain. */
+  /** Reorder a block within a flow's process chain. */
   MOVE_BLOCK = "MOVE_BLOCK",
-  /** Remove a block from the active flow by id. */
+  /** Remove a block from a flow by id. */
   REMOVE_BLOCK = "REMOVE_BLOCK",
   /** Mark a canvas block as selected (or clear with null). */
   SELECT_BLOCK = "SELECT_BLOCK",
-  /** Switch which flow the canvas shows. */
+  /** Switch which flow is active (the target for click-to-add). */
   SET_ACTIVE_FLOW = "SET_ACTIVE_FLOW",
   /** Replace the whole document (file load or "new"). */
   LOAD_DOCUMENT = "LOAD_DOCUMENT",
@@ -26,15 +28,19 @@ export enum EditorActionType {
 
 export interface AddBlockPayload {
   blockType: string;
+  /** Target flow; defaults to the active flow when omitted. */
+  flowId?: string;
   index?: number;
 }
 
 export interface MoveBlockPayload {
+  flowId: string;
   fromIndex: number;
   toIndex: number;
 }
 
 export interface RemoveBlockPayload {
+  flowId: string;
   blockId: string;
 }
 

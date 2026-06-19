@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/juancavallotti/eip-go/orchestrator/internal/db"
+	httpx "github.com/juancavallotti/eip-go/orchestrator/internal/http"
+	"github.com/juancavallotti/eip-go/orchestrator/internal/integration"
 )
 
 const (
@@ -60,16 +62,12 @@ func run() error {
 	}
 
 	srv := newServer(database)
-	httpServer := &http.Server{
-		Addr:              ":" + port,
-		Handler:           srv,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	httpServer := httpx.NewServer(":"+port, srv)
 
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("orchestrator listening", "addr", httpServer.Addr,
-			"db", dsn != "", "endpoints", "/healthz /db-version")
+			"db", database != nil)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -118,6 +116,15 @@ func newServer(database *db.DB) http.Handler {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(value)
 	})
+
+	if database != nil {
+		svc := integration.NewService(integration.NewRepo(database.Pool()))
+		integration.NewHandler(svc).Register(mux)
+		slog.Info("integration routes registered",
+			"endpoints", "POST/GET /integrations, GET/PUT/DELETE /integrations/{id}")
+	} else {
+		slog.Warn("DATABASE_URL not set; integration routes disabled")
+	}
 
 	return mux
 }

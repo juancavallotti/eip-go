@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -35,21 +36,31 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 // deploymentResponse is the wire representation of a deployment. The display
-// name is lifted out of the metadata jsonb for convenience.
+// name, replica count and internal URL are lifted out of the jsonb columns for
+// convenience.
 type deploymentResponse struct {
 	ID            string    `json:"id"`
 	IntegrationID string    `json:"integrationId"`
 	Name          string    `json:"name"`
 	Status        string    `json:"status"`
+	Replicas      int       `json:"replicas"`
+	InternalURL   string    `json:"internalUrl,omitempty"`
 	LastUpdated   time.Time `json:"lastUpdated"`
 }
 
 func toResponse(d Deployment) deploymentResponse {
+	meta := ParseMetadata(d.Metadata)
+	replicas := ParseSettings(d.Settings).Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
 	return deploymentResponse{
 		ID:            d.ID,
 		IntegrationID: d.IntegrationID,
-		Name:          MetadataName(d.Metadata),
+		Name:          meta.Name,
 		Status:        d.Status,
+		Replicas:      replicas,
+		InternalURL:   meta.InternalURL,
 		LastUpdated:   d.LastUpdated,
 	}
 }
@@ -58,7 +69,14 @@ func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	d, err := h.svc.Deploy(ctx, r.PathValue("id"))
+	// The settings body is optional; ignore an empty/malformed body and fall
+	// back to defaults (single replica).
+	var settings Settings
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&settings)
+	}
+
+	d, err := h.svc.Deploy(ctx, r.PathValue("id"), settings)
 	if err != nil {
 		h.writeError(w, err)
 		return

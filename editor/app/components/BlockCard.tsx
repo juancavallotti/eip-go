@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import { GripVertical, X } from "lucide-react";
-import { useSortable } from "@dnd-kit/sortable";
+import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import type { BlockNode } from "@/app/model/document";
 import { getBlockSpec, resolveIcon } from "@/app/schema";
@@ -22,8 +22,8 @@ export default function BlockCard({
   flowId: string;
 }) {
   const { state, dispatch } = useEditorState();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: block.id, data: { source: "canvas", flowId } });
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: block.id, data: { source: "canvas", flowId } });
 
   const spec = getBlockSpec(block.type);
   const icon = createElement(resolveIcon(spec?.icon ?? ""), {
@@ -31,7 +31,7 @@ export default function BlockCard({
     className: "text-zinc-600 dark:text-zinc-300",
   });
   const selected = state.selectedBlockId === block.id;
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const style = { transform: CSS.Translate.toString(transform) };
 
   return (
     <div

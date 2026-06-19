@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import {
+  closestCenter,
   DndContext,
   DragEndEvent,
   KeyboardSensor,
@@ -9,21 +10,22 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { findFlow } from "@/app/model/document";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
 import { DragData, DropData } from "./dnd";
 
 /**
- * A single DndContext spanning the whole editor body so the palette (drag
- * sources) and every flow's blocks (sortable) share one drag session. onDragEnd
- * is the one place a drop becomes a reducer action: a palette drag adds a block
- * to the flow it was dropped on; a canvas drag reorders within its own flow.
+ * A single DndContext spanning the editor body so the palette (drag sources) and
+ * every flow's blocks (drag sources) share one drag session with the insertion
+ * gaps (drop targets). onDragEnd is the one place a drop becomes a reducer
+ * action: a palette drag inserts a new block at the gap's index; a canvas drag
+ * reorders within its flow or moves across flows (including into nested scopes).
  */
 export default function DndProvider({ children }: { children: ReactNode }) {
   const { state, dispatch } = useEditorState();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor),
   );
 
   function handleDragEnd(event: DragEndEvent) {
@@ -31,29 +33,37 @@ export default function DndProvider({ children }: { children: ReactNode }) {
     if (!over) return;
     const data = active.data.current as DragData | undefined;
     const target = over.data.current as DropData | undefined;
-    const flowId = target?.flowId;
-    if (!data || !flowId) return;
-    const flow = state.document.flows.find((f) => f.id === flowId);
-    if (!flow) return;
+    if (!data || !target) return;
+    const { flowId, index } = target;
 
     if (data.source === "palette") {
-      const overIndex = flow.process.findIndex((b) => b.id === over.id);
       dispatch({
         type: EditorActionType.ADD_BLOCK,
+        data: { blockType: data.blockType, flowId, index },
+      });
+      return;
+    }
+
+    // Moving an existing block across flows (or nested scopes).
+    if (data.flowId !== flowId) {
+      dispatch({
+        type: EditorActionType.MOVE_BLOCK_ACROSS,
         data: {
-          blockType: data.blockType,
-          flowId,
-          index: overIndex === -1 ? undefined : overIndex,
+          fromFlowId: data.flowId,
+          toFlowId: flowId,
+          blockId: String(active.id),
+          index,
         },
       });
       return;
     }
 
-    // Reorder within the same flow only (cross-flow moves come later).
-    if (data.flowId !== flowId) return;
+    // Reordering within the same flow: translate the gap index into a move.
+    const flow = findFlow(state.document, flowId);
+    if (!flow) return;
     const from = flow.process.findIndex((b) => b.id === active.id);
-    const to = flow.process.findIndex((b) => b.id === over.id);
-    if (from === -1 || to === -1 || from === to) return;
+    if (from === -1 || index === from || index === from + 1) return;
+    const to = index > from ? index - 1 : index;
     dispatch({
       type: EditorActionType.MOVE_BLOCK,
       data: { flowId, fromIndex: from, toIndex: to },
@@ -61,7 +71,11 @@ export default function DndProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
       {children}
     </DndContext>
   );

@@ -139,6 +139,10 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusBadRequest, "external endpoints are not configured")
 	case errors.Is(err, ErrInvalidSubdomain):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid external subdomain")
+	case errors.Is(err, ErrSlugTaken):
+		httpx.WriteError(w, http.StatusConflict, "integration slug already in use by another integration")
+	case errors.Is(err, ErrSubdomainTaken):
+		httpx.WriteError(w, http.StatusConflict, "external subdomain already in use by another integration")
 	default:
 		slog.Error("deployment handler", "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")

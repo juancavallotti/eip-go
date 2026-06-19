@@ -18,6 +18,8 @@ type repository interface {
 	Create(ctx context.Context, integrationID, status string, settings, metadata json.RawMessage) (Deployment, error)
 	Get(ctx context.Context, id string) (Deployment, error)
 	ListByIntegration(ctx context.Context, integrationID string) ([]Deployment, error)
+	IntegrationIDBySlug(ctx context.Context, slug string) (string, bool, error)
+	IntegrationIDBySubdomain(ctx context.Context, subdomain string) (string, bool, error)
 	UpdateStatus(ctx context.Context, id, status string) error
 	Delete(ctx context.Context, id string) error
 }
@@ -109,6 +111,12 @@ func (s *Service) Deploy(ctx context.Context, integrationID string, settings Set
 		}
 	}
 
+	// Reject a slug/subdomain already owned by a different integration before
+	// creating anything, so we never produce a colliding internal Service or host.
+	if err := s.ensureUnique(ctx, integrationID, slug, subdomain); err != nil {
+		return Deployment{}, err
+	}
+
 	persisted := Settings{Replicas: replicas}
 	if external {
 		persisted.Expose = ExposeExternal
@@ -159,6 +167,31 @@ func (s *Service) Deploy(ctx context.Context, integrationID string, settings Set
 	// Reflect the freshly observed status (typically still pending) in the cache.
 	dep.Status = s.refresh(ctx, dep.ID, dep.Status)
 	return dep, nil
+}
+
+// ensureUnique verifies the slug and subdomain are not already claimed by a
+// different integration's deployment. An empty value is skipped. A match owned by
+// the same integration (a redeploy) is allowed: its deployments share the slug.
+func (s *Service) ensureUnique(ctx context.Context, integrationID, slug, subdomain string) error {
+	if slug != "" {
+		owner, found, err := s.repo.IntegrationIDBySlug(ctx, slug)
+		if err != nil {
+			return err
+		}
+		if found && owner != integrationID {
+			return ErrSlugTaken
+		}
+	}
+	if subdomain != "" {
+		owner, found, err := s.repo.IntegrationIDBySubdomain(ctx, subdomain)
+		if err != nil {
+			return err
+		}
+		if found && owner != integrationID {
+			return ErrSubdomainTaken
+		}
+	}
+	return nil
 }
 
 // Get returns a deployment with its status refreshed from the cluster.

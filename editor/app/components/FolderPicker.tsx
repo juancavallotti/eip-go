@@ -106,7 +106,7 @@ export default function FolderPicker() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-2 w-60 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-zinc-900">
+        <div className="absolute left-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-zinc-900">
           <ul className="max-h-72 overflow-y-auto py-1">
             <li>
               <button

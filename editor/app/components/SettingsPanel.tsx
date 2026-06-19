@@ -4,6 +4,7 @@ import { useState } from "react";
 import { findBlock, findFlow } from "@/app/model/document";
 import { useEditorState } from "@/app/state/editorState";
 import BlockSettings from "./BlockSettings";
+import SourceSettings from "./SourceSettings";
 import FlowSettings from "./FlowSettings";
 
 const MIN_WIDTH = 280;
@@ -24,8 +25,12 @@ export default function SettingsPanel() {
   const block = state.selectedBlockId
     ? findBlock(state.document, state.selectedBlockId)
     : undefined;
+  const sourceFlow =
+    !block && state.selectedSourceFlowId
+      ? findFlow(state.document, state.selectedSourceFlowId)
+      : undefined;
   const flow =
-    !block && state.activeFlowId
+    !block && !sourceFlow?.source && state.activeFlowId
       ? findFlow(state.document, state.activeFlowId)
       : undefined;
 
@@ -62,6 +67,8 @@ export default function SettingsPanel() {
 
       {block ? (
         <BlockSettings block={block} />
+      ) : sourceFlow?.source ? (
+        <SourceSettings flow={sourceFlow} />
       ) : flow ? (
         <FlowSettings flow={flow} />
       ) : (

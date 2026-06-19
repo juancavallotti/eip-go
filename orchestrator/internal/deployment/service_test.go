@@ -14,15 +14,19 @@ import (
 type fakeRepo struct {
 	created     Deployment
 	createErr   error
+	gotSettings json.RawMessage
 	gotMetadata json.RawMessage
 	getRet      Deployment
 	getErr      error
+	listRet     []Deployment
+	listErr     error
 	statusCalls int
 	deleted     bool
 	deleteErr   error
 }
 
-func (f *fakeRepo) Create(_ context.Context, integrationID, status string, md json.RawMessage) (Deployment, error) {
+func (f *fakeRepo) Create(_ context.Context, integrationID, status string, settings, md json.RawMessage) (Deployment, error) {
+	f.gotSettings = settings
 	f.gotMetadata = md
 	if f.createErr != nil {
 		return Deployment{}, f.createErr
@@ -38,7 +42,7 @@ func (f *fakeRepo) Get(_ context.Context, _ string) (Deployment, error) {
 }
 
 func (f *fakeRepo) ListByIntegration(_ context.Context, _ string) ([]Deployment, error) {
-	return []Deployment{f.getRet}, f.getErr
+	return f.listRet, f.listErr
 }
 
 func (f *fakeRepo) UpdateStatus(_ context.Context, _, _ string) error {
@@ -63,13 +67,16 @@ func (f *fakeIntegrations) Get(_ context.Context, _ string) (integration.Integra
 
 // fakeKube records calls and returns preset results.
 type fakeKube struct {
-	applied    bool
-	applyErr   error
-	gotSpec    kube.Spec
-	status     string
-	statusErr  error
-	deleted    bool
-	deleteErr  error
+	applied         bool
+	applyErr        error
+	gotSpec         kube.Spec
+	status          string
+	statusErr       error
+	deleted         bool
+	deleteErr       error
+	internalDeleted bool
+	gotInternalSlug string
+	externalEnabled bool
 }
 
 func (f *fakeKube) Apply(_ context.Context, spec kube.Spec) error {
@@ -87,13 +94,35 @@ func (f *fakeKube) Delete(_ context.Context, _ string) error {
 	return f.deleteErr
 }
 
+func (f *fakeKube) InternalURL(slug string) string {
+	if slug == "" {
+		return ""
+	}
+	return "http://octo-int-" + slug + ".octo-dev:8080"
+}
+
+func (f *fakeKube) DeleteInternalService(_ context.Context, slug string) error {
+	f.internalDeleted = true
+	f.gotInternalSlug = slug
+	return nil
+}
+
+func (f *fakeKube) ExternalEnabled() bool { return f.externalEnabled }
+
+func (f *fakeKube) ExternalURL(subdomain string) string {
+	if !f.externalEnabled || subdomain == "" {
+		return ""
+	}
+	return "https://" + subdomain + ".octo.example.com"
+}
+
 func TestDeployHappyPath(t *testing.T) {
 	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
 	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: "service:\n  name: orders\n"}}
 	kc := &fakeKube{status: kube.StatusRunning}
 	svc := NewService(repo, integrations, kc)
 
-	d, err := svc.Deploy(context.Background(), "int-1")
+	d, err := svc.Deploy(context.Background(), "int-1", Settings{})
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -111,13 +140,135 @@ func TestDeployHappyPath(t *testing.T) {
 	}
 }
 
+func TestDeployThreadsReplicasAndSlug(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "My Orders API!"}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	d, err := svc.Deploy(context.Background(), "int-1", Settings{Replicas: 3})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.gotSpec.Replicas != 3 {
+		t.Errorf("spec replicas = %d, want 3", kc.gotSpec.Replicas)
+	}
+	if kc.gotSpec.Slug != "my-orders-api" {
+		t.Errorf("spec slug = %q, want my-orders-api", kc.gotSpec.Slug)
+	}
+	if got := ParseSettings(repo.gotSettings).Replicas; got != 3 {
+		t.Errorf("persisted replicas = %d, want 3", got)
+	}
+	meta := ParseMetadata(repo.gotMetadata)
+	if meta.Slug != "my-orders-api" || meta.InternalURL == "" {
+		t.Errorf("metadata slug/url not set: %+v", meta)
+	}
+	_ = d
+}
+
+func TestDeployDefaultsReplicasToOne(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.gotSpec.Replicas != 1 {
+		t.Errorf("spec replicas = %d, want 1 (default)", kc.gotSpec.Replicas)
+	}
+}
+
+func TestUndeployRemovesInternalServiceWhenLast(t *testing.T) {
+	repo := &fakeRepo{
+		getRet:  Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{"slug":"orders"}`)},
+		listRet: nil, // no deployments remain after delete
+	}
+	kc := &fakeKube{}
+	svc := NewService(repo, &fakeIntegrations{}, kc)
+
+	if err := svc.Undeploy(context.Background(), "dep-1"); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !kc.internalDeleted || kc.gotInternalSlug != "orders" {
+		t.Errorf("expected internal service delete for slug orders (deleted=%v slug=%q)", kc.internalDeleted, kc.gotInternalSlug)
+	}
+}
+
+func TestUndeployKeepsInternalServiceWhenOthersRemain(t *testing.T) {
+	repo := &fakeRepo{
+		getRet:  Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{"slug":"orders"}`)},
+		listRet: []Deployment{{ID: "dep-2", IntegrationID: "int-1"}},
+	}
+	kc := &fakeKube{}
+	svc := NewService(repo, &fakeIntegrations{}, kc)
+
+	if err := svc.Undeploy(context.Background(), "dep-1"); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.internalDeleted {
+		t.Error("internal service should be kept while other deployments of the integration remain")
+	}
+}
+
+func TestDeployExternalThreadsIngress(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	kc := &fakeKube{status: kube.StatusPending, externalEnabled: true}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{Expose: ExposeExternal, Subdomain: "My Shop"}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !kc.gotSpec.Expose || kc.gotSpec.Subdomain != "my-shop" {
+		t.Errorf("spec expose/subdomain = %v/%q, want true/my-shop", kc.gotSpec.Expose, kc.gotSpec.Subdomain)
+	}
+	meta := ParseMetadata(repo.gotMetadata)
+	if meta.ExternalURL == "" {
+		t.Error("metadata externalUrl should be set for an external deployment")
+	}
+	if s := ParseSettings(repo.gotSettings); s.Expose != ExposeExternal || s.Subdomain != "my-shop" {
+		t.Errorf("persisted settings = %+v, want expose external / subdomain my-shop", s)
+	}
+}
+
+func TestDeployExternalDefaultsSubdomainToName(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders API"}}
+	kc := &fakeKube{status: kube.StatusPending, externalEnabled: true}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{Expose: ExposeExternal}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.gotSpec.Subdomain != "orders-api" {
+		t.Errorf("subdomain = %q, want orders-api (slug of name)", kc.gotSpec.Subdomain)
+	}
+}
+
+func TestDeployExternalUnavailableWithoutBaseDomain(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	kc := &fakeKube{externalEnabled: false}
+	svc := NewService(repo, integrations, kc)
+
+	_, err := svc.Deploy(context.Background(), "int-1", Settings{Expose: ExposeExternal})
+	if !errors.Is(err, ErrExternalUnavailable) {
+		t.Errorf("got %v, want ErrExternalUnavailable", err)
+	}
+	if kc.applied {
+		t.Error("kube.Apply should not run when external is requested but unavailable")
+	}
+}
+
 func TestDeployMissingIntegration(t *testing.T) {
 	repo := &fakeRepo{}
 	integrations := &fakeIntegrations{err: integration.ErrNotFound}
 	kc := &fakeKube{}
 	svc := NewService(repo, integrations, kc)
 
-	_, err := svc.Deploy(context.Background(), "missing")
+	_, err := svc.Deploy(context.Background(), "missing", Settings{})
 	if !errors.Is(err, ErrIntegrationNotFound) {
 		t.Errorf("got %v, want ErrIntegrationNotFound", err)
 	}
@@ -132,7 +283,7 @@ func TestDeployRollsBackOnKubeFailure(t *testing.T) {
 	kc := &fakeKube{applyErr: errors.New("boom")}
 	svc := NewService(repo, integrations, kc)
 
-	_, err := svc.Deploy(context.Background(), "int-1")
+	_, err := svc.Deploy(context.Background(), "int-1", Settings{})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -146,7 +297,7 @@ func TestDeployRollsBackOnKubeFailure(t *testing.T) {
 
 func TestDeployUnavailableWithoutKube(t *testing.T) {
 	svc := NewService(&fakeRepo{}, &fakeIntegrations{}, nil)
-	if _, err := svc.Deploy(context.Background(), "int-1"); !errors.Is(err, ErrUnavailable) {
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{}); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("got %v, want ErrUnavailable", err)
 	}
 }

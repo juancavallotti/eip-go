@@ -34,6 +34,8 @@ export enum EditorActionType {
   SELECT_SOURCE = "SELECT_SOURCE",
   /** Update one setting field of a flow's source. */
   UPDATE_SOURCE_SETTING = "UPDATE_SOURCE_SETTING",
+  /** Bind a flow's source to a connector instance (by name), or clear it. */
+  UPDATE_SOURCE_CONNECTOR = "UPDATE_SOURCE_CONNECTOR",
   /** Remove a flow's source. */
   REMOVE_SOURCE = "REMOVE_SOURCE",
   /** Add a connector instance ("connection") of the chosen type and select it. */
@@ -124,6 +126,12 @@ export interface UpdateSourceSettingPayload {
   flowId: string;
   field: string;
   value: unknown;
+}
+
+export interface UpdateSourceConnectorPayload {
+  flowId: string;
+  /** Connector instance name to bind, or undefined to use the default connector. */
+  connector: string | undefined;
 }
 
 export interface RemoveSourcePayload {

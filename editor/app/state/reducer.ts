@@ -17,6 +17,7 @@ import {
   SetActiveFlowPayload,
   UpdateBlockSettingPayload,
   UpdateSourceSettingPayload,
+  UpdateSourceConnectorPayload,
   AddConnectionPayload,
   RemoveConnectionPayload,
   RenameConnectionPayload,
@@ -116,6 +117,11 @@ export function reducer(
       return sourceHandlers.updateSourceSetting(
         state,
         action.data as UpdateSourceSettingPayload,
+      );
+    case EditorActionType.UPDATE_SOURCE_CONNECTOR:
+      return sourceHandlers.updateSourceConnector(
+        state,
+        action.data as UpdateSourceConnectorPayload,
       );
     case EditorActionType.REMOVE_SOURCE:
       return sourceHandlers.removeSource(

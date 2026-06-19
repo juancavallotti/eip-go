@@ -4,6 +4,7 @@ import type {
   AddSourcePayload,
   RemoveSourcePayload,
   SelectSourcePayload,
+  UpdateSourceConnectorPayload,
   UpdateSourceSettingPayload,
 } from "./actions";
 
@@ -61,6 +62,20 @@ export function updateSourceSetting(
         }
       : flow,
   );
+  return { ...state, document };
+}
+
+export function updateSourceConnector(
+  state: EditorState,
+  p: UpdateSourceConnectorPayload,
+): EditorState {
+  const document = mapFlow(state.document, p.flowId, (flow) => {
+    if (!flow.source) return flow;
+    const source = { ...flow.source };
+    if (p.connector) source.connectorRef = p.connector;
+    else delete source.connectorRef;
+    return { ...flow, source };
+  });
   return { ...state, document };
 }
 

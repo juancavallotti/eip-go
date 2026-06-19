@@ -6,6 +6,7 @@ import type { FlowDoc } from "@/app/model/document";
 import { getSourceSpec, resolveIcon } from "@/app/schema";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
 import SettingsField from "./SettingsField";
+import ReferenceField from "./fields/ReferenceField";
 
 /**
  * Settings body for a flow's selected source: a header (icon, label, close), one
@@ -55,6 +56,28 @@ export default function SourceSettings({ flow }: { flow: FlowDoc }) {
       </header>
 
       <div className="flex flex-col gap-4 overflow-y-auto p-4">
+        {source.connector && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              Connector
+            </label>
+            <ReferenceField
+              spec={{ kind: "connector", connectorType: source.connector }}
+              value={source.connectorRef}
+              required={false}
+              onChange={(value) =>
+                dispatch({
+                  type: EditorActionType.UPDATE_SOURCE_CONNECTOR,
+                  data: { flowId: flow.id, connector: value as string | undefined },
+                })
+              }
+            />
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Which {source.connector} connection drives this flow.
+            </p>
+          </div>
+        )}
+
         {spec.fields.map((field) => (
           <SettingsField
             key={`${flow.id}:${field.name}`}

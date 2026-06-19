@@ -31,8 +31,18 @@ export interface BlockNode {
 }
 
 export interface SourceNode {
-  /** Name of a configured connector instance. */
+  /**
+   * Connector *type* that exposes this source (e.g. "http"), used to resolve the
+   * source spec and to constrain which connections can be bound. This is editor
+   * state; it is not serialized to the runtime (the runtime derives it from the
+   * bound connector instance).
+   */
   connector?: string;
+  /**
+   * Name of the bound connector instance (the runtime's `source.connector`). When
+   * empty the runtime falls back to its default connector of the matching type.
+   */
+  connectorRef?: string;
   /** Connector-specific source type. */
   type?: string;
   settings: Record<string, unknown>;
@@ -125,7 +135,7 @@ export function newBlock(type: string): BlockNode {
 }
 
 /** An empty flow with no source and no steps. */
-export function emptyFlow(name = "New flow"): FlowDoc {
+export function emptyFlow(name = "new-flow"): FlowDoc {
   return { id: newId(), name, process: [] };
 }
 

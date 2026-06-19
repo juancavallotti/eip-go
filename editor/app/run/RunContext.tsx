@@ -33,6 +33,7 @@ export interface RunLogLine {
 interface RunStatusResponse {
   available: boolean;
   running: boolean;
+  version: string | null;
 }
 
 interface RunContextValue {
@@ -42,6 +43,8 @@ interface RunContextValue {
   error: string | null;
   logs: RunLogLine[];
   validation: ValidationResult;
+  /** The runner's `--version` line, or null when unknown/unavailable. */
+  version: string | null;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   clearLogs: () => void;
@@ -55,6 +58,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
   const [available, setAvailable] = useState(false);
   const [running, setRunning] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<RunLogLine[]>([]);
@@ -98,6 +102,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       .then((s) => {
         if (cancelled) return;
         setAvailable(s.available);
+        setVersion(s.version);
         if (s.running) {
           setRunning(true);
           openStream();
@@ -181,6 +186,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
     error,
     logs,
     validation,
+    version,
     start,
     stop,
     clearLogs,

@@ -1,35 +1,20 @@
-import {
-  Webhook,
-  Filter,
-  Wand2,
-  Split,
-  Globe,
-  Database,
-  ScrollText,
-  type LucideIcon,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { listBlocks, resolveIcon } from "@/app/schema";
 
 export interface PaletteComponent {
+  /** Block type, e.g. "log" — matches a schema BlockSpec and a model BlockNode. */
   id: string;
   label: string;
   icon: LucideIcon;
 }
 
 /**
- * The palette of integration building blocks. Static for now — extend this
- * array to add blocks; drag/drop onto the canvas is wired up later.
+ * The palette of integration building blocks, derived from the runtime
+ * capability schema (app/schema). Add blocks by extending capabilities.json, not
+ * this file.
  */
-export const PALETTE: PaletteComponent[] = [
-  { id: "source", label: "Source", icon: Webhook },
-  { id: "filter", label: "Filter", icon: Filter },
-  { id: "transform", label: "Transform", icon: Wand2 },
-  { id: "route", label: "Route", icon: Split },
-  { id: "http", label: "HTTP", icon: Globe },
-  { id: "database", label: "Database", icon: Database },
-  { id: "log", label: "Log", icon: ScrollText },
-];
-
-export function findPaletteComponent(id: string | null): PaletteComponent | undefined {
-  if (!id) return undefined;
-  return PALETTE.find((c) => c.id === id);
-}
+export const PALETTE: PaletteComponent[] = listBlocks().map((block) => ({
+  id: block.type,
+  label: block.label,
+  icon: resolveIcon(block.icon),
+}));

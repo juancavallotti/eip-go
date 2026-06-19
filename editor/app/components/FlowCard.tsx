@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import type { FlowDoc } from "@/app/model/document";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
 import SourceCard from "./SourceCard";
@@ -36,7 +37,24 @@ export default function FlowCard({
     >
       <h3 className="mb-3 font-mono text-xs text-zinc-500">{flow.name}</h3>
       <div className="flex flex-col items-center">
-        <SourceCard source={flow.source} />
+        {flow.source ? (
+          <SourceCard source={flow.source} />
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              dispatch({
+                type: EditorActionType.ADD_SOURCE,
+                data: { flowId: flow.id },
+              });
+            }}
+            className="flex items-center gap-1.5 rounded-full border border-dashed border-zinc-300 px-3 py-1.5 text-sm text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300"
+          >
+            <Plus size={14} />
+            Add source
+          </button>
+        )}
         <div className="my-3 w-full border-t border-dashed border-zinc-300 dark:border-zinc-700" />
         <FlowView
           flow={flow}

@@ -20,6 +20,8 @@ export enum EditorActionType {
   SELECT_BLOCK = "SELECT_BLOCK",
   /** Switch which flow is active (the target for click-to-add). */
   SET_ACTIVE_FLOW = "SET_ACTIVE_FLOW",
+  /** Give a flow an (empty) source so the source node appears. */
+  ADD_SOURCE = "ADD_SOURCE",
   /** Replace the whole document (file load or "new"). */
   LOAD_DOCUMENT = "LOAD_DOCUMENT",
   /** Highlight a palette component. */
@@ -59,6 +61,10 @@ export interface SelectBlockPayload {
 }
 
 export interface SetActiveFlowPayload {
+  flowId: string;
+}
+
+export interface AddSourcePayload {
   flowId: string;
 }
 

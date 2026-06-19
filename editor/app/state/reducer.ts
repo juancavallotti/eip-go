@@ -2,7 +2,7 @@ import { ReducerAction } from "@eetr/react-reducer-utils";
 import {
   EditorDocument,
   FlowDoc,
-  emptyDocument,
+  blankDocument,
   emptyFlow,
   findFlow,
   mapFlow,
@@ -10,6 +10,7 @@ import {
 } from "@/app/model/document";
 import {
   AddBlockPayload,
+  AddSourcePayload,
   EditorActionType,
   LoadDocumentPayload,
   MoveBlockAcrossPayload,
@@ -36,10 +37,9 @@ export interface EditorState {
 }
 
 function makeInitialState(): EditorState {
-  const document = emptyDocument();
   return {
-    document,
-    activeFlowId: document.flows[0]?.id ?? null,
+    document: blankDocument(),
+    activeFlowId: null,
     selectedBlockId: null,
     selectedComponentId: null,
   };
@@ -76,14 +76,33 @@ function addFlow(state: EditorState): EditorState {
 }
 
 function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
-  const flowId = p.flowId ?? state.activeFlowId;
   const block = newBlock(p.blockType);
+  const flowId = p.flowId ?? state.activeFlowId;
+
+  // No target flow yet (scratch document) — create one and start it with this block.
+  if (!flowId || !findFlow(state.document, flowId)) {
+    const flow = emptyFlow(`Flow ${state.document.flows.length + 1}`);
+    flow.process = [block];
+    const document = {
+      ...state.document,
+      flows: [...state.document.flows, flow],
+    };
+    return { ...state, document, activeFlowId: flow.id, selectedBlockId: block.id };
+  }
+
   const document = updateFlow(state, flowId, (flow) => {
     const process = flow.process.slice();
     process.splice(p.index ?? process.length, 0, block);
     return { ...flow, process };
   });
   return { ...state, document, activeFlowId: flowId, selectedBlockId: block.id };
+}
+
+function addSource(state: EditorState, p: AddSourcePayload): EditorState {
+  const document = updateFlow(state, p.flowId, (flow) =>
+    flow.source ? flow : { ...flow, source: { settings: {} } },
+  );
+  return { ...state, document };
 }
 
 function moveBlock(state: EditorState, p: MoveBlockPayload): EditorState {
@@ -160,6 +179,8 @@ export function reducer(
         activeFlowId: (action.data as SetActiveFlowPayload).flowId,
         selectedBlockId: null,
       };
+    case EditorActionType.ADD_SOURCE:
+      return addSource(state, action.data as AddSourcePayload);
     case EditorActionType.LOAD_DOCUMENT:
       return loadDocument(state, action.data as LoadDocumentPayload);
     case EditorActionType.SELECT_COMPONENT:

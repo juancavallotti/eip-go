@@ -4,6 +4,7 @@ import {
   FlowDoc,
   blankDocument,
   emptyFlow,
+  findBlock,
   findFlow,
   mapFlow,
   newBlock,
@@ -16,6 +17,7 @@ import {
   MoveBlockAcrossPayload,
   MoveBlockPayload,
   RemoveBlockPayload,
+  RemoveFlowPayload,
   SelectBlockPayload,
   SetActiveFlowPayload,
 } from "./actions";
@@ -144,6 +146,23 @@ function removeBlock(state: EditorState, p: RemoveBlockPayload): EditorState {
   return { ...state, document, selectedBlockId };
 }
 
+function removeFlow(state: EditorState, p: RemoveFlowPayload): EditorState {
+  const document = {
+    ...state.document,
+    flows: state.document.flows.filter((f) => f.id !== p.flowId),
+  };
+  // Drop active/selection pointers that no longer resolve in the new document.
+  const activeFlowId =
+    state.activeFlowId && findFlow(document, state.activeFlowId)
+      ? state.activeFlowId
+      : null;
+  const selectedBlockId =
+    state.selectedBlockId && findBlock(document, state.selectedBlockId)
+      ? state.selectedBlockId
+      : null;
+  return { ...state, document, activeFlowId, selectedBlockId };
+}
+
 function loadDocument(state: EditorState, p: LoadDocumentPayload): EditorState {
   return {
     ...state,
@@ -168,6 +187,8 @@ export function reducer(
       return moveBlockAcross(state, action.data as MoveBlockAcrossPayload);
     case EditorActionType.REMOVE_BLOCK:
       return removeBlock(state, action.data as RemoveBlockPayload);
+    case EditorActionType.REMOVE_FLOW:
+      return removeFlow(state, action.data as RemoveFlowPayload);
     case EditorActionType.SELECT_BLOCK:
       return {
         ...state,

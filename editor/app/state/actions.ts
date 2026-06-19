@@ -16,6 +16,8 @@ export enum EditorActionType {
   MOVE_BLOCK_ACROSS = "MOVE_BLOCK_ACROSS",
   /** Remove a block from a flow by id. */
   REMOVE_BLOCK = "REMOVE_BLOCK",
+  /** Remove a top-level flow from the document by id. */
+  REMOVE_FLOW = "REMOVE_FLOW",
   /** Mark a canvas block as selected (or clear with null). */
   SELECT_BLOCK = "SELECT_BLOCK",
   /** Switch which flow is active (the target for click-to-add). */
@@ -54,6 +56,10 @@ export interface MoveBlockAcrossPayload {
 export interface RemoveBlockPayload {
   flowId: string;
   blockId: string;
+}
+
+export interface RemoveFlowPayload {
+  flowId: string;
 }
 
 export interface SelectBlockPayload {

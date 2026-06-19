@@ -85,7 +85,7 @@ export default function BlockSettings({ block }: { block: BlockNode }) {
         ) : (
           fields.map((field) => (
             <SettingsField
-              key={field.name}
+              key={`${block.id}:${field.name}`}
               field={field}
               value={block.settings[field.name]}
               onChange={(value) =>

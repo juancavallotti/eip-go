@@ -58,6 +58,15 @@ describe("FlowBoard", () => {
     expect(within(stepsIn(flows()[1])).getAllByRole("listitem")).toHaveLength(1);
   });
 
+  it("renders an added composite with its nested sub-flow slots", async () => {
+    renderEditor();
+    await userEvent.click(screen.getByText("If"));
+
+    const region = flows()[0];
+    expect(within(region).getByRole("list", { name: "Then" })).toBeInTheDocument();
+    expect(within(region).getByRole("list", { name: "Else" })).toBeInTheDocument();
+  });
+
   it("removes a block when its remove button is clicked", async () => {
     renderEditor();
     await userEvent.click(screen.getByText("Log"));

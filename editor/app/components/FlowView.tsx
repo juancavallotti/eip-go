@@ -2,7 +2,9 @@
 
 import { Fragment } from "react";
 import type { FlowDoc } from "@/app/model/document";
+import { isComposite } from "@/app/model/document";
 import BlockCard from "./BlockCard";
+import CompositeCard from "./CompositeCard";
 import DropGap from "./DropGap";
 
 /**
@@ -36,7 +38,11 @@ export default function FlowView({
           {process.map((block, i) => (
             <Fragment key={block.id}>
               <div role="listitem" className="flex w-full flex-col items-center">
-                <BlockCard block={block} flowId={flow.id} />
+                {isComposite(block.type) ? (
+                  <CompositeCard block={block} flowId={flow.id} />
+                ) : (
+                  <BlockCard block={block} flowId={flow.id} />
+                )}
               </div>
               <DropGap flowId={flow.id} index={i + 1} />
             </Fragment>

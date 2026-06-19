@@ -21,12 +21,15 @@ import {
 interface OrchestratorContextValue {
   /** True once the orchestrator is configured and reachable. */
   available: boolean;
+  /** True once the availability probe has resolved (so callers can avoid flashing UI). */
+  ready: boolean;
 }
 
 const OrchestratorContext = createContext<OrchestratorContextValue | null>(null);
 
 export function OrchestratorProvider({ children }: { children: ReactNode }) {
   const [available, setAvailable] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,14 +38,17 @@ export function OrchestratorProvider({ children }: { children: ReactNode }) {
       .then((s) => {
         if (!cancelled) setAvailable(s.available);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   return (
-    <OrchestratorContext.Provider value={{ available }}>
+    <OrchestratorContext.Provider value={{ available, ready }}>
       {children}
     </OrchestratorContext.Provider>
   );

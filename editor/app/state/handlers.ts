@@ -47,13 +47,14 @@ function updateFlow(
 }
 
 export function addFlow(state: EditorState): EditorState {
-  const flow = emptyFlow(`Flow ${state.document.flows.length + 1}`);
+  const flow = emptyFlow(`flow-${state.document.flows.length + 1}`);
   return {
     ...state,
     document: { ...state.document, flows: [...state.document.flows, flow] },
     activeFlowId: flow.id,
     selectedBlockId: null,
     selectedSourceFlowId: null,
+    selectedConnectionId: null,
   };
 }
 
@@ -63,7 +64,7 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
 
   // No target flow yet (scratch document) — create one and start it with this block.
   if (!flowId || !findFlow(state.document, flowId)) {
-    const flow = emptyFlow(`Flow ${state.document.flows.length + 1}`);
+    const flow = emptyFlow(`flow-${state.document.flows.length + 1}`);
     flow.process = [block];
     const document = {
       ...state.document,
@@ -75,6 +76,7 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
       activeFlowId: flow.id,
       selectedBlockId: block.id,
       selectedSourceFlowId: null,
+      selectedConnectionId: null,
     };
   }
 
@@ -89,6 +91,7 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
     activeFlowId: flowId,
     selectedBlockId: block.id,
     selectedSourceFlowId: null,
+    selectedConnectionId: null,
   };
 }
 
@@ -124,6 +127,7 @@ export function moveBlockAcross(
     activeFlowId: p.toFlowId,
     selectedBlockId: block.id,
     selectedSourceFlowId: null,
+    selectedConnectionId: null,
   };
 }
 
@@ -217,5 +221,6 @@ export function loadDocument(
     activeFlowId: p.document.flows[0]?.id ?? null,
     selectedBlockId: null,
     selectedSourceFlowId: null,
+    selectedConnectionId: null,
   };
 }

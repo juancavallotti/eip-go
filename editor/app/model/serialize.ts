@@ -91,7 +91,10 @@ function connectorFromRuntime(c: RuntimeConnector): ConnectorInstance {
 
 function sourceToRuntime(source: SourceNode): RuntimeSource {
   const out: RuntimeSource = {};
-  if (source.connector) out.connector = source.connector;
+  // The runtime's `connector` is the bound instance name; fall back to the
+  // connector type when no instance is bound (back-compat / default connector).
+  const connector = source.connectorRef || source.connector;
+  if (connector) out.connector = connector;
   if (source.type) out.type = source.type;
   if (hasKeys(source.settings)) out.settings = source.settings;
   return out;
@@ -145,7 +148,10 @@ export function toConfig(doc: EditorDocument): RuntimeConfig {
   return out;
 }
 
-function blockFromRuntime(block: RuntimeBlock): BlockNode {
+function blockFromRuntime(
+  block: RuntimeBlock,
+  connTypes: Map<string, string>,
+): BlockNode {
   const type = block.type ?? "";
   const spec = getBlockSpec(type);
   const node: BlockNode = {
@@ -161,13 +167,13 @@ function blockFromRuntime(block: RuntimeBlock): BlockNode {
   for (const field of spec.fields) {
     if (field.type === "flow") {
       const f = raw[field.name] as RuntimeFlow | undefined;
-      slots[field.name] = f ? [flowFromRuntime(f)] : [];
+      slots[field.name] = f ? [flowFromRuntime(f, connTypes)] : [];
     } else if (field.type === "flow-list") {
       const list = (raw[field.name] as RuntimeFlow[] | undefined) ?? [];
-      slots[field.name] = list.map(flowFromRuntime);
+      slots[field.name] = list.map((f) => flowFromRuntime(f, connTypes));
     } else if (field.type === "case-list") {
       const list = (raw[field.name] as RuntimeCase[] | undefined) ?? [];
-      slots[field.name] = list.map(caseFromRuntime);
+      slots[field.name] = list.map((f) => caseFromRuntime(f, connTypes));
     } else {
       const v = raw[field.name];
       if (v !== undefined) node.settings[field.name] = v;
@@ -177,29 +183,46 @@ function blockFromRuntime(block: RuntimeBlock): BlockNode {
   return node;
 }
 
-function flowFromRuntime(flow: RuntimeFlow): FlowDoc {
-  const out: FlowDoc = {
-    id: newId(),
-    name: flow.name ?? "",
-    process: (flow.process ?? []).map(blockFromRuntime),
+function sourceFromRuntime(
+  source: RuntimeSource,
+  connTypes: Map<string, string>,
+): SourceNode {
+  const name = source.connector ?? "";
+  const out: SourceNode = {
+    // Resolve the connector type from the bound instance; fall back to the raw
+    // value for legacy configs that stored the type directly under `connector`.
+    connector: connTypes.get(name) ?? (name || undefined),
+    type: source.type,
+    settings: source.settings ?? {},
   };
-  if (flow.source) {
-    out.source = {
-      connector: flow.source.connector,
-      type: flow.source.type,
-      settings: flow.source.settings ?? {},
-    };
-  }
+  if (name) out.connectorRef = name;
   return out;
 }
 
-function caseFromRuntime(flow: RuntimeCase): FlowDoc {
-  return { ...flowFromRuntime(flow), when: flow.when ?? "" };
+function flowFromRuntime(
+  flow: RuntimeFlow,
+  connTypes: Map<string, string>,
+): FlowDoc {
+  const out: FlowDoc = {
+    id: newId(),
+    name: flow.name ?? "",
+    process: (flow.process ?? []).map((b) => blockFromRuntime(b, connTypes)),
+  };
+  if (flow.source) out.source = sourceFromRuntime(flow.source, connTypes);
+  return out;
+}
+
+function caseFromRuntime(
+  flow: RuntimeCase,
+  connTypes: Map<string, string>,
+): FlowDoc {
+  return { ...flowFromRuntime(flow, connTypes), when: flow.when ?? "" };
 }
 
 export function fromConfig(config: RuntimeConfig): EditorDocument {
   const connectors = (config.connectors ?? []).map(connectorFromRuntime);
-  const flows = (config.flows ?? []).map(flowFromRuntime);
+  const connTypes = new Map(connectors.map((c) => [c.name, c.type]));
+  const flows = (config.flows ?? []).map((f) => flowFromRuntime(f, connTypes));
   if (flows.length === 0) return { ...emptyDocument(), connectors };
   return { flows, connectors, processors: [] };
 }

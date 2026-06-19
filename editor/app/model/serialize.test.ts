@@ -88,6 +88,34 @@ describe("serialize", () => {
     expect(restored.connectors[0].id).not.toBe("a"); // fresh client id
   });
 
+  it("round-trips a source bound to a connector instance", () => {
+    const doc = emptyDocument();
+    doc.connectors = [
+      { id: "c1", name: "main-http", type: "http", settings: {} },
+    ];
+    doc.flows[0].source = {
+      connector: "http", // editor-only connector type
+      connectorRef: "main-http", // bound instance name
+      type: "http",
+      settings: {},
+    };
+
+    // The runtime gets the instance name under `connector`.
+    const config = toConfig(doc);
+    expect(config.flows![0].source).toMatchObject({
+      connector: "main-http",
+      type: "http",
+    });
+
+    // On the way back, the connector type is recovered from the instance.
+    const restored = fromConfig(config);
+    expect(restored.flows[0].source).toMatchObject({
+      connector: "http",
+      connectorRef: "main-http",
+      type: "http",
+    });
+  });
+
   it("keeps connectors even when the config has no flows", () => {
     const doc = fromConfig({
       connectors: [{ name: "c1", type: "cron", settings: {} }],

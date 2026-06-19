@@ -26,6 +26,29 @@ describe("serialize", () => {
     expect(toConfig(doc).flows![0].source).toBeUndefined();
   });
 
+  it("round-trips a flow's source", () => {
+    const doc = emptyDocument();
+    doc.flows[0].source = {
+      connector: "cron",
+      type: "cron",
+      settings: { schedule: "@every 2s" },
+    };
+
+    const config = toConfig(doc);
+    expect(config.flows![0].source).toMatchObject({
+      connector: "cron",
+      type: "cron",
+      settings: { schedule: "@every 2s" },
+    });
+
+    const restored = fromConfig(config);
+    expect(restored.flows[0].source).toMatchObject({
+      connector: "cron",
+      type: "cron",
+      settings: { schedule: "@every 2s" },
+    });
+  });
+
   it("round-trips through fromConfig with fresh ids", () => {
     const doc = emptyDocument();
     doc.flows[0].name = "demo";

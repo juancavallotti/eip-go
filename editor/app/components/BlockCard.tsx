@@ -7,11 +7,12 @@ import { CSS } from "@dnd-kit/utilities";
 import type { BlockNode } from "@/app/model/document";
 import { getBlockSpec, resolveIcon } from "@/app/schema";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
+import FlowNode from "./FlowNode";
 
 /**
- * One step in the flow: a sortable card with a drag handle (reorder), the block's
- * icon + label + optional name, and a remove button. Selecting it marks it active
- * for the (future) settings editor.
+ * One step in the flow, drawn as a schematic node. A grip (left) drags to
+ * reorder and a remove button (top-right) deletes it — both reveal on hover.
+ * Clicking the node selects it for the (future) settings editor.
  */
 export default function BlockCard({
   block,
@@ -26,8 +27,8 @@ export default function BlockCard({
 
   const spec = getBlockSpec(block.type);
   const icon = createElement(resolveIcon(spec?.icon ?? ""), {
-    size: 18,
-    className: "text-zinc-500 shrink-0",
+    size: 20,
+    className: "text-zinc-600 dark:text-zinc-300",
   });
   const selected = state.selectedBlockId === block.id;
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -36,52 +37,45 @@ export default function BlockCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={[
-        "flex items-center gap-2 rounded-lg border bg-white dark:bg-zinc-900 px-2 py-2 shadow-sm",
-        selected
-          ? "border-black/40 dark:border-white/40"
-          : "border-black/10 dark:border-white/10",
-        isDragging ? "opacity-60" : "",
-      ].join(" ")}
+      onClick={() =>
+        dispatch({
+          type: EditorActionType.SELECT_BLOCK,
+          data: { blockId: block.id },
+        })
+      }
+      className={["cursor-pointer", isDragging ? "opacity-60" : ""].join(" ")}
     >
-      <button
-        type="button"
-        aria-label="Drag to reorder"
-        className="cursor-grab text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 touch-none"
-        {...attributes}
-        {...listeners}
+      <FlowNode
+        icon={icon}
+        label={spec?.label ?? block.type}
+        sublabel={block.name}
+        selected={selected}
       >
-        <GripVertical size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          dispatch({
-            type: EditorActionType.SELECT_BLOCK,
-            data: { blockId: block.id },
-          })
-        }
-        className="flex flex-1 items-center gap-2 min-w-0 text-left"
-      >
-        {icon}
-        <span className="text-sm font-medium">{spec?.label ?? block.type}</span>
-        {block.name && (
-          <span className="text-xs text-zinc-500 truncate">{block.name}</span>
-        )}
-      </button>
-      <button
-        type="button"
-        aria-label="Remove step"
-        onClick={() =>
-          dispatch({
-            type: EditorActionType.REMOVE_BLOCK,
-            data: { flowId, blockId: block.id },
-          })
-        }
-        className="text-zinc-400 hover:text-red-500 shrink-0"
-      >
-        <X size={16} />
-      </button>
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute -left-5 top-1/2 -translate-y-1/2 cursor-grab touch-none rounded text-zinc-400 opacity-0 transition-opacity hover:text-zinc-600 group-hover:opacity-100 dark:hover:text-zinc-200"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={16} />
+        </button>
+        <button
+          type="button"
+          aria-label="Remove step"
+          onClick={(e) => {
+            e.stopPropagation();
+            dispatch({
+              type: EditorActionType.REMOVE_BLOCK,
+              data: { flowId, blockId: block.id },
+            });
+          }}
+          className="absolute -right-2 -top-2 rounded-full border border-black/10 bg-white p-0.5 text-zinc-400 opacity-0 shadow-sm transition-opacity hover:text-red-500 group-hover:opacity-100 dark:border-white/15 dark:bg-zinc-900"
+        >
+          <X size={14} />
+        </button>
+      </FlowNode>
     </div>
   );
 }

@@ -55,7 +55,7 @@ export default function FlowCard({
       </div>
       <div className="flex flex-col items-center">
         {flow.source ? (
-          <SourceCard source={flow.source} />
+          <SourceCard flowId={flow.id} source={flow.source} />
         ) : (
           <SourcePicker flowId={flow.id} />
         )}

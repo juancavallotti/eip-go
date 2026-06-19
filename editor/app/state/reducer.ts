@@ -9,13 +9,17 @@ import {
   MoveBlockPayload,
   RemoveBlockPayload,
   RemoveFlowPayload,
+  RemoveSourcePayload,
   RenameBlockPayload,
   RenameFlowPayload,
   SelectBlockPayload,
+  SelectSourcePayload,
   SetActiveFlowPayload,
   UpdateBlockSettingPayload,
+  UpdateSourceSettingPayload,
 } from "./actions";
 import * as handlers from "./handlers";
+import * as sourceHandlers from "./sourceHandlers";
 
 /**
  * Editor-wide state. EditorShell is a "large" component, so its state lives in a
@@ -30,6 +34,8 @@ export interface EditorState {
   activeFlowId: string | null;
   /** Currently selected block on the canvas, or null. */
   selectedBlockId: string | null;
+  /** Flow whose source is currently selected (for source settings), or null. */
+  selectedSourceFlowId: string | null;
   /** Currently highlighted palette component id, or null. */
   selectedComponentId: string | null;
 }
@@ -39,6 +45,7 @@ function makeInitialState(): EditorState {
     document: blankDocument(),
     activeFlowId: null,
     selectedBlockId: null,
+    selectedSourceFlowId: null,
     selectedComponentId: null,
   };
 }
@@ -71,6 +78,7 @@ export function reducer(
       return {
         ...state,
         selectedBlockId: (action.data as SelectBlockPayload).blockId,
+        selectedSourceFlowId: null,
       };
     case EditorActionType.UPDATE_BLOCK_SETTING:
       return handlers.updateBlockSetting(
@@ -84,9 +92,25 @@ export function reducer(
         ...state,
         activeFlowId: (action.data as SetActiveFlowPayload).flowId,
         selectedBlockId: null,
+        selectedSourceFlowId: null,
       };
     case EditorActionType.ADD_SOURCE:
-      return handlers.addSource(state, action.data as AddSourcePayload);
+      return sourceHandlers.addSource(state, action.data as AddSourcePayload);
+    case EditorActionType.SELECT_SOURCE:
+      return sourceHandlers.selectSource(
+        state,
+        action.data as SelectSourcePayload,
+      );
+    case EditorActionType.UPDATE_SOURCE_SETTING:
+      return sourceHandlers.updateSourceSetting(
+        state,
+        action.data as UpdateSourceSettingPayload,
+      );
+    case EditorActionType.REMOVE_SOURCE:
+      return sourceHandlers.removeSource(
+        state,
+        action.data as RemoveSourcePayload,
+      );
     case EditorActionType.LOAD_DOCUMENT:
       return handlers.loadDocument(state, action.data as LoadDocumentPayload);
     case EditorActionType.SELECT_COMPONENT:

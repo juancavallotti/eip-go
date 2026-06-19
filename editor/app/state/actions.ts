@@ -28,8 +28,14 @@ export enum EditorActionType {
   RENAME_BLOCK = "RENAME_BLOCK",
   /** Switch which flow is active (the target for click-to-add). */
   SET_ACTIVE_FLOW = "SET_ACTIVE_FLOW",
-  /** Give a flow an (empty) source so the source node appears. */
+  /** Give a flow a source of the chosen connector/type and select it. */
   ADD_SOURCE = "ADD_SOURCE",
+  /** Mark a flow's source as selected (or clear with null). */
+  SELECT_SOURCE = "SELECT_SOURCE",
+  /** Update one setting field of a flow's source. */
+  UPDATE_SOURCE_SETTING = "UPDATE_SOURCE_SETTING",
+  /** Remove a flow's source. */
+  REMOVE_SOURCE = "REMOVE_SOURCE",
   /** Replace the whole document (file load or "new"). */
   LOAD_DOCUMENT = "LOAD_DOCUMENT",
   /** Highlight a palette component. */
@@ -93,6 +99,24 @@ export interface SetActiveFlowPayload {
 }
 
 export interface AddSourcePayload {
+  flowId: string;
+  /** Connector type that exposes the source (stored on the source node). */
+  connector: string;
+  /** Source type within that connector. */
+  type: string;
+}
+
+export interface SelectSourcePayload {
+  flowId: string | null;
+}
+
+export interface UpdateSourceSettingPayload {
+  flowId: string;
+  field: string;
+  value: unknown;
+}
+
+export interface RemoveSourcePayload {
   flowId: string;
 }
 

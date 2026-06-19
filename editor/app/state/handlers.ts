@@ -11,7 +11,6 @@ import {
 import type { EditorState } from "./reducer";
 import type {
   AddBlockPayload,
-  AddSourcePayload,
   LoadDocumentPayload,
   MoveBlockAcrossPayload,
   MoveBlockPayload,
@@ -54,6 +53,7 @@ export function addFlow(state: EditorState): EditorState {
     document: { ...state.document, flows: [...state.document.flows, flow] },
     activeFlowId: flow.id,
     selectedBlockId: null,
+    selectedSourceFlowId: null,
   };
 }
 
@@ -69,7 +69,13 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
       ...state.document,
       flows: [...state.document.flows, flow],
     };
-    return { ...state, document, activeFlowId: flow.id, selectedBlockId: block.id };
+    return {
+      ...state,
+      document,
+      activeFlowId: flow.id,
+      selectedBlockId: block.id,
+      selectedSourceFlowId: null,
+    };
   }
 
   const document = updateFlow(state, flowId, (flow) => {
@@ -77,14 +83,13 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
     process.splice(p.index ?? process.length, 0, block);
     return { ...flow, process };
   });
-  return { ...state, document, activeFlowId: flowId, selectedBlockId: block.id };
-}
-
-export function addSource(state: EditorState, p: AddSourcePayload): EditorState {
-  const document = updateFlow(state, p.flowId, (flow) =>
-    flow.source ? flow : { ...flow, source: { settings: {} } },
-  );
-  return { ...state, document };
+  return {
+    ...state,
+    document,
+    activeFlowId: flowId,
+    selectedBlockId: block.id,
+    selectedSourceFlowId: null,
+  };
 }
 
 export function moveBlock(state: EditorState, p: MoveBlockPayload): EditorState {
@@ -113,7 +118,13 @@ export function moveBlockAcross(
     process.splice(p.index ?? process.length, 0, block);
     return { ...flow, process };
   });
-  return { ...state, document, activeFlowId: p.toFlowId, selectedBlockId: block.id };
+  return {
+    ...state,
+    document,
+    activeFlowId: p.toFlowId,
+    selectedBlockId: block.id,
+    selectedSourceFlowId: null,
+  };
 }
 
 export function removeBlock(
@@ -146,7 +157,17 @@ export function removeFlow(
     state.selectedBlockId && findBlock(document, state.selectedBlockId)
       ? state.selectedBlockId
       : null;
-  return { ...state, document, activeFlowId, selectedBlockId };
+  const selectedSourceFlowId =
+    state.selectedSourceFlowId && findFlow(document, state.selectedSourceFlowId)
+      ? state.selectedSourceFlowId
+      : null;
+  return {
+    ...state,
+    document,
+    activeFlowId,
+    selectedBlockId,
+    selectedSourceFlowId,
+  };
 }
 
 export function renameFlow(
@@ -195,5 +216,6 @@ export function loadDocument(
     document: p.document,
     activeFlowId: p.document.flows[0]?.id ?? null,
     selectedBlockId: null,
+    selectedSourceFlowId: null,
   };
 }

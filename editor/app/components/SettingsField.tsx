@@ -1,6 +1,8 @@
 "use client";
 
 import type { FieldSpec } from "@/app/schema/types";
+import StringListEditor from "./fields/StringListEditor";
+import StringMapEditor from "./fields/StringMapEditor";
 
 /** Shared input styling, matching the sidebar filter input. */
 const INPUT =
@@ -108,13 +110,10 @@ function renderInput(
       );
 
     case "string-list":
+      return <StringListEditor value={value} onChange={onChange} />;
+
     case "string-map":
-      // Collection editors land in the next change.
-      return (
-        <p className="rounded-md border border-dashed border-black/10 px-2 py-1 text-xs text-zinc-400 dark:border-white/15 dark:text-zinc-500">
-          Editor coming soon.
-        </p>
-      );
+      return <StringMapEditor value={value} onChange={onChange} />;
 
     default:
       // string and any unknown scalar.

@@ -110,9 +110,14 @@ export function emptyFlow(name = "New flow"): FlowDoc {
   return { id: newId(), name, process: [] };
 }
 
-/** A blank document with a single empty flow — the "start from scratch" state. */
+/** A document with a single empty flow — the "new file" template / test baseline. */
 export function emptyDocument(): EditorDocument {
   return { flows: [emptyFlow()], connectors: [], processors: [] };
+}
+
+/** A truly empty document — no flows at all (the editor's scratch start state). */
+export function blankDocument(): EditorDocument {
+  return { flows: [], connectors: [], processors: [] };
 }
 
 /** Recursively transform a sub-flow inside a block's slots, returning a copy. */

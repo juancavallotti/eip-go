@@ -26,18 +26,19 @@ function stepsIn(region: HTMLElement) {
 }
 
 describe("FlowBoard", () => {
-  it("starts with a single empty flow", () => {
+  it("starts with no flows", () => {
     renderEditor();
-    expect(flows()).toHaveLength(1);
+    expect(screen.queryAllByRole("region")).toHaveLength(0);
     expect(
-      screen.getByText("Click or drag a component to build this flow"),
+      screen.getByRole("button", { name: "Add flow" }),
     ).toBeInTheDocument();
   });
 
-  it("adds a block to the active flow when a palette item is clicked", async () => {
+  it("auto-creates a flow when a palette item is clicked", async () => {
     renderEditor();
     await userEvent.click(screen.getByText("Log"));
 
+    expect(flows()).toHaveLength(1);
     const items = within(stepsIn(flows()[0])).getAllByRole("listitem");
     expect(items).toHaveLength(1);
     expect(within(items[0]).getByText("Log")).toBeInTheDocument();
@@ -46,16 +47,32 @@ describe("FlowBoard", () => {
   it("appends new flows with the Add flow button", async () => {
     renderEditor();
     await userEvent.click(screen.getByRole("button", { name: "Add flow" }));
+    expect(flows()).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Add flow" }));
     expect(flows()).toHaveLength(2);
   });
 
   it("routes click-to-add to the most recently added (active) flow", async () => {
     renderEditor();
     await userEvent.click(screen.getByRole("button", { name: "Add flow" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add flow" }));
     await userEvent.click(screen.getByText("Log"));
 
     expect(within(stepsIn(flows()[0])).queryAllByRole("listitem")).toHaveLength(0);
     expect(within(stepsIn(flows()[1])).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("adds a source to a flow with the Add source button", async () => {
+    renderEditor();
+    await userEvent.click(screen.getByRole("button", { name: "Add flow" }));
+    expect(
+      screen.getByRole("button", { name: "Add source" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add source" }));
+    expect(
+      screen.queryByRole("button", { name: "Add source" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders an added composite with its nested sub-flow slots", async () => {

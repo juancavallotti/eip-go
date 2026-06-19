@@ -8,17 +8,17 @@ function activeFlow(state: EditorState) {
 }
 
 describe("editor reducer", () => {
-  it("starts from a blank document with one active flow", () => {
-    expect(initialState.document.flows).toHaveLength(1);
-    expect(initialState.activeFlowId).toBe(initialState.document.flows[0].id);
-    expect(activeFlow(initialState).process).toHaveLength(0);
+  it("starts empty with no flows", () => {
+    expect(initialState.document.flows).toHaveLength(0);
+    expect(initialState.activeFlowId).toBeNull();
   });
 
-  it("appends a block and selects it", () => {
+  it("auto-creates a flow for the first added block and selects it", () => {
     const next = reducer(initialState, {
       type: EditorActionType.ADD_BLOCK,
       data: { blockType: "log" },
     });
+    expect(next.document.flows).toHaveLength(1);
     const process = activeFlow(next).process;
     expect(process).toHaveLength(1);
     expect(process[0].type).toBe("log");
@@ -80,13 +80,14 @@ describe("editor reducer", () => {
 
   it("adds a flow and makes it active", () => {
     const next = reducer(initialState, { type: EditorActionType.ADD_FLOW });
-    expect(next.document.flows).toHaveLength(2);
-    expect(next.activeFlowId).toBe(next.document.flows[1].id);
+    expect(next.document.flows).toHaveLength(1);
+    expect(next.activeFlowId).toBe(next.document.flows[0].id);
   });
 
   it("adds blocks to the active flow by default", () => {
-    const withFlow = reducer(initialState, { type: EditorActionType.ADD_FLOW });
-    const next = reducer(withFlow, {
+    let state = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    state = reducer(state, { type: EditorActionType.ADD_FLOW });
+    const next = reducer(state, {
       type: EditorActionType.ADD_BLOCK,
       data: { blockType: "log" },
     });
@@ -95,15 +96,27 @@ describe("editor reducer", () => {
   });
 
   it("adds a block to a specific flow when flowId is given", () => {
-    const withFlow = reducer(initialState, { type: EditorActionType.ADD_FLOW });
-    const firstId = withFlow.document.flows[0].id;
-    const next = reducer(withFlow, {
+    let state = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    state = reducer(state, { type: EditorActionType.ADD_FLOW });
+    const firstId = state.document.flows[0].id;
+    const next = reducer(state, {
       type: EditorActionType.ADD_BLOCK,
       data: { blockType: "log", flowId: firstId },
     });
     expect(next.document.flows[0].process).toHaveLength(1);
     expect(next.document.flows[1].process).toHaveLength(0);
     expect(next.activeFlowId).toBe(firstId);
+  });
+
+  it("adds an empty source to a flow on demand", () => {
+    const withFlow = reducer(initialState, { type: EditorActionType.ADD_FLOW });
+    const flowId = withFlow.document.flows[0].id;
+    expect(withFlow.document.flows[0].source).toBeUndefined();
+    const next = reducer(withFlow, {
+      type: EditorActionType.ADD_SOURCE,
+      data: { flowId },
+    });
+    expect(next.document.flows[0].source).toEqual({ settings: {} });
   });
 
   it("adds a block into a nested composite sub-flow", () => {
@@ -163,7 +176,7 @@ describe("editor reducer", () => {
       type: EditorActionType.ADD_BLOCK,
       data: { blockType: "log" },
     });
-    expect(activeFlow(initialState).process).toHaveLength(0);
+    expect(initialState.document.flows).toHaveLength(0);
     expect(next).not.toBe(initialState);
   });
 });

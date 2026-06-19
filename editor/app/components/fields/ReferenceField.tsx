@@ -1,6 +1,6 @@
 "use client";
 
-import { flowNames } from "@/app/model/identity";
+import { referenceOptions } from "@/app/model/identity";
 import type { ReferenceSpec } from "@/app/schema/types";
 import { useEditorState } from "@/app/state/editorState";
 
@@ -30,12 +30,7 @@ export default function ReferenceField({
   const { state } = useEditorState();
   const doc = state.document;
 
-  const options =
-    spec.kind === "connector"
-      ? doc.connectors
-          .filter((c) => c.type === spec.connectorType && c.name)
-          .map((c) => c.name)
-      : Array.from(new Set(flowNames(doc)));
+  const options = referenceOptions(doc, spec);
 
   const current = value === undefined || value === null ? "" : String(value);
   const allowEmpty = spec.kind === "connector" || !required;

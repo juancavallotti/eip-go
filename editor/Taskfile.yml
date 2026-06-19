@@ -11,7 +11,7 @@ tasks:
       - npm install
 
   dev:
-    desc: Run the Octo editor dev server
+    desc: Run the Octo editor dev server (use root `task dev` to build the runner + enable RUN)
     cmds:
       - npm run dev
 

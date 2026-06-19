@@ -1,3 +1,4 @@
+import type { ReferenceSpec } from "@/app/schema/types";
 import type { EditorDocument, FlowDoc } from "./document";
 
 /**
@@ -56,4 +57,22 @@ export function flowNames(doc: EditorDocument): string[] {
   };
   for (const flow of doc.flows) visit(flow);
   return names;
+}
+
+/**
+ * The valid targets a reference field can resolve to: the names of connections of
+ * the referenced type, or every flow name. Shared by the settings dropdown and the
+ * validity check so "what the UI offers" and "what counts as resolvable" stay in
+ * lockstep.
+ */
+export function referenceOptions(
+  doc: EditorDocument,
+  spec: ReferenceSpec,
+): string[] {
+  if (spec.kind === "connector") {
+    return doc.connectors
+      .filter((c) => c.type === spec.connectorType && c.name)
+      .map((c) => c.name);
+  }
+  return Array.from(new Set(flowNames(doc)));
 }

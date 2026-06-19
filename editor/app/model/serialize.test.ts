@@ -26,6 +26,23 @@ describe("serialize", () => {
     expect(toConfig(doc).flows![0].source).toBeUndefined();
   });
 
+  it("binds a lone connector of the source's type when none is set explicitly", () => {
+    const doc = emptyDocument();
+    doc.connectors = [
+      { id: "c0", name: "ticker", type: "cron", settings: {} },
+    ];
+    doc.flows[0].source = { connector: "cron", type: "cron", settings: {} };
+
+    // No connectorRef, but the single cron connection ("ticker") binds implicitly.
+    expect(toConfig(doc).flows![0].source!.connector).toBe("ticker");
+  });
+
+  it("falls back to the type name when no connector of the type exists", () => {
+    const doc = emptyDocument();
+    doc.flows[0].source = { connector: "cron", type: "cron", settings: {} };
+    expect(toConfig(doc).flows![0].source!.connector).toBe("cron");
+  });
+
   it("round-trips a flow's source", () => {
     const doc = emptyDocument();
     doc.flows[0].source = {

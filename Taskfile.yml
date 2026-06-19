@@ -25,6 +25,12 @@ env:
   OCTO_BIN_PATH: '{{.ROOT_DIR}}/bin/octo'
   OCTO_RUN_DIR: '{{.ROOT_DIR}}/.octo-run'
 
+# The kube context k3d creates for our cluster. Every cluster:* task pins to it
+# explicitly so a stray current-context (e.g. a remote EKS cluster) can never be
+# the target of a deploy/purge/dev command.
+vars:
+  KCTX: k3d-octo
+
 tasks:
   fmt:
     desc: Format all Go modules
@@ -127,7 +133,7 @@ tasks:
         echo "✓ docker, k3d, devspace present"
 
   cluster:images:
-    desc: Build the dev images and load them into the k3d 'octo' cluster
+    desc: Build the editor/orchestrator/schema images and load them into the k3d 'octo' cluster
     cmds:
       # Editor build context is the repo ROOT so its Dockerfile can reach both
       # runtime/ (to build octo) and editor/ (the Next.js app).
@@ -137,7 +143,25 @@ tasks:
       # Load the images straight into the cluster's containerd (no registry needed).
       - k3d image import octo-editor:dev octo-orchestrator:dev octo-schema:dev -c octo
 
+  cluster:images:dev:
+    desc: Build + load the dev (hot-reload) images into the k3d 'octo' cluster
+    cmds:
+      - docker build -t octo-editor-dev:dev -f editor/Dockerfile.dev .
+      - docker build -t octo-orchestrator-dev:dev -f orchestrator/Dockerfile.dev ./orchestrator
+      - k3d image import octo-editor-dev:dev octo-orchestrator-dev:dev -c octo
+
   cluster:dev:
+    desc: Bring up the cluster, then run DevSpace dev mode (hot reload + tailed logs)
+    cmds:
+      # Ensure the cluster + Postgres + schema are up (idempotent), then load the
+      # dev images and hand off to `devspace dev`, which swaps the app pods for
+      # their dev images, syncs source for hot reload, and tails logs. Stays
+      # attached until Ctrl-C; `devspace reset pods -n octo-dev` restores prod pods.
+      - task: cluster:deploy
+      - task: cluster:images:dev
+      - devspace dev --kube-context {{.KCTX}} --namespace octo-dev
+
+  cluster:deploy:
     desc: Spin up the local k3d (k3s) cluster and deploy editor, Postgres, orchestrator
     cmds:
       - task: cluster:preflight
@@ -152,10 +176,10 @@ tasks:
         fi
       # Build + load images, then apply deploy/k8s/ via DevSpace.
       - task: cluster:images
-      - devspace deploy --namespace octo-dev
+      - devspace deploy --kube-context {{.KCTX}} --namespace octo-dev
       # Fixed :dev tags don't change between runs, so nudge the apps to pull the
       # freshly imported images. Harmless on first run; ignored if not yet present.
-      - kubectl rollout restart deployment editor orchestrator -n octo-dev 2>/dev/null || true
+      - kubectl --context {{.KCTX}} rollout restart deployment editor orchestrator -n octo-dev 2>/dev/null || true
       - |
         echo ""
         echo "✓ cluster up:"
@@ -166,7 +190,7 @@ tasks:
   cluster:stop:
     desc: Tear down the local k3d cluster and free resources (keeps ./data)
     cmds:
-      - devspace purge --namespace octo-dev || true
+      - devspace purge --kube-context {{.KCTX}} --namespace octo-dev || true
       - |
         if k3d cluster list 2>/dev/null | grep -qw octo; then
           k3d cluster delete octo

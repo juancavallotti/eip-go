@@ -1,5 +1,5 @@
 import { getConnectorSpec } from "@/app/schema";
-import { ConnectorInstance, EditorDocument, newId } from "./document";
+import { ConnectorInstance, EditorDocument, SourceNode, newId } from "./document";
 import { uniqueSlug } from "./identity";
 
 /**
@@ -32,6 +32,32 @@ export function newConnector(
     name: uniqueSlug(type, taken),
     type,
     settings: defaultConnectorSettings(type),
+  };
+}
+
+/**
+ * Resolves the connector instance name the runtime should see for a source. The
+ * runtime matches strictly by name, so: an explicit binding wins; otherwise a
+ * lone connection of the matching type binds implicitly (so the common 0–1
+ * connector case "just works"); otherwise we fall back to the type name.
+ */
+export type ConnectorResolver = (source: SourceNode) => string | undefined;
+
+export function connectorResolver(
+  connectors: ConnectorInstance[],
+): ConnectorResolver {
+  const byType = new Map<string, string[]>();
+  for (const c of connectors) {
+    if (!c.name) continue;
+    const names = byType.get(c.type);
+    if (names) names.push(c.name);
+    else byType.set(c.type, [c.name]);
+  }
+  return (source) => {
+    if (source.connectorRef) return source.connectorRef;
+    const ofType = byType.get(source.connector ?? "");
+    if (ofType && ofType.length === 1) return ofType[0];
+    return source.connector || undefined;
   };
 }
 

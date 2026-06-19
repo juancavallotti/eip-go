@@ -16,4 +16,10 @@ var (
 	// ErrInvalidSubdomain is returned when a requested external subdomain has no
 	// usable DNS-1123 form.
 	ErrInvalidSubdomain = errors.New("invalid external subdomain")
+	// ErrSlugTaken is returned when the integration's slug (which names the stable
+	// internal Service) is already in use by a different integration.
+	ErrSlugTaken = errors.New("integration slug already in use")
+	// ErrSubdomainTaken is returned when the requested external subdomain is
+	// already in use by a different integration.
+	ErrSubdomainTaken = errors.New("external subdomain already in use")
 )

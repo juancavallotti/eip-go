@@ -24,6 +24,10 @@ type fakeRepo struct {
 	statusCalls int
 	deleted     bool
 	deleteErr   error
+	// slugOwner/subdomainOwner stand in for an existing deployment claiming a
+	// slug/subdomain; empty means "not found".
+	slugOwner      string
+	subdomainOwner string
 }
 
 func (f *fakeRepo) Create(_ context.Context, integrationID, status string, settings, md json.RawMessage) (Deployment, error) {
@@ -44,6 +48,14 @@ func (f *fakeRepo) Get(_ context.Context, _ string) (Deployment, error) {
 
 func (f *fakeRepo) ListByIntegration(_ context.Context, _ string) ([]Deployment, error) {
 	return f.listRet, f.listErr
+}
+
+func (f *fakeRepo) IntegrationIDBySlug(_ context.Context, _ string) (string, bool, error) {
+	return f.slugOwner, f.slugOwner != "", nil
+}
+
+func (f *fakeRepo) IntegrationIDBySubdomain(_ context.Context, _ string) (string, bool, error) {
+	return f.subdomainOwner, f.subdomainOwner != "", nil
 }
 
 func (f *fakeRepo) UpdateStatus(_ context.Context, _, _ string) error {
@@ -359,6 +371,50 @@ func TestUndeployDeletesResourcesAndRow(t *testing.T) {
 	}
 	if !kc.deleted || !repo.deleted {
 		t.Errorf("expected both kube and repo delete (kube=%v repo=%v)", kc.deleted, repo.deleted)
+	}
+}
+
+func TestDeployRejectsSlugTakenByAnotherIntegration(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, slugOwner: "other-int"}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	_, err := svc.Deploy(context.Background(), "int-1", Settings{})
+	if !errors.Is(err, ErrSlugTaken) {
+		t.Errorf("got %v, want ErrSlugTaken", err)
+	}
+	if kc.applied {
+		t.Error("kube.Apply should not run when the slug is taken")
+	}
+}
+
+func TestDeployAllowsSlugOwnedBySameIntegration(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, slugOwner: "int-1"}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{}); err != nil {
+		t.Fatalf("redeploy of the same integration should be allowed, got %v", err)
+	}
+	if !kc.applied {
+		t.Error("expected kube.Apply for a same-integration redeploy")
+	}
+}
+
+func TestDeployRejectsSubdomainTakenByAnotherIntegration(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, subdomainOwner: "other-int"}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	kc := &fakeKube{status: kube.StatusPending, externalEnabled: true}
+	svc := NewService(repo, integrations, kc)
+
+	_, err := svc.Deploy(context.Background(), "int-1", Settings{Expose: ExposeExternal})
+	if !errors.Is(err, ErrSubdomainTaken) {
+		t.Errorf("got %v, want ErrSubdomainTaken", err)
+	}
+	if kc.applied {
+		t.Error("kube.Apply should not run when the subdomain is taken")
 	}
 }
 

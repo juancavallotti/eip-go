@@ -79,19 +79,20 @@ function checkSource(
     return;
   }
   checkFields(spec.fields, source.settings, doc, `${label} source`, issues);
-  // A flow source must bind a configured connector instance — the runtime fails
-  // to build the flow otherwise ("source connector X is not configured").
-  if (!source.connectorRef) {
+  // The connector binding is optional: a lone connection of the matching type
+  // binds implicitly (serialize resolves it). It only has to be chosen when the
+  // choice is ambiguous — two or more connections of that type. An explicit
+  // binding, however, must still resolve.
+  const matching = doc.connectors.filter((c) => c.type === source.connector);
+  if (source.connectorRef) {
+    if (!matching.some((c) => c.name === source.connectorRef)) {
+      issues.push(
+        `${label}: source connection "${source.connectorRef}" doesn't exist.`,
+      );
+    }
+  } else if (matching.length >= 2) {
     issues.push(
-      `${label}: source needs a connection (bind a ${source.connector} connector).`,
-    );
-  } else if (
-    !doc.connectors.some(
-      (c) => c.name === source.connectorRef && c.type === source.connector,
-    )
-  ) {
-    issues.push(
-      `${label}: source connection "${source.connectorRef}" doesn't exist.`,
+      `${label}: multiple ${source.connector} connections exist — choose one for the source.`,
     );
   }
 }

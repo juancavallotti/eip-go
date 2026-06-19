@@ -88,12 +88,27 @@ describe("validateDocument", () => {
     expect(result.issues.some((i) => i.includes('"ghost"'))).toBe(true);
   });
 
-  it("flags an unbound flow source", () => {
+  it("allows an unbound source when a single connector of the type exists", () => {
+    const doc = runnableDoc();
+    doc.flows[0].source!.connectorRef = undefined; // lone cron connector binds implicitly
+    expect(validateDocument(doc)).toEqual({ ok: true, issues: [] });
+  });
+
+  it("requires choosing among multiple connectors of the same type", () => {
     const doc = runnableDoc();
     doc.flows[0].source!.connectorRef = undefined;
+    doc.connectors.push({ id: "c1", name: "clock-2", type: "cron", settings: {} });
     const result = validateDocument(doc);
     expect(result.ok).toBe(false);
-    expect(result.issues.some((i) => i.includes("needs a connection"))).toBe(true);
+    expect(result.issues.some((i) => i.includes("choose one"))).toBe(true);
+  });
+
+  it("flags an explicit source binding that doesn't resolve", () => {
+    const doc = runnableDoc();
+    doc.flows[0].source!.connectorRef = "ghost";
+    const result = validateDocument(doc);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.includes('"ghost"'))).toBe(true);
   });
 
   it("flags duplicate connection names", () => {

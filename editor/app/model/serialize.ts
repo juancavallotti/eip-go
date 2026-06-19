@@ -8,6 +8,7 @@ import {
   isComposite,
   newId,
 } from "./document";
+import { connectorResolver, type ConnectorResolver } from "./connectors";
 import { getBlockSpec } from "@/app/schema";
 
 /**
@@ -89,30 +90,34 @@ function connectorFromRuntime(c: RuntimeConnector): ConnectorInstance {
   };
 }
 
-function sourceToRuntime(source: SourceNode): RuntimeSource {
+function sourceToRuntime(
+  source: SourceNode,
+  resolve: ConnectorResolver,
+): RuntimeSource {
   const out: RuntimeSource = {};
-  // The runtime's `connector` is the bound instance name; fall back to the
-  // connector type when no instance is bound (back-compat / default connector).
-  const connector = source.connectorRef || source.connector;
+  const connector = resolve(source);
   if (connector) out.connector = connector;
   if (source.type) out.type = source.type;
   if (hasKeys(source.settings)) out.settings = source.settings;
   return out;
 }
 
-function flowToRuntime(flow: FlowDoc): RuntimeFlow {
+function flowToRuntime(flow: FlowDoc, resolve: ConnectorResolver): RuntimeFlow {
   const out: RuntimeFlow = {};
   if (flow.name) out.name = flow.name;
-  if (flow.source) out.source = sourceToRuntime(flow.source);
-  out.process = flow.process.map(blockToRuntime);
+  if (flow.source) out.source = sourceToRuntime(flow.source, resolve);
+  out.process = flow.process.map((b) => blockToRuntime(b, resolve));
   return out;
 }
 
-function caseToRuntime(flow: FlowDoc): RuntimeCase {
-  return { when: flow.when ?? "", ...flowToRuntime(flow) };
+function caseToRuntime(flow: FlowDoc, resolve: ConnectorResolver): RuntimeCase {
+  return { when: flow.when ?? "", ...flowToRuntime(flow, resolve) };
 }
 
-function blockToRuntime(block: BlockNode): RuntimeBlock {
+function blockToRuntime(
+  block: BlockNode,
+  resolve: ConnectorResolver,
+): RuntimeBlock {
   const spec = getBlockSpec(block.type);
   if (!spec || !isComposite(block.type)) {
     const out: RuntimeBlock = { type: block.type };
@@ -126,11 +131,11 @@ function blockToRuntime(block: BlockNode): RuntimeBlock {
   for (const field of spec.fields) {
     const slot = block.slots?.[field.name] ?? [];
     if (field.type === "flow") {
-      if (slot[0]) out[field.name] = flowToRuntime(slot[0]);
+      if (slot[0]) out[field.name] = flowToRuntime(slot[0], resolve);
     } else if (field.type === "flow-list") {
-      if (slot.length) out[field.name] = slot.map(flowToRuntime);
+      if (slot.length) out[field.name] = slot.map((f) => flowToRuntime(f, resolve));
     } else if (field.type === "case-list") {
-      if (slot.length) out[field.name] = slot.map(caseToRuntime);
+      if (slot.length) out[field.name] = slot.map((f) => caseToRuntime(f, resolve));
     } else {
       const v = block.settings[field.name];
       if (v !== undefined) out[field.name] = v;
@@ -144,7 +149,8 @@ export function toConfig(doc: EditorDocument): RuntimeConfig {
   if (doc.connectors.length) {
     out.connectors = doc.connectors.map(connectorToRuntime);
   }
-  out.flows = doc.flows.map(flowToRuntime);
+  const resolve = connectorResolver(doc.connectors);
+  out.flows = doc.flows.map((f) => flowToRuntime(f, resolve));
   return out;
 }
 

@@ -32,15 +32,16 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    OCTO_BIN_PATH=/app/bin/octo \
+    OCTO_BIN_PATH=/usr/local/bin/octo \
     OCTO_RUN_DIR=/app/.octo-run
 
 # Next.js standalone server + its static assets and public files.
 COPY --from=editor-build /app/.next/standalone ./
 COPY --from=editor-build /app/.next/static ./.next/static
 COPY --from=editor-build /app/public ./public
-# The octo runtime the editor's RUN feature spawns.
-COPY --from=runtime-build /out/octo /app/bin/octo
+# The octo runtime the editor's RUN feature spawns. Kept OUTSIDE /app so the dev
+# image's DevSpace source-sync (./editor <-> /app) can never delete it.
+COPY --from=runtime-build /out/octo /usr/local/bin/octo
 
 # OCTO_RUN_DIR must be writable at runtime; back it with an emptyDir in k8s.
 RUN mkdir -p /app/.octo-run

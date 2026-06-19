@@ -21,19 +21,50 @@ deployments:
         - deploy/k8s/editor.yaml
         - deploy/k8s/orchestrator.yaml
 
-# `devspace dev` extras (optional). `task cluster:dev` uses `devspace deploy` and
-# relies on the k3d loadbalancer port mappings, but these forwards are handy when
-# iterating with `devspace dev`.
+# `devspace dev` mode (task cluster:watch): swaps the editor/orchestrator pods for
+# their dev images, live-syncs source for hot reload, and tails all three pods'
+# logs to the terminal. No port forwards here — the k3d loadbalancer already
+# exposes the apps on localhost:3000 / :8090 (deploy/k3d/cluster.yaml), and the
+# replacement pods keep their app labels so the NodePort services still route.
 dev:
   editor:
     labelSelector:
       app: editor
     namespace: octo-dev
-    ports:
-      - port: "3000:3000"
+    # Hot-reload image (next dev). Build+import with `task cluster:images:dev`.
+    devImage: octo-editor-dev:dev
+    command: ["npm", "run", "dev"]
+    sync:
+      - path: ./editor:/app
+        # These live only in the container, not the local tree; excluding them
+        # keeps DevSpace's initial mirror from deleting them. (The octo runtime
+        # lives at /usr/local/bin/octo, outside /app, so it's never synced.)
+        excludePaths:
+          - node_modules/
+          - .next/
+          - .octo-run/
+          - .git/
+    # Stream this pod's logs to the terminal.
+    logs: {}
   orchestrator:
     labelSelector:
       app: orchestrator
     namespace: octo-dev
-    ports:
-      - port: "8090:8090"
+    devImage: octo-orchestrator-dev:dev
+    command: ["go", "run", "."]
+    workingDir: /src
+    sync:
+      - path: ./orchestrator:/src
+        excludePaths:
+          - .git/
+          - orchestrator
+        # Restart the container after each upload so `go run` recompiles.
+        onUpload:
+          restartContainer: true
+    logs: {}
+  # Postgres is not hot-reloaded; this entry only forwards its logs to the terminal.
+  postgres:
+    labelSelector:
+      app: postgres
+    namespace: octo-dev
+    logs: {}

@@ -8,6 +8,7 @@ require (
 	github.com/juancavallotti/eip-go/core v0.0.0
 	github.com/juancavallotti/eip-go/types v0.0.0
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	modernc.org/sqlite v1.38.0
 )
 

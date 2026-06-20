@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,14 +17,20 @@ import (
 // cluster as well as the database.
 const requestTimeout = 15 * time.Second
 
+// eventsKeepAlive is how often the SSE stream sends a comment so proxies keep the
+// connection open during quiet periods.
+const eventsKeepAlive = 15 * time.Second
+
 // Handler serves the deployment REST endpoints.
 type Handler struct {
 	svc *Service
+	hub *Hub // change notifications for the SSE stream; nil disables /events
 }
 
-// NewHandler returns a Handler backed by svc.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+// NewHandler returns a Handler backed by svc. hub may be nil, in which case the
+// SSE events route is not registered (clients fall back to polling the list).
+func NewHandler(svc *Service, hub *Hub) *Handler {
+	return &Handler{svc: svc, hub: hub}
 }
 
 // Register attaches the deployment routes to mux. Deploy/list are nested under
@@ -33,6 +40,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /integrations/{id}/deployments", h.listByIntegration)
 	mux.HandleFunc("GET /deployments/{id}", h.get)
 	mux.HandleFunc("DELETE /deployments/{id}", h.undeploy)
+	if h.hub != nil {
+		mux.HandleFunc("GET /integrations/{id}/deployments/events", h.events)
+	}
 }
 
 // podResponse is the wire representation of one runtime pod.
@@ -124,6 +134,78 @@ func (h *Handler) listByIntegration(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toResponse(d))
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// events streams the integration's deployment list over Server-Sent Events: an
+// initial snapshot on connect, then a fresh snapshot whenever the cluster reports
+// a change (via the hub), with periodic keep-alive comments. It returns when the
+// client disconnects.
+func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		httpx.WriteError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	id := r.PathValue("id")
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ticks, cancel := h.hub.Subscribe(id)
+	defer cancel()
+
+	ctx := r.Context()
+	if !h.writeSnapshot(ctx, w, flusher, id) {
+		return
+	}
+
+	keepAlive := time.NewTicker(eventsKeepAlive)
+	defer keepAlive.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			if !h.writeSnapshot(ctx, w, flusher, id) {
+				return
+			}
+		case <-keepAlive.C:
+			if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSnapshot sends the current deployment list as one SSE data event. It
+// reports whether the stream is still healthy; a transient read error keeps the
+// stream open (returns true) while a write error ends it (returns false).
+func (h *Handler) writeSnapshot(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, integrationID string) bool {
+	sctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	items, err := h.svc.ListByIntegration(sctx, integrationID)
+	if err != nil {
+		slog.Error("deployment events snapshot", "integrationId", integrationID, "error", err)
+		return ctx.Err() == nil // keep the stream open unless the client is gone
+	}
+	out := make([]deploymentResponse, 0, len(items))
+	for _, d := range items {
+		out = append(out, toResponse(d))
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		slog.Error("deployment events marshal", "integrationId", integrationID, "error", err)
+		return true
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {

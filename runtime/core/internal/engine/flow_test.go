@@ -94,13 +94,13 @@ func TestBuildBlockValidation(t *testing.T) {
 		{name: "empty type", block: types.BlockConfig{}},
 		{name: "unregistered leaf", block: types.BlockConfig{Type: "nope"}},
 		{name: "leaf with slots", block: types.BlockConfig{Type: "pass", Branches: []types.FlowConfig{{}}}},
-		{name: "scope without main", block: types.BlockConfig{Type: "scope"}},
+		{name: "handle-errors without chains", block: types.BlockConfig{Type: "handle-errors"}},
 		{name: "fork without branches", block: types.BlockConfig{Type: "fork"}},
 		{
 			name: "sub-flow with source",
 			block: types.BlockConfig{
-				Type: "scope",
-				Main: &types.FlowConfig{Source: &types.SourceConfig{Connector: "x"}},
+				Type:     "fork",
+				Branches: []types.FlowConfig{{Source: &types.SourceConfig{Connector: "x"}}},
 			},
 		},
 	}
@@ -118,21 +118,19 @@ func TestBuildCompositeDispatch(t *testing.T) {
 	reg := testRegistry()
 
 	cfg := types.BlockConfig{
-		Type: "scope",
-		Main: &types.FlowConfig{Process: []types.BlockConfig{{Type: "fail"}}},
-		Alternative: &types.FlowConfig{
-			Process: []types.BlockConfig{{Type: "pass"}},
-		},
+		Type:    "handle-errors",
+		Process: []types.BlockConfig{{Type: "fail"}},
+		Error:   []types.BlockConfig{{Type: "pass"}},
 	}
 	block, err := (&builder{reg: reg, pool: pool.New(0, 0)}).block(cfg)
 	if err != nil {
 		t.Fatalf("buildBlock: %v", err)
 	}
 
-	// main fails, so the scope must fall back to the alternative and recover.
+	// process fails, so handle-errors must fall back to the error chain and recover.
 	out, err := block.Processor.Process(context.Background(), mustMessage(t))
 	if err != nil {
-		t.Fatalf("scope Process: %v", err)
+		t.Fatalf("handle-errors Process: %v", err)
 	}
 	if out == nil {
 		t.Fatal("expected recovered message, got nil")

@@ -16,13 +16,17 @@ import (
 // when its config does not name one.
 const defaultForeachVar = "item"
 
-// scope is a composite block holding a protected flow and an optional recovery
-// flow. Its execution model (transaction/error boundaries) is provisional and
-// will be finalized in the processing-model iteration; for now it runs main and,
-// on failure, falls back to the alternative flow.
+// scope is the internal skeleton for error-handling composites: it runs main and,
+// on failure, falls back to the alternative flow. It is not a user-facing block;
+// handle-errors builds on it (see builder.handleErrors). The optional onError hook
+// lets a specialization act on the message between the failure and the fallback.
 type scope struct {
 	main        *Flow
 	alternative *Flow
+	// onError runs against the message just before the alternative flow, after the
+	// main flow fails. It is the skeleton's specialization hook: handle-errors sets
+	// it to expose the error as vars.error.
+	onError func(*types.Message, error)
 }
 
 // fork is a composite block holding an ordered set of branch flows. It scatters
@@ -41,6 +45,9 @@ func (s *scope) Process(ctx context.Context, msg *types.Message) (*types.Message
 	}
 	if s.alternative == nil {
 		return nil, err
+	}
+	if s.onError != nil {
+		s.onError(msg, err)
 	}
 	recovered, altErr := s.alternative.Process(ctx, msg)
 	if altErr != nil {
@@ -207,29 +214,40 @@ func (f *foreachBlock) Process(ctx context.Context, msg *types.Message) (*types.
 	return msg, nil
 }
 
+// handleErrors builds the error-handling specialization of the scope skeleton: its
+// Process chain is the happy path and its Error chain runs on failure, with the
+// error exposed to it as vars.error. Both chains are bare block lists (like a
+// flow's process), so the block reads as a mini-flow embedded inline.
+//
 //nolint:ireturn // builders intentionally return the MessageProcessor interface
-func (b *builder) scope(cfg types.BlockConfig) (core.MessageProcessor, error) {
-	if cfg.Main == nil {
-		return nil, errors.New("scope block requires a main flow")
+func (b *builder) handleErrors(cfg types.BlockConfig) (core.MessageProcessor, error) {
+	if len(cfg.Process) == 0 {
+		return nil, errors.New("handle-errors block requires a process chain")
 	}
-	if len(cfg.Branches) > 0 {
-		return nil, errors.New("scope block must not declare branches")
+	if len(cfg.Error) == 0 {
+		return nil, errors.New("handle-errors block requires an error chain")
+	}
+	if err := allowSlots(cfg, blockKindHandleErrors, "process", "error"); err != nil {
+		return nil, err
 	}
 
-	main, err := b.subFlow(*cfg.Main)
+	main, err := b.flow(types.FlowConfig{Process: cfg.Process})
 	if err != nil {
-		return nil, fmt.Errorf("scope main: %w", err)
+		return nil, fmt.Errorf("handle-errors process: %w", err)
+	}
+	alternative, err := b.flow(types.FlowConfig{Process: cfg.Error})
+	if err != nil {
+		return nil, fmt.Errorf("handle-errors error: %w", err)
 	}
 
-	composite := &scope{main: main}
-	if cfg.Alternative != nil {
-		alternative, altErr := b.subFlow(*cfg.Alternative)
-		if altErr != nil {
-			return nil, fmt.Errorf("scope alternative: %w", altErr)
-		}
-		composite.alternative = alternative
-	}
-	return composite, nil
+	name := cfg.Name
+	return &scope{
+		main:        main,
+		alternative: alternative,
+		onError: func(msg *types.Message, e error) {
+			SetErrorVariable(msg, name, e)
+		},
+	}, nil
 }
 
 //nolint:ireturn // builders intentionally return the MessageProcessor interface
@@ -237,8 +255,8 @@ func (b *builder) fork(cfg types.BlockConfig) (core.MessageProcessor, error) {
 	if len(cfg.Branches) == 0 {
 		return nil, errors.New("fork block requires at least one branch")
 	}
-	if cfg.Main != nil || cfg.Alternative != nil {
-		return nil, errors.New("fork block must not declare main/alternative")
+	if err := allowSlots(cfg, blockKindFork, "branches"); err != nil {
+		return nil, err
 	}
 
 	branches := make([]Flow, 0, len(cfg.Branches))

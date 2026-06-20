@@ -178,7 +178,18 @@ func (s *substitutor) block(cfg *types.BlockConfig) error {
 	if err := s.settings(cfg.Settings); err != nil {
 		return err
 	}
-	subFlows := []*types.FlowConfig{cfg.Main, cfg.Alternative, cfg.Then, cfg.Else, cfg.Default, cfg.Body}
+	// handle-errors carries bare block chains rather than sub-flow configs.
+	for i := range cfg.Process {
+		if err := s.block(&cfg.Process[i]); err != nil {
+			return err
+		}
+	}
+	for i := range cfg.Error {
+		if err := s.block(&cfg.Error[i]); err != nil {
+			return err
+		}
+	}
+	subFlows := []*types.FlowConfig{cfg.Then, cfg.Else, cfg.Default, cfg.Body}
 	for i := range cfg.Branches {
 		subFlows = append(subFlows, &cfg.Branches[i])
 	}

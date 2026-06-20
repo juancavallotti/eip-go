@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -361,36 +362,87 @@ func envVars(env map[string]string) []corev1.EnvVar {
 	return out
 }
 
-// Status reports a coarse lifecycle status for a deployment, computed from the
-// live Deployment and its pods. A missing Deployment reads as failed: the row
-// exists but its workload is gone.
-func (c *Client) Status(ctx context.Context, deploymentID string) (string, error) {
+// PodStatus is the live state of one runtime pod.
+type PodStatus struct {
+	Name     string // pod name
+	Phase    string // Pending/Running/Succeeded/Failed/Unknown
+	Ready    bool   // the pod's Ready condition is true
+	Restarts int32  // total container restarts across the pod
+}
+
+// Status is the live status of a deployment, computed from the Deployment and its
+// pods. Phase is the coarse value cached in the database; the rest is detail for
+// the UI and is not persisted.
+type Status struct {
+	Phase           string      // pending|running|failed
+	DesiredReplicas int32       // spec replica count
+	ReadyReplicas   int32       // ready replica count
+	Reason          string      // terminal failure reason (e.g. ImagePullBackOff), when failed
+	CreatedAt       time.Time   // Deployment creation timestamp (workload age)
+	Pods            []PodStatus // per-pod detail
+}
+
+// Status reports the live status for a deployment, computed from the Deployment
+// and its pods. A missing Deployment reads as failed: the row exists but its
+// workload is gone.
+func (c *Client) Status(ctx context.Context, deploymentID string) (Status, error) {
 	name := resourceName(deploymentID)
 	dep, err := c.clientset.AppsV1().Deployments(c.namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return StatusFailed, nil
+			return Status{Phase: StatusFailed}, nil
 		}
-		return "", fmt.Errorf("kube: get deployment: %w", err)
+		return Status{}, fmt.Errorf("kube: get deployment: %w", err)
 	}
-	if dep.Status.ReadyReplicas >= 1 {
-		return StatusRunning, nil
+
+	st := Status{
+		Phase:         StatusPending,
+		ReadyReplicas: dep.Status.ReadyReplicas,
+		CreatedAt:     dep.CreationTimestamp.Time,
 	}
-	// Not ready yet: surface a terminal pull/crash failure quickly rather than
-	// reporting pending forever.
+	if dep.Spec.Replicas != nil {
+		st.DesiredReplicas = *dep.Spec.Replicas
+	}
+
 	pods, err := c.clientset.CoreV1().Pods(c.namespace).List(ctx,
 		metav1.ListOptions{LabelSelector: selector(deploymentID)})
 	if err != nil {
-		return "", fmt.Errorf("kube: list pods: %w", err)
+		return Status{}, fmt.Errorf("kube: list pods: %w", err)
 	}
 	for i := range pods.Items {
-		for _, cs := range pods.Items[i].Status.ContainerStatuses {
-			if w := cs.State.Waiting; w != nil && isTerminalWaiting(w.Reason) {
-				return StatusFailed, nil
+		p := &pods.Items[i]
+		ps := PodStatus{Name: p.Name, Phase: string(p.Status.Phase), Ready: podReady(p)}
+		for _, cs := range p.Status.ContainerStatuses {
+			ps.Restarts += cs.RestartCount
+			if w := cs.State.Waiting; w != nil && isTerminalWaiting(w.Reason) && st.Reason == "" {
+				st.Reason = w.Reason
+				if w.Message != "" {
+					st.Reason = w.Reason + ": " + w.Message
+				}
 			}
 		}
+		st.Pods = append(st.Pods, ps)
 	}
-	return StatusPending, nil
+
+	switch {
+	case dep.Status.ReadyReplicas >= 1:
+		st.Phase = StatusRunning
+	case st.Reason != "":
+		// A terminal pull/crash failure: surface it rather than reporting pending
+		// forever.
+		st.Phase = StatusFailed
+	}
+	return st, nil
+}
+
+// podReady reports whether the pod's Ready condition is true.
+func podReady(p *corev1.Pod) bool {
+	for _, cond := range p.Status.Conditions {
+		if cond.Type == corev1.PodReady {
+			return cond.Status == corev1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // isTerminalWaiting reports whether a container's waiting reason means the pod

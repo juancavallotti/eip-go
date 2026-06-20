@@ -7,6 +7,8 @@ package deployment
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/juancavallotti/eip-go/orchestrator/internal/kube"
 )
 
 // Deployment is one deployed instance of an integration. IDs are UUIDs in
@@ -19,6 +21,9 @@ type Deployment struct {
 	Settings      json.RawMessage
 	Metadata      json.RawMessage
 	LastUpdated   time.Time
+	// Detail is the live cluster status populated on read (replicas, pods,
+	// failure reason). Not persisted; the coarse Status string is the cached value.
+	Detail kube.Status
 }
 
 // Settings is the user-supplied per-deployment config stored in the settings

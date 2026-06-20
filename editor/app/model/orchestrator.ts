@@ -33,6 +33,15 @@ export interface IntegrationInput {
 /** Coarse lifecycle status of a deployment, cached from the live cluster. */
 export type DeploymentStatus = "pending" | "running" | "failed";
 
+/** Live state of one runtime pod backing a deployment. */
+export interface PodStatus {
+  name: string;
+  /** Pending/Running/Succeeded/Failed/Unknown. */
+  phase: string;
+  ready: boolean;
+  restarts: number;
+}
+
 /** One deployed instance of an integration running as its own workload. */
 export interface Deployment {
   id: string;
@@ -41,12 +50,22 @@ export interface Deployment {
   name: string;
   /** Cached lifecycle status; refreshed by the orchestrator on read. */
   status: DeploymentStatus;
-  /** Desired/served replica count. */
+  /** Desired/served replica count (from settings). */
   replicas: number;
+  /** Ready replica count, live from the cluster. */
+  readyReplicas: number;
+  /** Desired replica count, live from the cluster's Deployment spec. */
+  desiredReplicas: number;
+  /** Terminal failure reason (e.g. ImagePullBackOff), when failed. */
+  reason?: string;
+  /** Per-pod live detail. */
+  pods?: PodStatus[];
   /** In-cluster address other flows use to reach this integration, if any. */
   internalUrl?: string;
   /** Public https URL when the deployment is exposed externally. */
   externalUrl?: string;
+  /** RFC3339 timestamp of the workload's creation (age anchor), if known. */
+  createdAt?: string;
   /** RFC3339 timestamp of the last status/state update. */
   lastUpdated: string;
 }

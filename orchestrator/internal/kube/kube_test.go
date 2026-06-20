@@ -39,9 +39,14 @@ func TestSpecPortDefaultsToRuntimePort(t *testing.T) {
 	}
 }
 
-func TestApplyDefaultPortAndNoIngress(t *testing.T) {
+// TestApplyNoServiceWhenNoPort verifies a deployment with no HTTP source (Port 0)
+// gets only a ConfigMap + Deployment — no per-deployment Service, no internal
+// Service, no Ingress, and no declared container port.
+func TestApplyNoServiceWhenNoPort(t *testing.T) {
 	c := testClient()
 	ctx := context.Background()
+	// Slug set but Port 0: the service layer never produces this pairing, but it
+	// asserts the port — not the slug — gates Service creation.
 	spec := Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 2, Slug: "orders"}
 
 	if err := c.Apply(ctx, spec); err != nil {
@@ -49,14 +54,6 @@ func TestApplyDefaultPortAndNoIngress(t *testing.T) {
 	}
 
 	name := resourceName("d1")
-	svc, err := c.clientset.CoreV1().Services(testNamespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("get service: %v", err)
-	}
-	if svc.Spec.Ports[0].Port != runtimePort {
-		t.Errorf("service port = %d, want %d (default)", svc.Spec.Ports[0].Port, runtimePort)
-	}
-
 	dep, err := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("get deployment: %v", err)
@@ -65,17 +62,18 @@ func TestApplyDefaultPortAndNoIngress(t *testing.T) {
 	if len(ctr.Env) != 0 {
 		t.Errorf("expected no env vars by default, got %v", ctr.Env)
 	}
-	if ctr.Ports[0].ContainerPort != runtimePort {
-		t.Errorf("container port = %d, want %d", ctr.Ports[0].ContainerPort, runtimePort)
+	if len(ctr.Ports) != 0 {
+		t.Errorf("expected no container port for a non-networked workload, got %v", ctr.Ports)
 	}
 
-	// The stable internal Service is created for a slugged deployment.
-	if _, err := c.clientset.CoreV1().Services(testNamespace).Get(ctx, internalServiceName("orders"), metav1.GetOptions{}); err != nil {
-		t.Errorf("internal service not created: %v", err)
+	if _, err := c.clientset.CoreV1().Services(testNamespace).Get(ctx, name, metav1.GetOptions{}); err == nil {
+		t.Error("per-deployment service should not exist for a non-networked workload")
 	}
-
+	if _, err := c.clientset.CoreV1().Services(testNamespace).Get(ctx, internalServiceName("orders"), metav1.GetOptions{}); err == nil {
+		t.Error("internal service should not exist for a non-networked workload")
+	}
 	if _, err := c.clientset.NetworkingV1().Ingresses(testNamespace).Get(ctx, name, metav1.GetOptions{}); err == nil {
-		t.Error("ingress should not exist for an internal-only deployment")
+		t.Error("ingress should not exist for a non-networked workload")
 	}
 }
 
@@ -101,6 +99,10 @@ func TestApplyDeclaredPortAndEnv(t *testing.T) {
 	internal, _ := c.clientset.CoreV1().Services(testNamespace).Get(ctx, internalServiceName("orders"), metav1.GetOptions{})
 	if internal.Spec.Ports[0].Port != 9090 {
 		t.Errorf("internal service port = %d, want 9090", internal.Spec.Ports[0].Port)
+	}
+	// The internal Service is per-deployment: it selects this deployment's pods.
+	if internal.Spec.Selector[labelDeploymentID] != "d1" {
+		t.Errorf("internal service selector = %v, want deployment-id d1", internal.Spec.Selector)
 	}
 
 	dep, _ := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, name, metav1.GetOptions{})
@@ -154,7 +156,7 @@ func TestApplyCreatesIngressWhenExposed(t *testing.T) {
 func TestApplyNoIngressWithoutBaseDomain(t *testing.T) {
 	c := newClient("") // external disabled
 	ctx := context.Background()
-	spec := Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 1, Slug: "orders", Expose: true, Subdomain: "shop"}
+	spec := Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 1, Slug: "orders", Port: 9090, Expose: true, Subdomain: "shop"}
 
 	if err := c.Apply(ctx, spec); err != nil {
 		t.Fatalf("Apply: %v", err)

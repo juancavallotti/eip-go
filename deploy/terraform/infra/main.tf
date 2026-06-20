@@ -63,6 +63,7 @@ module "base" {
     registry_host = local.registry_host
     domain        = var.domain
     acme_email    = var.acme_email
+    project_id    = var.project_id
   })
 
   # octo-pull (image pulls with a fresh token) is delivered via metadata and installed

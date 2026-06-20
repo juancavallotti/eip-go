@@ -74,10 +74,30 @@ export interface Deployment {
 export interface DeploymentInput {
   /** Runtime replicas; omitted/<=0 means a single replica. */
   replicas?: number;
-  /** "external" publishes a {subdomain}.{baseDomain} endpoint with TLS. */
+  /** User-chosen internal address slug; omitted asks the orchestrator to allocate. */
+  slug?: string;
+  /** "external" publishes a {slug}.{baseDomain} endpoint with TLS. */
   expose?: "external";
-  /** External host label; defaults to the integration slug when omitted. */
+  /** External host label; defaults to the slug when omitted. */
   subdomain?: string;
+}
+
+/**
+ * Deploy choices for an integration, backing the deploy modal. When fetched with a
+ * candidate slug the `slug*` fields validate it (for the requested exposure);
+ * otherwise `suggestedSlug` carries a free default to prefill.
+ */
+export interface DeployOptions {
+  /** Whether the integration has an HTTP source (so it gets a slug and can expose). */
+  networked: boolean;
+  /** A free slug to prefill the field with (only when no candidate was checked). */
+  suggestedSlug?: string;
+  /** Normalized form of the checked candidate. */
+  slug?: string;
+  /** The candidate has a usable form. */
+  slugValid: boolean;
+  /** The candidate is not already claimed (subdomain too, when external). */
+  slugAvailable: boolean;
 }
 
 /** Perform a JSON request against a BFF route, unwrapping the `{ error }` envelope. */
@@ -138,6 +158,26 @@ export function deleteIntegration(id: string): Promise<void> {
 export function listDeployments(integrationId: string): Promise<Deployment[]> {
   return request<Deployment[]>(
     `/api/integrations/${encodeURIComponent(integrationId)}/deployments`,
+  );
+}
+
+/**
+ * Fetch deploy options for an integration. With no `slug` it returns whether the
+ * integration is networked plus a suggested free slug; with a `slug` it validates
+ * that candidate for the given exposure (external also checks the subdomain).
+ */
+export function getDeployOptions(
+  integrationId: string,
+  opts: { slug?: string; expose?: "external" } = {},
+): Promise<DeployOptions> {
+  const qs = new URLSearchParams();
+  if (opts.slug) qs.set("slug", opts.slug);
+  if (opts.expose) qs.set("expose", opts.expose);
+  const query = qs.toString();
+  return request<DeployOptions>(
+    `/api/integrations/${encodeURIComponent(integrationId)}/deployments/options${
+      query ? `?${query}` : ""
+    }`,
   );
 }
 

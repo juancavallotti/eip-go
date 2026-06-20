@@ -2,16 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { Globe, Rocket, X } from "lucide-react";
-import type { DeploymentInput } from "@/app/model/orchestrator";
+import {
+  getDeployOptions,
+  type DeploymentInput,
+  type DeployOptions,
+} from "@/app/model/orchestrator";
+import SlugField from "./SlugField";
 
 /**
- * Modal that collects per-deploy options and creates a deployment. Today it holds
- * scale (replicas) and networking (external exposure); it is laid out as labelled
- * sections so future controls — the integration's declared environment variables
- * and secrets — drop in as additional sections without reworking the form.
+ * Modal that collects per-deploy options and creates a deployment. It holds scale
+ * (replicas) and, for an integration with an HTTP source, the deployment's address
+ * slug (validated live) plus optional external exposure. Non-networked integrations
+ * (timers, scheduled jobs) get neither — they run as a bare workload. Laid out as
+ * labelled sections so future controls (env vars, secrets) drop in cleanly.
  *
  * The parent owns the deploy call (so it can refresh its list and surface errors);
- * this component owns only the form state and closes itself on a successful submit.
+ * this component owns the form state and closes itself on a successful submit.
  */
 
 const INPUT =
@@ -39,12 +45,14 @@ function Field({
 }
 
 export default function DeployModal({
+  integrationId,
   integrationName,
   busy,
   error,
   onSubmit,
   onClose,
 }: {
+  integrationId: string;
   integrationName: string;
   busy: boolean;
   error: string | null;
@@ -53,7 +61,26 @@ export default function DeployModal({
 }) {
   const [replicas, setReplicas] = useState(1);
   const [expose, setExpose] = useState(false);
-  const [subdomain, setSubdomain] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugOk, setSlugOk] = useState(false);
+  const [opts, setOpts] = useState<DeployOptions | null>(null);
+
+  // Load deploy options once: whether the integration is networked, and a free
+  // slug to prefill. On failure assume non-networked (deploy still works).
+  useEffect(() => {
+    let active = true;
+    getDeployOptions(integrationId).then(
+      (o) => {
+        if (!active) return;
+        setOpts(o);
+        setSlug(o.suggestedSlug ?? "");
+      },
+      () => active && setOpts({ networked: false, slugValid: false, slugAvailable: false }),
+    );
+    return () => {
+      active = false;
+    };
+  }, [integrationId]);
 
   // Close on Escape, mirroring the editor's other overlays.
   useEffect(() => {
@@ -64,13 +91,17 @@ export default function DeployModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [busy, onClose]);
 
-  const submit = () =>
+  const networked = opts?.networked ?? false;
+  const canDeploy = !busy && opts !== null && (!networked || slugOk);
+
+  const submit = () => {
+    if (!canDeploy) return;
     onSubmit({
       replicas,
-      ...(expose
-        ? { expose: "external", subdomain: subdomain.trim() || undefined }
-        : {}),
+      ...(networked ? { slug: slug.trim() } : {}),
+      ...(networked && expose ? { expose: "external" } : {}),
     });
+  };
 
   return (
     <div
@@ -117,32 +148,39 @@ export default function DeployModal({
             </label>
           </Field>
 
-          <Field
-            label="Networking"
-            hint="External exposure requires the integration to declare HTTP_PORT."
-          >
-            <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-              <input
-                type="checkbox"
-                checked={expose}
-                disabled={busy}
-                onChange={(e) => setExpose(e.target.checked)}
-                className="accent-sky-500"
+          {opts === null ? (
+            <p className="text-sm text-zinc-400">Loading options…</p>
+          ) : networked ? (
+            <Field
+              label="Address"
+              hint={`Reachable in-cluster at octo-int-${slug.trim() || "{slug}"}. Must be unique.`}
+            >
+              <SlugField
+                integrationId={integrationId}
+                value={slug}
+                onChange={setSlug}
+                expose={expose}
+                busy={busy}
+                onValidChange={setSlugOk}
               />
-              <Globe size={14} />
-              Expose externally
-            </label>
-            {expose && (
-              <input
-                type="text"
-                value={subdomain}
-                disabled={busy}
-                placeholder="subdomain (defaults to name)"
-                onChange={(e) => setSubdomain(e.target.value)}
-                className={`${INPUT} mt-1 w-full`}
-              />
-            )}
-          </Field>
+              <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={expose}
+                  disabled={busy}
+                  onChange={(e) => setExpose(e.target.checked)}
+                  className="accent-sky-500"
+                />
+                <Globe size={14} />
+                Expose externally at this address
+              </label>
+            </Field>
+          ) : (
+            <p className="text-sm text-zinc-400">
+              No HTTP source — this integration runs as an internal workload with no
+              address.
+            </p>
+          )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
@@ -159,7 +197,7 @@ export default function DeployModal({
           <button
             type="button"
             onClick={submit}
-            disabled={busy}
+            disabled={!canDeploy}
             className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:opacity-50"
           >
             <Rocket size={14} />

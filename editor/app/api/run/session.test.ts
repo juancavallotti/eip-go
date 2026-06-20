@@ -12,6 +12,9 @@ import {
   sync,
 } from "./session";
 
+/** Fixed namespace for the single-user test surface. */
+const NS = "testns00";
+
 /** Writes an executable shell script acting as a stand-in for the octo binary. */
 async function fakeBin(dir: string, name: string, body: string): Promise<string> {
   const path = join(dir, name);
@@ -20,7 +23,7 @@ async function fakeBin(dir: string, name: string, body: string): Promise<string>
   return path;
 }
 
-const texts = () => snapshot().map((l) => l.text);
+const texts = () => snapshot(NS).map((l) => l.text);
 
 describe("run session", () => {
   let dir: string;
@@ -31,16 +34,16 @@ describe("run session", () => {
   });
 
   afterEach(async () => {
-    await stop();
+    await stop(NS);
     delete process.env.OCTO_BIN_PATH;
     delete process.env.OCTO_RUN_DIR;
   });
 
   it("reports availability from OCTO_BIN_PATH", () => {
     delete process.env.OCTO_BIN_PATH;
-    expect(status().available).toBe(false);
+    expect(status(NS).available).toBe(false);
     process.env.OCTO_BIN_PATH = "/somewhere/octo";
-    expect(status().available).toBe(true);
+    expect(status(NS).available).toBe(true);
   });
 
   it("captures runner output line-by-line and tracks exit", async () => {
@@ -50,7 +53,7 @@ describe("run session", () => {
       'printf "line one\\nline two\\n"',
     );
 
-    const started = await start("service:\n  name: t\n");
+    const started = await start(NS, "service:\n  name: t\n");
     expect(started.running).toBe(true);
 
     await vi.waitFor(
@@ -63,7 +66,7 @@ describe("run session", () => {
       { timeout: 4000 },
     );
 
-    expect(status().running).toBe(false);
+    expect(status(NS).running).toBe(false);
     expect(texts().some((t) => t.startsWith("▶ starting octo"))).toBe(true);
   });
 
@@ -74,25 +77,25 @@ describe("run session", () => {
       'echo ready\nsleep 2',
     );
 
-    await start("service:\n  name: first\n");
+    await start(NS, "service:\n  name: first\n");
     await vi.waitFor(() => expect(texts()).toContain("ready"), { timeout: 4000 });
 
-    const path = currentConfigPath();
+    const path = currentConfigPath(NS);
     expect(path).toBeTruthy();
     expect(await readFile(path!, "utf8")).toContain("first");
 
-    await sync("service:\n  name: second\n");
+    await sync(NS, "service:\n  name: second\n");
     expect(await readFile(path!, "utf8")).toContain("second");
 
-    const stopped = await stop();
+    const stopped = await stop(NS);
     expect(stopped.running).toBe(false);
-    // The rendered config is cleaned up on stop.
-    expect(await readdir(dir)).not.toContain(path!.split("/").pop());
+    // The rendered config (in the namespace's directory) is cleaned up on stop.
+    expect(await readdir(join(dir, NS))).not.toContain(path!.split("/").pop());
   });
 
   it("ignores sync when nothing is running", async () => {
     delete process.env.OCTO_BIN_PATH;
-    const result = await sync("service:\n  name: x\n");
+    const result = await sync(NS, "service:\n  name: x\n");
     expect(result.running).toBe(false);
   });
 });

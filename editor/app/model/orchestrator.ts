@@ -152,6 +152,17 @@ export function createDeployment(
   );
 }
 
+/** Scale an existing deployment to a new desired replica count. */
+export function scaleDeployment(
+  id: string,
+  replicas: number,
+): Promise<Deployment> {
+  return request<Deployment>(`/api/deployments/${encodeURIComponent(id)}`, {
+    ...jsonBody({ replicas }),
+    method: "PATCH",
+  });
+}
+
 /** Undeploy a deployment, removing its workload. */
 export function deleteDeployment(id: string): Promise<void> {
   return request<void>(`/api/deployments/${encodeURIComponent(id)}`, {

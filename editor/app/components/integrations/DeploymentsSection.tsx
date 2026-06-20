@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Globe, Rocket } from "lucide-react";
+import { Rocket } from "lucide-react";
 import {
   createDeployment,
   deleteDeployment,
   listDeployments,
+  scaleDeployment,
   type Deployment,
+  type DeploymentInput,
 } from "@/app/model/orchestrator";
 import DeploymentRow from "./DeploymentRow";
+import DeployModal from "./DeployModal";
 
 /**
  * Deployments for one integration: a one-click Deploy plus a list of live
@@ -23,17 +26,15 @@ const FALLBACK_POLL_MS = 5000;
 
 export default function DeploymentsSection({
   integrationId,
+  integrationName,
 }: {
   integrationId: string;
+  integrationName: string;
 }) {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Deploy options.
-  const [replicas, setReplicas] = useState(1);
-  const [expose, setExpose] = useState(false);
-  const [subdomain, setSubdomain] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
 
   // A then-chain (not an async body) so the effect's call doesn't setState
   // synchronously — same shape as IntegrationsManager's refresh.
@@ -101,15 +102,32 @@ export default function DeploymentsSection({
     [refresh],
   );
 
-  const deploy = () =>
-    run(() =>
-      createDeployment(integrationId, {
-        replicas,
-        ...(expose
-          ? { expose: "external", subdomain: subdomain.trim() || undefined }
-          : {}),
-      }),
-    );
+  // Deploy from the modal: on success close it; on failure keep it open with the
+  // error so the user can correct and retry.
+  const deploy = useCallback(
+    async (input: DeploymentInput) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await createDeployment(integrationId, input);
+        await refresh();
+        setModalOpen(false);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [integrationId, refresh],
+  );
+
+  const openModal = () => {
+    setError(null);
+    setModalOpen(true);
+  };
+
+  const scale = (d: Deployment, replicas: number) =>
+    run(() => scaleDeployment(d.id, replicas));
 
   const undeploy = (d: Deployment) => {
     if (!confirm(`Undeploy "${d.name}" (${d.id.slice(0, 8)})?`)) return;
@@ -118,58 +136,20 @@ export default function DeploymentsSection({
 
   return (
     <>
-      <div className="mb-2 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col text-xs text-zinc-500">
-          Replicas
-          <input
-            type="number"
-            min={1}
-            value={replicas}
-            onChange={(e) =>
-              setReplicas(Math.max(1, Number(e.target.value) || 1))
-            }
-            disabled={busy}
-            className="mt-0.5 w-16 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
-          />
-        </label>
-
-        <label className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={expose}
-            onChange={(e) => setExpose(e.target.checked)}
-            disabled={busy}
-          />
-          <Globe size={14} />
-          Expose externally
-        </label>
-
-        {expose && (
-          <label className="flex flex-col text-xs text-zinc-500">
-            Subdomain
-            <input
-              type="text"
-              value={subdomain}
-              onChange={(e) => setSubdomain(e.target.value)}
-              placeholder="defaults to name"
-              disabled={busy}
-              className="mt-0.5 w-40 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
-            />
-          </label>
-        )}
-
+      <div className="mb-2 flex justify-end">
         <button
           type="button"
-          onClick={deploy}
+          onClick={openModal}
           disabled={busy}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:opacity-50"
         >
           <Rocket size={14} />
           Deploy
         </button>
       </div>
 
-      {error && <p className="mb-2 text-sm text-red-500">{error}</p>}
+      {/* Errors from undeploy show inline; deploy errors show inside the modal. */}
+      {error && !modalOpen && <p className="mb-2 text-sm text-red-500">{error}</p>}
 
       {deployments.length === 0 ? (
         <p className="text-sm text-zinc-400">Not deployed.</p>
@@ -180,10 +160,21 @@ export default function DeploymentsSection({
               key={d.id}
               deployment={d}
               busy={busy}
+              onScale={scale}
               onUndeploy={undeploy}
             />
           ))}
         </ul>
+      )}
+
+      {modalOpen && (
+        <DeployModal
+          integrationName={integrationName}
+          busy={busy}
+          error={error}
+          onSubmit={deploy}
+          onClose={() => !busy && setModalOpen(false)}
+        />
       )}
     </>
   );

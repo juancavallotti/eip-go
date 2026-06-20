@@ -8,17 +8,20 @@ import StepArrow from "./StepArrow";
  * A drop target sitting between two nodes (or after the last one). Dropping here
  * inserts at `index`. Normally it just draws the connector arrow; while a drag
  * hovers it, it swells into a highlighted insertion bar. The `empty` variant is
- * the placeholder shown when a flow has no steps yet.
+ * the placeholder shown when a flow has no steps yet. The `last` gap (after the
+ * final node) stays a drop target but draws no trailing arrow.
  */
 export default function DropGap({
   flowId,
   index,
   empty = false,
+  last = false,
   hint,
 }: {
   flowId: string;
   index: number;
   empty?: boolean;
+  last?: boolean;
   hint?: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -50,7 +53,8 @@ export default function DropGap({
           <div className="h-1.5 w-28 rounded-full bg-sky-400" />
         </div>
       ) : (
-        <StepArrow />
+        // The trailing gap is still droppable but shows no arrow after the last node.
+        !last && <StepArrow />
       )}
     </div>
   );

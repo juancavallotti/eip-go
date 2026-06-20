@@ -307,6 +307,10 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusConflict, "deployment slug already in use")
 	case errors.Is(err, ErrSubdomainTaken):
 		httpx.WriteError(w, http.StatusConflict, "external subdomain already in use by another integration")
+	case errors.Is(err, ErrSecretNotFound):
+		httpx.WriteError(w, http.StatusBadRequest, "a referenced secret does not exist")
+	case errors.Is(err, ErrReservedEnvVar):
+		httpx.WriteError(w, http.StatusBadRequest, "HTTP_PORT and HTTP_HOST are managed by the orchestrator")
 	default:
 		slog.Error("deployment handler", "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")

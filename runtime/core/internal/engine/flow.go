@@ -235,6 +235,13 @@ func compositeSlots(cfg types.BlockConfig) []string {
 	add(cfg.Items != "", "items")
 	add(cfg.As != "", "as")
 	add(cfg.Body != nil, "body")
+	add(cfg.Connector != "", "connector")
+	add(cfg.Prompt != "", "prompt")
+	add(cfg.Guardrail != "", "guardrail")
+	add(len(cfg.Routes) > 0, "routes")
+	add(len(cfg.Tools) > 0, "tools")
+	add(cfg.MaxIterations != 0, "maxIterations")
+	add(cfg.MaxAttempts != 0, "maxAttempts")
 	return slots
 }
 

@@ -18,12 +18,25 @@ import (
 // Block type names handled directly by the flow builder rather than the block
 // registry, because they compose sub-flows via typed config slots.
 const (
-	blockKindScope   = "scope"
-	blockKindFork    = "fork"
-	blockKindIf      = "if"
-	blockKindSwitch  = "switch"
-	blockKindForeach = "foreach"
+	blockKindHandleErrors = "handle-errors"
+	blockKindFork         = "fork"
+	blockKindIf           = "if"
+	blockKindSwitch       = "switch"
+	blockKindForeach      = "foreach"
 )
+
+// blockError wraps the error a block returns with the block's label. It keeps the
+// label structured (rather than only in the formatted message) so recovery paths
+// can recover the failing block via errors.As — see SetErrorVariable. Its Error
+// text matches the previous fmt.Errorf("block %q: %w", ...) wrapping.
+type blockError struct {
+	label string
+	err   error
+}
+
+func (e *blockError) Error() string { return fmt.Sprintf("block %q: %s", e.label, e.err) }
+
+func (e *blockError) Unwrap() error { return e.err }
 
 // Flow is an ordered sequence of blocks. It implements core.MessageProcessor by
 // running a message through each block in order, and is the reusable unit that
@@ -43,7 +56,7 @@ func (f *Flow) Process(ctx context.Context, msg *types.Message) (*types.Message,
 		block := f.Blocks[i]
 		out, err := block.Processor.Process(ctx, current)
 		if err != nil {
-			return nil, fmt.Errorf("block %q: %w", blockLabel(block.Type, block.Name), err)
+			return nil, &blockError{label: blockLabel(block.Type, block.Name), err: err}
 		}
 		if out == nil {
 			return nil, nil
@@ -163,8 +176,8 @@ func (b *builder) processor(
 	cfg types.BlockConfig, effType string, effSettings types.Settings,
 ) (core.MessageProcessor, error) {
 	switch effType {
-	case blockKindScope:
-		return b.scope(cfg)
+	case blockKindHandleErrors:
+		return b.handleErrors(cfg)
 	case blockKindFork:
 		return b.fork(cfg)
 	case blockKindIf:
@@ -203,39 +216,22 @@ func mergeSettings(base, override types.Settings) types.Settings {
 // leaf and composite validation stay in sync as new composite kinds are added.
 func compositeSlots(cfg types.BlockConfig) []string {
 	var slots []string
-	if cfg.Main != nil {
-		slots = append(slots, "main")
+	add := func(set bool, name string) {
+		if set {
+			slots = append(slots, name)
+		}
 	}
-	if cfg.Alternative != nil {
-		slots = append(slots, "alternative")
-	}
-	if len(cfg.Branches) > 0 {
-		slots = append(slots, "branches")
-	}
-	if cfg.Condition != "" {
-		slots = append(slots, "condition")
-	}
-	if cfg.Then != nil {
-		slots = append(slots, "then")
-	}
-	if cfg.Else != nil {
-		slots = append(slots, "else")
-	}
-	if len(cfg.Cases) > 0 {
-		slots = append(slots, "cases")
-	}
-	if cfg.Default != nil {
-		slots = append(slots, "default")
-	}
-	if cfg.Items != "" {
-		slots = append(slots, "items")
-	}
-	if cfg.As != "" {
-		slots = append(slots, "as")
-	}
-	if cfg.Body != nil {
-		slots = append(slots, "body")
-	}
+	add(len(cfg.Process) > 0, "process")
+	add(len(cfg.Error) > 0, "error")
+	add(len(cfg.Branches) > 0, "branches")
+	add(cfg.Condition != "", "condition")
+	add(cfg.Then != nil, "then")
+	add(cfg.Else != nil, "else")
+	add(len(cfg.Cases) > 0, "cases")
+	add(cfg.Default != nil, "default")
+	add(cfg.Items != "", "items")
+	add(cfg.As != "", "as")
+	add(cfg.Body != nil, "body")
 	return slots
 }
 

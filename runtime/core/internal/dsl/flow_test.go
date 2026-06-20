@@ -27,15 +27,13 @@ flows:
       - type: validate
         settings:
           schema: order.schema.json
-      - type: scope
+      - type: handle-errors
         name: persist
-        main:
-          process:
-            - type: transform
-              name: normalize
-        alternative:
-          process:
-            - type: deadletter
+        process:
+          - type: transform
+            name: normalize
+        error:
+          - type: deadletter
       - type: fork
         name: notify-and-audit
         branches:
@@ -73,17 +71,13 @@ flows:
 						Settings: map[string]any{"schema": "order.schema.json"},
 					},
 					{
-						Type: "scope",
+						Type: "handle-errors",
 						Name: "persist",
-						Main: &types.FlowConfig{
-							Process: []types.BlockConfig{
-								{Type: "transform", Name: "normalize"},
-							},
+						Process: []types.BlockConfig{
+							{Type: "transform", Name: "normalize"},
 						},
-						Alternative: &types.FlowConfig{
-							Process: []types.BlockConfig{
-								{Type: "deadletter"},
-							},
+						Error: []types.BlockConfig{
+							{Type: "deadletter"},
 						},
 					},
 					{

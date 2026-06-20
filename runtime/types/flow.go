@@ -26,8 +26,8 @@ type SourceConfig struct {
 }
 
 // BlockConfig describes one step in a flow. Leaf blocks use only Type, Name, and
-// Settings. Composite kinds use explicit typed slots: a "scope" populates Main
-// and optionally Alternative; a "fork" populates Branches; an "if" populates
+// Settings. Composite kinds use explicit typed slots: a "handle-errors" populates
+// Process and Error; a "fork" populates Branches; an "if" populates
 // Condition/Then/Else; a "switch" populates Cases and optionally Default; a
 // "foreach" populates Items/As/Body. The Flow<->Block recursion (FlowConfig.Process
 // -> []BlockConfig -> the composite slots -> FlowConfig) lets the parser build the
@@ -44,10 +44,13 @@ type BlockConfig struct {
 	// one allowed overlap).
 	Ref string `yaml:"ref,omitempty"`
 
-	// Main is the protected flow of a "scope" block.
-	Main *FlowConfig `yaml:"main,omitempty"`
-	// Alternative is the recovery flow of a "scope" block.
-	Alternative *FlowConfig `yaml:"alternative,omitempty"`
+	// Process is the happy-path block chain of a "handle-errors" block. It is a
+	// bare block list, like a flow's Process, so a handle-errors block reads as a
+	// mini-flow embedded inline.
+	Process []BlockConfig `yaml:"process,omitempty"`
+	// Error is the error-path block chain of a "handle-errors" block: it runs when
+	// the Process chain errors, with the error exposed as vars.error.
+	Error []BlockConfig `yaml:"error,omitempty"`
 	// Branches are the parallel flows of a "fork" block.
 	Branches []FlowConfig `yaml:"branches,omitempty"`
 

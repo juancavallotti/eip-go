@@ -121,10 +121,13 @@ func TestSubstituteNestedFlowBlocks(t *testing.T) {
 		Flows: []types.FlowConfig{{
 			Source: &types.SourceConfig{Settings: types.Settings{"path": "${PATH}"}},
 			Process: []types.BlockConfig{{
-				Type: "scope",
-				Main: &types.FlowConfig{Process: []types.BlockConfig{
+				Type: "handle-errors",
+				Process: []types.BlockConfig{
 					{Type: "log", Settings: types.Settings{"level": "${LEVEL}"}},
-				}},
+				},
+				Error: []types.BlockConfig{
+					{Type: "log", Settings: types.Settings{"level": "${LEVEL}"}},
+				},
 			}},
 		}},
 	}
@@ -136,7 +139,7 @@ func TestSubstituteNestedFlowBlocks(t *testing.T) {
 	if got := cfg.Flows[0].Source.Settings["path"]; got != "/orders" {
 		t.Errorf("source path = %#v, want /orders", got)
 	}
-	level := cfg.Flows[0].Process[0].Main.Process[0].Settings["level"]
+	level := cfg.Flows[0].Process[0].Process[0].Settings["level"]
 	if level != "info" {
 		t.Errorf("nested block level = %#v, want info", level)
 	}

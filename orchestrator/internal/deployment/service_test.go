@@ -25,9 +25,10 @@ type fakeRepo struct {
 	updateSettingsErr error
 	deleted           bool
 	deleteErr         error
-	// slugOwner/subdomainOwner stand in for an existing deployment claiming a
-	// slug/subdomain; empty means "not found".
-	slugOwner      string
+	// takenSlugs maps an already-claimed slug to its owning integration id, so
+	// allocateSlug's scan sees collisions; subdomainOwner stands in for an existing
+	// deployment claiming a subdomain ("" means "not found").
+	takenSlugs     map[string]string
 	subdomainOwner string
 }
 
@@ -51,8 +52,9 @@ func (f *fakeRepo) ListByIntegration(_ context.Context, _ string) ([]Deployment,
 	return f.listRet, f.listErr
 }
 
-func (f *fakeRepo) IntegrationIDBySlug(_ context.Context, _ string) (string, bool, error) {
-	return f.slugOwner, f.slugOwner != "", nil
+func (f *fakeRepo) IntegrationIDBySlug(_ context.Context, slug string) (string, bool, error) {
+	owner, ok := f.takenSlugs[slug]
+	return owner, ok, nil
 }
 
 func (f *fakeRepo) IntegrationIDBySubdomain(_ context.Context, _ string) (string, bool, error) {
@@ -223,7 +225,7 @@ func TestDeployHappyPath(t *testing.T) {
 
 func TestDeployThreadsReplicasAndSlug(t *testing.T) {
 	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
-	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "My Orders API!"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "My Orders API!", Definition: exposableDef}}
 	kc := &fakeKube{status: kube.StatusPending}
 	svc := NewService(repo, integrations, kc)
 
@@ -261,10 +263,11 @@ func TestDeployDefaultsReplicasToOne(t *testing.T) {
 	}
 }
 
-func TestUndeployRemovesInternalServiceWhenLast(t *testing.T) {
+// TestUndeployRemovesInternalService verifies a networked deployment's
+// per-deployment internal Service is torn down with it.
+func TestUndeployRemovesInternalService(t *testing.T) {
 	repo := &fakeRepo{
-		getRet:  Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{"slug":"orders"}`)},
-		listRet: nil, // no deployments remain after delete
+		getRet: Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{"slug":"orders-001"}`)},
 	}
 	kc := &fakeKube{}
 	svc := NewService(repo, &fakeIntegrations{}, kc)
@@ -272,15 +275,16 @@ func TestUndeployRemovesInternalServiceWhenLast(t *testing.T) {
 	if err := svc.Undeploy(context.Background(), "dep-1"); err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if !kc.internalDeleted || kc.gotInternalSlug != "orders" {
-		t.Errorf("expected internal service delete for slug orders (deleted=%v slug=%q)", kc.internalDeleted, kc.gotInternalSlug)
+	if !kc.internalDeleted || kc.gotInternalSlug != "orders-001" {
+		t.Errorf("expected internal service delete for slug orders-001 (deleted=%v slug=%q)", kc.internalDeleted, kc.gotInternalSlug)
 	}
 }
 
-func TestUndeployKeepsInternalServiceWhenOthersRemain(t *testing.T) {
+// TestUndeploySkipsInternalServiceWhenNoSlug verifies a non-networked deployment
+// (no slug, no internal Service) needs no internal-Service cleanup.
+func TestUndeploySkipsInternalServiceWhenNoSlug(t *testing.T) {
 	repo := &fakeRepo{
-		getRet:  Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{"slug":"orders"}`)},
-		listRet: []Deployment{{ID: "dep-2", IntegrationID: "int-1"}},
+		getRet: Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: []byte(`{}`)},
 	}
 	kc := &fakeKube{}
 	svc := NewService(repo, &fakeIntegrations{}, kc)
@@ -289,7 +293,7 @@ func TestUndeployKeepsInternalServiceWhenOthersRemain(t *testing.T) {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if kc.internalDeleted {
-		t.Error("internal service should be kept while other deployments of the integration remain")
+		t.Error("no internal service should be deleted when the deployment has no slug")
 	}
 }
 
@@ -318,7 +322,9 @@ func TestDeployExternalThreadsIngress(t *testing.T) {
 	}
 }
 
-func TestDeployExternalDefaultsSubdomainToName(t *testing.T) {
+// TestDeployExternalDefaultsSubdomainToSlug verifies an external deploy with no
+// explicit subdomain defaults its external host to the deployment's unique slug.
+func TestDeployExternalDefaultsSubdomainToSlug(t *testing.T) {
 	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
 	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders API", Definition: exposableDef}}
 	kc := &fakeKube{status: kube.StatusPending, externalEnabled: true}
@@ -328,7 +334,7 @@ func TestDeployExternalDefaultsSubdomainToName(t *testing.T) {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if kc.gotSpec.Subdomain != "orders-api" {
-		t.Errorf("subdomain = %q, want orders-api (slug of name)", kc.gotSpec.Subdomain)
+		t.Errorf("subdomain = %q, want orders-api (the unique slug)", kc.gotSpec.Subdomain)
 	}
 }
 
@@ -403,7 +409,9 @@ func TestDeployMissingIntegration(t *testing.T) {
 
 func TestDeployRollsBackOnKubeFailure(t *testing.T) {
 	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
-	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+	// A networked integration so a slug is allocated and its internal Service is
+	// part of what rollback must tear down.
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
 	kc := &fakeKube{applyErr: errors.New("boom")}
 	svc := NewService(repo, integrations, kc)
 
@@ -413,6 +421,9 @@ func TestDeployRollsBackOnKubeFailure(t *testing.T) {
 	}
 	if !kc.deleted {
 		t.Error("expected kube.Delete during rollback")
+	}
+	if !kc.internalDeleted || kc.gotInternalSlug != "orders" {
+		t.Errorf("expected internal service cleanup during rollback (deleted=%v slug=%q)", kc.internalDeleted, kc.gotInternalSlug)
 	}
 	if !repo.deleted {
 		t.Error("expected repo.Delete during rollback")
@@ -439,32 +450,146 @@ func TestUndeployDeletesResourcesAndRow(t *testing.T) {
 	}
 }
 
-func TestDeployRejectsSlugTakenByAnotherIntegration(t *testing.T) {
-	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, slugOwner: "other-int"}
-	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
-	kc := &fakeKube{status: kube.StatusPending}
-	svc := NewService(repo, integrations, kc)
-
-	_, err := svc.Deploy(context.Background(), "int-1", Settings{})
-	if !errors.Is(err, ErrSlugTaken) {
-		t.Errorf("got %v, want ErrSlugTaken", err)
-	}
-	if kc.applied {
-		t.Error("kube.Apply should not run when the slug is taken")
-	}
-}
-
-func TestDeployAllowsSlugOwnedBySameIntegration(t *testing.T) {
-	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, slugOwner: "int-1"}
-	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders"}}
+// TestDeployAllocatesUniqueSlugOnCollision verifies a networked deployment whose
+// base slug is already claimed gets a -NNN-suffixed slug rather than colliding.
+func TestDeployAllocatesUniqueSlugOnCollision(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-2"}, takenSlugs: map[string]string{"orders": "int-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
 	kc := &fakeKube{status: kube.StatusPending}
 	svc := NewService(repo, integrations, kc)
 
 	if _, err := svc.Deploy(context.Background(), "int-1", Settings{}); err != nil {
-		t.Fatalf("redeploy of the same integration should be allowed, got %v", err)
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.gotSpec.Slug != "orders-001" {
+		t.Errorf("spec slug = %q, want orders-001 (base taken)", kc.gotSpec.Slug)
+	}
+	if meta := ParseMetadata(repo.gotMetadata); meta.Slug != "orders-001" {
+		t.Errorf("metadata slug = %q, want orders-001", meta.Slug)
+	}
+}
+
+// TestDeployHonorsUserSlug verifies a user-supplied slug is used verbatim (after
+// slugify) rather than auto-allocated.
+func TestDeployHonorsUserSlug(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{Slug: "My Custom API"}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if kc.gotSpec.Slug != "my-custom-api" {
+		t.Errorf("spec slug = %q, want my-custom-api (slugified user input)", kc.gotSpec.Slug)
+	}
+}
+
+// TestDeployRejectsTakenUserSlug verifies a user-supplied slug already in use is
+// rejected rather than silently incremented.
+func TestDeployRejectsTakenUserSlug(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}, takenSlugs: map[string]string{"taken": "other-int"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{Slug: "taken"}); !errors.Is(err, ErrSlugTaken) {
+		t.Errorf("got %v, want ErrSlugTaken", err)
+	}
+	if kc.applied {
+		t.Error("kube.Apply should not run when the chosen slug is taken")
+	}
+}
+
+// TestDeployRejectsInvalidUserSlug verifies a slug with no usable DNS-1123 form is
+// rejected.
+func TestDeployRejectsInvalidUserSlug(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{Slug: "!!!"}); !errors.Is(err, ErrInvalidSlug) {
+		t.Errorf("got %v, want ErrInvalidSlug", err)
+	}
+}
+
+// TestDeployOptionsSuggestsFreeSlug verifies the no-candidate path reports the
+// integration networked and suggests a free slug.
+func TestDeployOptionsSuggestsFreeSlug(t *testing.T) {
+	repo := &fakeRepo{takenSlugs: map[string]string{"orders": "other-int"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	svc := NewService(repo, integrations, &fakeKube{})
+
+	opts, err := svc.DeployOptions(context.Background(), "int-1", "", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !opts.Networked || opts.SuggestedSlug != "orders-001" {
+		t.Errorf("opts = %+v, want networked with suggested orders-001", opts)
+	}
+}
+
+// TestDeployOptionsValidatesSubdomainOnlyWhenExternal verifies a candidate free as
+// a slug but taken as a subdomain is available for internal use but not external.
+func TestDeployOptionsValidatesSubdomainOnlyWhenExternal(t *testing.T) {
+	repo := &fakeRepo{subdomainOwner: "other-int"} // "orders" free as a slug, taken as a subdomain
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Orders", Definition: exposableDef}}
+	svc := NewService(repo, integrations, &fakeKube{})
+
+	internal, err := svc.DeployOptions(context.Background(), "int-1", "orders", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !internal.SlugChecked || !internal.SlugValid || !internal.SlugAvailable {
+		t.Errorf("internal opts = %+v, want available (subdomain irrelevant)", internal)
+	}
+
+	external, err := svc.DeployOptions(context.Background(), "int-1", "orders", true)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !external.SlugValid || external.SlugAvailable {
+		t.Errorf("external opts = %+v, want unavailable (subdomain taken)", external)
+	}
+}
+
+// TestDeployOptionsNonNetworked verifies a non-networked integration reports no
+// slug machinery at all.
+func TestDeployOptionsNonNetworked(t *testing.T) {
+	repo := &fakeRepo{}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Daily Job", Definition: "service:\n  name: daily\n"}}
+	svc := NewService(repo, integrations, &fakeKube{})
+
+	opts, err := svc.DeployOptions(context.Background(), "int-1", "", false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if opts.Networked || opts.SuggestedSlug != "" {
+		t.Errorf("opts = %+v, want non-networked with no suggestion", opts)
+	}
+}
+
+// TestDeployNonNetworkedSkipsSlug verifies an integration with no HTTP source
+// (no HTTP_PORT) gets no slug and no internal URL — no Service is created for it.
+func TestDeployNonNetworkedSkipsSlug(t *testing.T) {
+	repo := &fakeRepo{created: Deployment{ID: "dep-1"}}
+	integrations := &fakeIntegrations{ret: integration.Integration{ID: "int-1", Name: "Daily Job", Definition: "service:\n  name: daily\n"}}
+	kc := &fakeKube{status: kube.StatusPending}
+	svc := NewService(repo, integrations, kc)
+
+	if _, err := svc.Deploy(context.Background(), "int-1", Settings{}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
 	}
 	if !kc.applied {
-		t.Error("expected kube.Apply for a same-integration redeploy")
+		t.Error("expected kube.Apply for a non-networked deployment")
+	}
+	if kc.gotSpec.Slug != "" {
+		t.Errorf("spec slug = %q, want empty (no HTTP source)", kc.gotSpec.Slug)
+	}
+	meta := ParseMetadata(repo.gotMetadata)
+	if meta.Slug != "" || meta.InternalURL != "" {
+		t.Errorf("metadata slug/url should be empty for a non-networked deployment: %+v", meta)
 	}
 }
 

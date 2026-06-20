@@ -38,6 +38,7 @@ func NewHandler(svc *Service, hub *Hub) *Handler {
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /integrations/{id}/deployments", h.deploy)
 	mux.HandleFunc("GET /integrations/{id}/deployments", h.listByIntegration)
+	mux.HandleFunc("GET /integrations/{id}/deployments/options", h.deployOptions)
 	mux.HandleFunc("GET /deployments/{id}", h.get)
 	mux.HandleFunc("PATCH /deployments/{id}", h.scale)
 	mux.HandleFunc("DELETE /deployments/{id}", h.undeploy)
@@ -119,6 +120,38 @@ func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, toResponse(d))
+}
+
+// deployOptionsResponse is the wire form of the deploy choices for an integration.
+// The slug* fields are populated only when the request carried a candidate slug.
+type deployOptionsResponse struct {
+	Networked     bool   `json:"networked"`
+	SuggestedSlug string `json:"suggestedSlug,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+	SlugValid     bool   `json:"slugValid"`
+	SlugAvailable bool   `json:"slugAvailable"`
+}
+
+// deployOptions backs the deploy modal: with no slug query it reports whether the
+// integration is networked and a free slug to suggest; with ?slug= it validates
+// that candidate (?expose=external also checks the subdomain is free).
+func (h *Handler) deployOptions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	external := r.URL.Query().Get("expose") == ExposeExternal
+	opts, err := h.svc.DeployOptions(ctx, r.PathValue("id"), r.URL.Query().Get("slug"), external)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, deployOptionsResponse{
+		Networked:     opts.Networked,
+		SuggestedSlug: opts.SuggestedSlug,
+		Slug:          opts.Slug,
+		SlugValid:     opts.SlugValid,
+		SlugAvailable: opts.SlugAvailable,
+	})
 }
 
 func (h *Handler) listByIntegration(w http.ResponseWriter, r *http.Request) {
@@ -268,8 +301,10 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusBadRequest, "external endpoints are not configured")
 	case errors.Is(err, ErrInvalidSubdomain):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid external subdomain")
+	case errors.Is(err, ErrInvalidSlug):
+		httpx.WriteError(w, http.StatusBadRequest, "invalid deployment slug")
 	case errors.Is(err, ErrSlugTaken):
-		httpx.WriteError(w, http.StatusConflict, "integration slug already in use by another integration")
+		httpx.WriteError(w, http.StatusConflict, "deployment slug already in use")
 	case errors.Is(err, ErrSubdomainTaken):
 		httpx.WriteError(w, http.StatusConflict, "external subdomain already in use by another integration")
 	default:

@@ -62,8 +62,8 @@ type Spec struct {
 	IntegrationID string            // owning integration uuid (label + internal Service selector)
 	Definition    string            // runtime-loadable integration YAML
 	Replicas      int32             // desired replica count; <1 is treated as 1
-	Slug          string            // integration name slug; names the stable internal Service ("" = none)
-	Port          int               // runtime HTTP port (from HTTP_PORT); <1 falls back to runtimePort
+	Slug          string            // unique slug naming this deployment's internal Service ("" = none)
+	Port          int               // runtime HTTP port (from HTTP_PORT); 0 means no HTTP source (no Service)
 	Env           map[string]string // env vars supplied to the runtime container (e.g. HTTP_HOST/HTTP_PORT)
 	Expose        bool              // when true, also publish an external Ingress
 	Subdomain     string            // external host label; the Ingress host is {Subdomain}.{baseDomain}
@@ -76,6 +76,13 @@ func (s Spec) port() int32 {
 	}
 	return runtimePort
 }
+
+// networked reports whether the deployment serves HTTP on a port — i.e. its
+// integration declared HTTP_PORT. Only networked deployments get Services (a
+// per-deployment one, a stable internal one) and the option of an Ingress; a
+// deployment with no HTTP source (a timer, a scheduled job) runs as a bare
+// workload with no Service at all.
+func (s Spec) networked() bool { return s.Port > 0 }
 
 // informerResync is the periodic full relist interval; it backstops any missed
 // watch events without making the cache stale in normal operation.
@@ -151,9 +158,10 @@ func (c *Client) Namespace() string { return c.namespace }
 // "octo-dep-" + a uuid stays within the 63-char DNS-1123 label limit.
 func resourceName(deploymentID string) string { return "octo-dep-" + deploymentID }
 
-// internalServiceName is the stable, integration-scoped Service name other flows
-// address regardless of which deployment is current. "octo-int-" + a slug (≤54
-// chars; the caller bounds it) stays within the 63-char DNS-1123 label limit.
+// internalServiceName is the stable, per-deployment Service name other flows
+// address to reach a deployment by a constant name. The slug is unique per
+// deployment; "octo-int-" + a slug (≤54 chars; the caller bounds it) stays within
+// the 63-char DNS-1123 label limit.
 func internalServiceName(slug string) string { return "octo-int-" + slug }
 
 // InternalURL is the in-cluster address of the stable internal Service for slug,
@@ -201,6 +209,12 @@ func (c *Client) Apply(ctx context.Context, spec Spec) error {
 		return fmt.Errorf("kube: create deployment: %w", err)
 	}
 
+	// A deployment with no HTTP source listens on nothing, so it needs no Service,
+	// no internal endpoint and no Ingress: the workload alone is the whole deploy.
+	if !spec.networked() {
+		return nil
+	}
+
 	svcs := c.clientset.CoreV1().Services(c.namespace)
 	if _, err := svcs.Create(ctx, &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
@@ -217,10 +231,9 @@ func (c *Client) Apply(ctx context.Context, spec Spec) error {
 		return fmt.Errorf("kube: create service: %w", err)
 	}
 
-	// Stable, integration-scoped Service so other flows can reach this
-	// integration by a constant name regardless of deployment id, load-balanced
-	// across all its replicas. Idempotent: a prior deployment of the same
-	// integration may already own it.
+	// Stable internal Service so other flows can reach this deployment by a constant
+	// name (octo-int-{slug}), load-balanced across its replicas. The slug is unique
+	// per deployment, so each deployment has its own internal address.
 	if err := c.ensureInternalService(ctx, spec); err != nil {
 		return fmt.Errorf("kube: ensure internal service: %w", err)
 	}
@@ -276,23 +289,21 @@ func (c *Client) ingress(name string, labels map[string]string, spec Spec) *netw
 }
 
 // ensureInternalService creates the stable "octo-int-{slug}" ClusterIP Service
-// that selects every pod of the integration (by integration-id label). It is a
-// no-op when the deployment has no slug or the Service already exists.
+// that selects this deployment's pods (by deployment-id label). The slug is unique
+// per deployment, so the Service name is too. It is a no-op when the deployment has
+// no slug or the Service already exists.
 func (c *Client) ensureInternalService(ctx context.Context, spec Spec) error {
 	if spec.Slug == "" {
 		return nil
 	}
 	_, err := c.clientset.CoreV1().Services(c.namespace).Create(ctx, &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: internalServiceName(spec.Slug),
-			Labels: map[string]string{
-				labelManagedBy:     managedByValue,
-				labelIntegrationID: spec.IntegrationID,
-			},
+			Name:   internalServiceName(spec.Slug),
+			Labels: c.labels(spec),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
-			Selector: map[string]string{labelIntegrationID: spec.IntegrationID},
+			Selector: map[string]string{labelDeploymentID: spec.ID},
 			Ports: []corev1.ServicePort{{
 				Name:       "http",
 				Port:       spec.port(),
@@ -335,11 +346,16 @@ func (c *Client) DeleteInternalService(ctx context.Context, slug string) error {
 
 // deployment builds the Deployment object: spec.Replicas runtime pods (clamped to
 // a minimum of 1) with the integration ConfigMap mounted read-only at the config
-// path, the resolved runtime port declared, and any supplied env vars set.
+// path, any supplied env vars set, and the runtime port declared only when the
+// integration has an HTTP source (a non-networked workload exposes no port).
 func (c *Client) deployment(name string, labels map[string]string, spec Spec) *appsv1.Deployment {
 	replicas := spec.Replicas
 	if replicas < 1 {
 		replicas = 1
+	}
+	var ports []corev1.ContainerPort
+	if spec.networked() {
+		ports = []corev1.ContainerPort{{Name: "http", ContainerPort: spec.port()}}
 	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
@@ -356,10 +372,7 @@ func (c *Client) deployment(name string, labels map[string]string, spec Spec) *a
 						Image:           c.runtimeImage,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Env:             envVars(spec.Env),
-						Ports: []corev1.ContainerPort{{
-							Name:          "http",
-							ContainerPort: spec.port(),
-						}},
+						Ports:           ports,
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "integration",
 							MountPath: configMountPath,

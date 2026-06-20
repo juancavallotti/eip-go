@@ -35,18 +35,31 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /deployments/{id}", h.undeploy)
 }
 
+// podResponse is the wire representation of one runtime pod.
+type podResponse struct {
+	Name     string `json:"name"`
+	Phase    string `json:"phase"`
+	Ready    bool   `json:"ready"`
+	Restarts int32  `json:"restarts"`
+}
+
 // deploymentResponse is the wire representation of a deployment. The display
-// name, replica count and internal URL are lifted out of the jsonb columns for
-// convenience.
+// name, replica count and URLs are lifted out of the jsonb columns; the replica
+// counts, pods, reason and createdAt come from the live cluster status.
 type deploymentResponse struct {
-	ID            string    `json:"id"`
-	IntegrationID string    `json:"integrationId"`
-	Name          string    `json:"name"`
-	Status        string    `json:"status"`
-	Replicas      int       `json:"replicas"`
-	InternalURL   string    `json:"internalUrl,omitempty"`
-	ExternalURL   string    `json:"externalUrl,omitempty"`
-	LastUpdated   time.Time `json:"lastUpdated"`
+	ID              string        `json:"id"`
+	IntegrationID   string        `json:"integrationId"`
+	Name            string        `json:"name"`
+	Status          string        `json:"status"`
+	Replicas        int           `json:"replicas"`
+	ReadyReplicas   int32         `json:"readyReplicas"`
+	DesiredReplicas int32         `json:"desiredReplicas"`
+	Reason          string        `json:"reason,omitempty"`
+	Pods            []podResponse `json:"pods,omitempty"`
+	InternalURL     string        `json:"internalUrl,omitempty"`
+	ExternalURL     string        `json:"externalUrl,omitempty"`
+	CreatedAt       *time.Time    `json:"createdAt,omitempty"`
+	LastUpdated     time.Time     `json:"lastUpdated"`
 }
 
 func toResponse(d Deployment) deploymentResponse {
@@ -55,16 +68,27 @@ func toResponse(d Deployment) deploymentResponse {
 	if replicas < 1 {
 		replicas = 1
 	}
-	return deploymentResponse{
-		ID:            d.ID,
-		IntegrationID: d.IntegrationID,
-		Name:          meta.Name,
-		Status:        d.Status,
-		Replicas:      replicas,
-		InternalURL:   meta.InternalURL,
-		ExternalURL:   meta.ExternalURL,
-		LastUpdated:   d.LastUpdated,
+	resp := deploymentResponse{
+		ID:              d.ID,
+		IntegrationID:   d.IntegrationID,
+		Name:            meta.Name,
+		Status:          d.Status,
+		Replicas:        replicas,
+		ReadyReplicas:   d.Detail.ReadyReplicas,
+		DesiredReplicas: d.Detail.DesiredReplicas,
+		Reason:          d.Detail.Reason,
+		InternalURL:     meta.InternalURL,
+		ExternalURL:     meta.ExternalURL,
+		LastUpdated:     d.LastUpdated,
 	}
+	if !d.Detail.CreatedAt.IsZero() {
+		t := d.Detail.CreatedAt
+		resp.CreatedAt = &t
+	}
+	for _, p := range d.Detail.Pods {
+		resp.Pods = append(resp.Pods, podResponse{Name: p.Name, Phase: p.Phase, Ready: p.Ready, Restarts: p.Restarts})
+	}
+	return resp
 }
 
 func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {

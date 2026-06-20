@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Globe, Rocket, Trash2 } from "lucide-react";
+import { Globe, Rocket } from "lucide-react";
 import {
   createDeployment,
   deleteDeployment,
   listDeployments,
   type Deployment,
-  type DeploymentStatus,
 } from "@/app/model/orchestrator";
+import DeploymentRow from "./DeploymentRow";
 
 /**
  * Deployments for one integration: a one-click Deploy plus a list of live
@@ -20,21 +20,6 @@ import {
 
 // Status is refreshed server-side on read; poll gently so pending->running shows.
 const REFRESH_MS = 4000;
-
-const STATUS_STYLES: Record<DeploymentStatus, string> = {
-  running: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  pending: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  failed: "bg-red-500/15 text-red-600 dark:text-red-400",
-};
-
-function StatusBadge({ status }: { status: DeploymentStatus }) {
-  const cls = STATUS_STYLES[status] ?? "bg-zinc-500/15 text-zinc-500";
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {status}
-    </span>
-  );
-}
 
 export default function DeploymentsSection({
   integrationId,
@@ -160,50 +145,14 @@ export default function DeploymentsSection({
       {deployments.length === 0 ? (
         <p className="text-sm text-zinc-400">Not deployed.</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-1.5">
           {deployments.map((d) => (
-            <li
+            <DeploymentRow
               key={d.id}
-              className="flex flex-wrap items-center gap-2 py-0.5 text-sm"
-              title={d.id}
-            >
-              <span className="font-mono text-xs text-zinc-500">
-                {d.id.slice(0, 8)}
-              </span>
-              <StatusBadge status={d.status} />
-              {d.replicas > 1 && (
-                <span className="text-xs text-zinc-400">×{d.replicas}</span>
-              )}
-              {d.externalUrl ? (
-                <a
-                  href={d.externalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-sky-600 hover:underline dark:text-sky-400"
-                >
-                  <ExternalLink size={12} />
-                  {d.externalUrl.replace(/^https?:\/\//, "")}
-                </a>
-              ) : (
-                d.internalUrl && (
-                  <span
-                    className="font-mono text-xs text-zinc-400"
-                    title={`Internal: ${d.internalUrl}`}
-                  >
-                    internal
-                  </span>
-                )
-              )}
-              <button
-                type="button"
-                onClick={() => undeploy(d)}
-                disabled={busy}
-                aria-label="Undeploy"
-                className="ml-auto rounded-md p-1 text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
-              >
-                <Trash2 size={14} />
-              </button>
-            </li>
+              deployment={d}
+              busy={busy}
+              onUndeploy={undeploy}
+            />
           ))}
         </ul>
       )}

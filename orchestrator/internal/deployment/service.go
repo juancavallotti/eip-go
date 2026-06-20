@@ -34,7 +34,7 @@ type integrationStore interface {
 // satisfies it.
 type kubeClient interface {
 	Apply(ctx context.Context, spec kube.Spec) error
-	Status(ctx context.Context, deploymentID string) (string, error)
+	Status(ctx context.Context, deploymentID string) (kube.Status, error)
 	Delete(ctx context.Context, deploymentID string) error
 	InternalURL(slug string, port int) string
 	DeleteInternalService(ctx context.Context, slug string) error
@@ -165,7 +165,7 @@ func (s *Service) Deploy(ctx context.Context, integrationID string, settings Set
 	}
 
 	// Reflect the freshly observed status (typically still pending) in the cache.
-	dep.Status = s.refresh(ctx, dep.ID, dep.Status)
+	s.applyRefresh(ctx, &dep)
 	return dep, nil
 }
 
@@ -200,7 +200,7 @@ func (s *Service) Get(ctx context.Context, id string) (Deployment, error) {
 	if err != nil {
 		return Deployment{}, err
 	}
-	dep.Status = s.refresh(ctx, dep.ID, dep.Status)
+	s.applyRefresh(ctx, &dep)
 	return dep, nil
 }
 
@@ -212,7 +212,7 @@ func (s *Service) ListByIntegration(ctx context.Context, integrationID string) (
 		return nil, err
 	}
 	for i := range deps {
-		deps[i].Status = s.refresh(ctx, deps[i].ID, deps[i].Status)
+		s.applyRefresh(ctx, &deps[i])
 	}
 	return deps, nil
 }
@@ -277,20 +277,28 @@ func slugify(name string) string {
 	return out
 }
 
-// refresh queries the live status and updates the cache, returning the current
-// value. On a Kubernetes/DB error it logs and falls back to the cached value so
-// a transient blip does not break a read.
-func (s *Service) refresh(ctx context.Context, id, cached string) string {
+// applyRefresh refreshes d's live status from the cluster in place: it sets the
+// coarse cached Status (persisting it when it changed) and the live Detail.
+func (s *Service) applyRefresh(ctx context.Context, d *Deployment) {
+	st := s.refresh(ctx, d.ID, d.Status)
+	d.Status = st.Phase
+	d.Detail = st
+}
+
+// refresh queries the live status and updates the cache, returning the live
+// status. On a Kubernetes/DB error it logs and falls back to the cached coarse
+// value so a transient blip does not break a read.
+func (s *Service) refresh(ctx context.Context, id, cached string) kube.Status {
 	if s.kube == nil {
-		return cached
+		return kube.Status{Phase: cached}
 	}
 	status, err := s.kube.Status(ctx, id)
 	if err != nil {
 		slog.Error("deployment status refresh", "id", id, "error", err)
-		return cached
+		return kube.Status{Phase: cached}
 	}
-	if status != cached {
-		if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
+	if status.Phase != cached {
+		if err := s.repo.UpdateStatus(ctx, id, status.Phase); err != nil {
 			slog.Error("deployment status cache update", "id", id, "error", err)
 		}
 	}

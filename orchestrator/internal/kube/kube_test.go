@@ -195,18 +195,37 @@ func TestExternalHostAndURL(t *testing.T) {
 	}
 }
 
-func TestStatusRunning(t *testing.T) {
+func TestStatusRunningReportsReplicas(t *testing.T) {
+	desired := int32(2)
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName("d1"), Namespace: testNamespace},
+		Spec:       appsv1.DeploymentSpec{Replicas: &desired},
 		Status:     appsv1.DeploymentStatus{ReadyReplicas: 1},
 	}
-	c := testClient(dep)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "d1-pod", Namespace: testNamespace, Labels: map[string]string{labelDeploymentID: "d1"}},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+			ContainerStatuses: []corev1.ContainerStatus{{
+				RestartCount: 2,
+				State:        corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
+	c := testClient(dep, pod)
 	got, err := c.Status(context.Background(), "d1")
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if got != StatusRunning {
-		t.Errorf("status = %q, want running", got)
+	if got.Phase != StatusRunning {
+		t.Errorf("phase = %q, want running", got.Phase)
+	}
+	if got.DesiredReplicas != 2 || got.ReadyReplicas != 1 {
+		t.Errorf("replicas ready/desired = %d/%d, want 1/2", got.ReadyReplicas, got.DesiredReplicas)
+	}
+	if len(got.Pods) != 1 || !got.Pods[0].Ready || got.Pods[0].Restarts != 2 || got.Pods[0].Phase != "Running" {
+		t.Errorf("pod detail = %+v, want one ready Running pod with 2 restarts", got.Pods)
 	}
 }
 
@@ -217,8 +236,8 @@ func TestStatusPending(t *testing.T) {
 	}
 	c := testClient(dep)
 	got, _ := c.Status(context.Background(), "d1")
-	if got != StatusPending {
-		t.Errorf("status = %q, want pending", got)
+	if got.Phase != StatusPending {
+		t.Errorf("phase = %q, want pending", got.Phase)
 	}
 }
 
@@ -228,12 +247,12 @@ func TestStatusFailedWhenDeploymentMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if got != StatusFailed {
-		t.Errorf("status = %q, want failed", got)
+	if got.Phase != StatusFailed {
+		t.Errorf("phase = %q, want failed", got.Phase)
 	}
 }
 
-func TestStatusFailedOnCrashLoop(t *testing.T) {
+func TestStatusFailedOnCrashLoopWithReason(t *testing.T) {
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName("d1"), Namespace: testNamespace},
 		Status:     appsv1.DeploymentStatus{ReadyReplicas: 0},
@@ -245,17 +264,21 @@ func TestStatusFailedOnCrashLoop(t *testing.T) {
 			Labels:    map[string]string{labelDeploymentID: "d1"},
 		},
 		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
 			ContainerStatuses: []corev1.ContainerStatus{{
 				State: corev1.ContainerState{
-					Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"},
+					Waiting: &corev1.ContainerStateWaiting{Reason: "ImagePullBackOff", Message: "back-off pulling image"},
 				},
 			}},
 		},
 	}
 	c := testClient(dep, pod)
 	got, _ := c.Status(context.Background(), "d1")
-	if got != StatusFailed {
-		t.Errorf("status = %q, want failed", got)
+	if got.Phase != StatusFailed {
+		t.Errorf("phase = %q, want failed", got.Phase)
+	}
+	if got.Reason != "ImagePullBackOff: back-off pulling image" {
+		t.Errorf("reason = %q, want the waiting reason+message", got.Reason)
 	}
 }
 

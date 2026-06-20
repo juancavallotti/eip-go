@@ -98,8 +98,8 @@ func (f *fakeKube) Apply(_ context.Context, spec kube.Spec) error {
 	return f.applyErr
 }
 
-func (f *fakeKube) Status(_ context.Context, _ string) (string, error) {
-	return f.status, f.statusErr
+func (f *fakeKube) Status(_ context.Context, _ string) (kube.Status, error) {
+	return kube.Status{Phase: f.status}, f.statusErr
 }
 
 func (f *fakeKube) Delete(_ context.Context, _ string) error {

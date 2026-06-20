@@ -35,7 +35,7 @@ variable "domain" {
   default     = "octo.juancavallotti.com"
 }
 
-# --- Infra-only values (live in infra/terraform.tfvars) ---
+# --- Infra-only values (also set in the shared octo.tfvars) ---
 
 variable "dns_managed_zone" {
   type        = string
@@ -98,6 +98,6 @@ variable "cloudbuild_auto_deploy" {
 
 variable "state_bucket" {
   type        = string
-  description = "GCS bucket backing the release Terraform state (created by deploy/terraform/bootstrap). Empty -> octo-tfstate-{project_id}. Used to scope the build SA's storage access."
+  description = "GCS bucket backing the release Terraform state (created by `task state:bucket`). Empty -> octo-tfstate-{project_id}. Used to scope the build SA's storage access."
   default     = ""
 }

@@ -297,7 +297,27 @@ tasks:
         set -e
         CHART_VERSION="$(helm show chart helm | awk '/^version:/ {print $2}')"
         terraform -chdir=deploy/terraform/release init -input=false
-        terraform -chdir=deploy/terraform/release apply -auto-approve \
+        terraform -chdir=deploy/terraform/release apply -auto-approve -compact-warnings \
           -var-file=../octo.tfvars \
           -var image_tag={{.TAG}} \
           -var chart_version="${CHART_VERSION}"
+
+  state:bucket:
+    desc: 'Create the GCS bucket backing the release Terraform state (run once; set PROJECT, optional REGION). Must match release/backend.tf (octo-tfstate-PROJECT).'
+    requires:
+      vars: [PROJECT]
+    vars:
+      REGION: '{{.REGION | default "us-west1"}}'
+    cmds:
+      - |
+        set -e
+        BUCKET="gs://octo-tfstate-{{.PROJECT}}"
+        gcloud storage buckets create "$BUCKET" --location={{.REGION}} --uniform-bucket-level-access
+        gcloud storage buckets update "$BUCKET" --versioning
+        echo "✓ created $BUCKET (versioned). Set it as the bucket in release/backend.tf if PROJECT != juancavallotti."
+
+  infra:apply:
+    desc: 'Apply the one-time infra root (registry + VM/k3s + optional Cloud Build) from octo.tfvars'
+    cmds:
+      - terraform -chdir=deploy/terraform/infra init -input=false
+      - terraform -chdir=deploy/terraform/infra apply -compact-warnings -var-file=../octo.tfvars

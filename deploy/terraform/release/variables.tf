@@ -61,3 +61,17 @@ variable "secret_id" {
   description = "Secret Manager secret holding the Postgres password. null = {instance_name}-postgres."
   default     = null
 }
+
+# Declared (unused here) so the single shared octo.tfvars — which carries these for
+# the infra root — does not emit "undeclared variable" warnings on a release apply.
+variable "dns_managed_zone" {
+  type        = string
+  description = "Infra-only (Cloud DNS zone name); ignored by the release root."
+  default     = ""
+}
+
+variable "enable_cloudbuild" {
+  type        = bool
+  description = "Infra-only (creates the Cloud Build trigger); ignored by the release root."
+  default     = false
+}

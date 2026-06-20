@@ -5,7 +5,7 @@
  * by design — only listing names and setting/deleting.
  */
 
-import { jsonBody, request } from "./orchestrator";
+import { jsonBody, request } from "./bff";
 
 /**
  * A cluster-wide secret, as the catalog exposes it. The value is write-only and

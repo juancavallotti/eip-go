@@ -93,6 +93,39 @@ describe("run session", () => {
     expect(await readdir(join(dir, NS))).not.toContain(path!.split("/").pop());
   });
 
+  it("allocates a port and injects HTTP_PORT for a networked run", async () => {
+    process.env.OCTO_BIN_PATH = await fakeBin(
+      dir,
+      "octo-port",
+      'printf "bound %s on %s\\n" "$HTTP_PORT" "$HTTP_HOST"',
+    );
+
+    const yaml =
+      "service:\n  name: net\nenv:\n  - name: HTTP_PORT\n    default: \"8080\"\n";
+    const started = await start(NS, yaml);
+    expect(started.exposable).toBe(true);
+    expect(started.port).toBeGreaterThanOrEqual(40000);
+
+    await vi.waitFor(
+      () => {
+        expect(texts()).toContain(`bound ${started.port} on 127.0.0.1`);
+      },
+      { timeout: 4000 },
+    );
+
+    // The port is released once the run is stopped.
+    await stop(NS);
+    expect(status(NS).port).toBeNull();
+    expect(status(NS).exposable).toBe(false);
+  });
+
+  it("does not allocate a port for an internal-only run", async () => {
+    process.env.OCTO_BIN_PATH = await fakeBin(dir, "octo-noop", "sleep 1");
+    const started = await start(NS, "service:\n  name: internal\n");
+    expect(started.exposable).toBe(false);
+    expect(started.port).toBeNull();
+  });
+
   it("ignores sync when nothing is running", async () => {
     delete process.env.OCTO_BIN_PATH;
     const result = await sync(NS, "service:\n  name: x\n");

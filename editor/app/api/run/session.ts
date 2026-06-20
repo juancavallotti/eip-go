@@ -3,8 +3,11 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Readable } from "node:stream";
 import { cachedVersion } from "./version";
+import { allocatePort, isExposable, releasePort } from "./ports";
+import { LogBuffer, type LogLine } from "./logbuffer";
+
+export type { LogLine };
 
 /**
  * Server-side manager that owns the running `octo` processes for the editor's dev
@@ -20,16 +23,8 @@ import { cachedVersion } from "./version";
  * of the child processes).
  */
 
-/** Largest config inputs are tiny; this cap just bounds the in-memory log buffer. */
-const MAX_LOG_LINES = 5000;
 /** Grace period before a stop escalates from SIGTERM to SIGKILL. */
 const STOP_GRACE_MS = 3000;
-
-export interface LogLine {
-  /** Monotonic id, used as the SSE event id so clients can order/resume. */
-  seq: number;
-  text: string;
-}
 
 export interface RunStatus {
   /** Whether a runner binary is configured (OCTO_BIN_PATH set by `task dev`). */
@@ -37,9 +32,11 @@ export interface RunStatus {
   running: boolean;
   /** The runner's `--version` line, probed once; null until known/if unavailable. */
   version: string | null;
+  /** Whether the current run declares HTTP_PORT, i.e. is networked/testable. */
+  exposable: boolean;
+  /** Allocated HTTP listen port for a networked run, null otherwise. */
+  port: number | null;
 }
-
-type Listener = (line: LogLine) => void;
 
 interface Session {
   /** The namespace slug this session belongs to (also its key in the map). */
@@ -48,9 +45,11 @@ interface Session {
   /** Resolves when the current process has fully exited (used by stop/restart). */
   exit: Promise<void> | null;
   configPath: string | null;
-  logs: LogLine[];
-  seq: number;
-  listeners: Set<Listener>;
+  logs: LogBuffer;
+  /** Allocated HTTP port for a networked run; null when not running or internal-only. */
+  port: number | null;
+  /** Whether the current run declares HTTP_PORT (set on start). */
+  exposable: boolean;
 }
 
 const store = globalThis as unknown as {
@@ -73,9 +72,9 @@ function session(ns: string): Session {
       proc: null,
       exit: null,
       configPath: null,
-      logs: [],
-      seq: 0,
-      listeners: new Set(),
+      logs: new LogBuffer(),
+      port: null,
+      exposable: false,
     };
     map.set(ns, s);
   }
@@ -96,6 +95,8 @@ function statusOf(s: Session): RunStatus {
     available: !!process.env.OCTO_BIN_PATH,
     running: s.proc !== null,
     version: cachedVersion(),
+    exposable: s.exposable,
+    port: s.port,
   };
 }
 
@@ -106,40 +107,6 @@ export function status(ns: string): RunStatus {
 /** The config file the namespace's running generation is watching (for tests/inspection). */
 export function currentConfigPath(ns: string): string | null {
   return session(ns).configPath;
-}
-
-function pushLine(s: Session, text: string): void {
-  const line: LogLine = { seq: s.seq++, text };
-  s.logs.push(line);
-  if (s.logs.length > MAX_LOG_LINES) {
-    s.logs.splice(0, s.logs.length - MAX_LOG_LINES);
-  }
-  for (const listener of s.listeners) {
-    try {
-      listener(line);
-    } catch {
-      // A listener whose stream has closed is harmless; it unsubscribes on cancel.
-    }
-  }
-}
-
-/** Split a stream into lines and push each to the session, holding any partial trailing line. */
-function pipeLines(s: Session, stream: Readable | null): void {
-  if (!stream) return;
-  let buffer = "";
-  stream.setEncoding("utf8");
-  stream.on("data", (chunk: string) => {
-    buffer += chunk;
-    let nl: number;
-    while ((nl = buffer.indexOf("\n")) >= 0) {
-      pushLine(s, buffer.slice(0, nl).replace(/\r$/, ""));
-      buffer = buffer.slice(nl + 1);
-    }
-  });
-  stream.on("end", () => {
-    if (buffer !== "") pushLine(s, buffer.replace(/\r$/, ""));
-    buffer = "";
-  });
 }
 
 /** Atomic write (write sibling temp + rename) so `octo`'s dir watcher sees one event. */
@@ -159,7 +126,7 @@ export async function start(ns: string, yaml: string): Promise<RunStatus> {
   await stop(ns); // tear down any previous generation first
 
   const s = session(ns);
-  s.logs = []; // fresh buffer per run; seq stays monotonic so clients still dedupe
+  s.logs.reset(); // fresh buffer per run; seq stays monotonic so clients still dedupe
 
   const dir = namespaceDir(ns);
   await mkdir(dir, { recursive: true });
@@ -167,28 +134,50 @@ export async function start(ns: string, yaml: string): Promise<RunStatus> {
   await writeConfig(configPath, yaml);
   s.configPath = configPath;
 
-  pushLine(s, `▶ starting octo — ${configPath}`);
+  // A networked integration (one that declares HTTP_PORT) gets a real port from
+  // the pool, injected as HTTP_PORT so the BFF can proxy to it. HTTP_HOST is the
+  // loopback because only the same-pod proxy needs to reach it. Internal-only runs
+  // (no HTTP_PORT) get no port and stay unexposed.
+  const exposable = isExposable(yaml);
+  const port = exposable ? allocatePort() : null;
+  s.exposable = exposable;
+  s.port = port;
+
+  const env = { ...process.env };
+  if (port !== null) {
+    env.HTTP_PORT = String(port);
+    env.HTTP_HOST = "127.0.0.1";
+  }
+
+  s.logs.push(`▶ starting octo — ${configPath}`);
   const proc = spawn(bin, ["run", "-config", configPath, "-watch"], {
     stdio: ["ignore", "pipe", "pipe"],
+    env,
   });
   s.proc = proc;
-  pipeLines(s, proc.stdout);
-  pipeLines(s, proc.stderr);
+  s.logs.pipe(proc.stdout);
+  s.logs.pipe(proc.stderr);
 
   s.exit = new Promise<void>((resolve) => {
     const finish = () => {
-      if (s.proc === proc) s.proc = null;
+      if (s.proc === proc) {
+        s.proc = null;
+        // Free this generation's port when it exits on its own (crash/exit).
+        if (port !== null && s.port === port) {
+          releasePort(port);
+          s.port = null;
+        }
+      }
       resolve();
     };
     proc.on("error", (err) => {
-      pushLine(s, `✖ failed to start runner: ${err.message}`);
+      s.logs.push(`✖ failed to start runner: ${err.message}`);
       finish();
     });
     // Resolve on "exit" (process gone) rather than "close" (stdio EOF) so stop()
     // stays responsive even if a child inherits and holds the output pipes.
     proc.on("exit", (code, signal) => {
-      pushLine(
-        s,
+      s.logs.push(
         `■ runner exited (${signal ? `signal ${signal}` : `code ${code ?? 0}`})`,
       );
       finish();
@@ -228,6 +217,11 @@ export async function stop(ns: string): Promise<RunStatus> {
   }
   s.proc = null;
   s.exit = null;
+  if (s.port !== null) {
+    releasePort(s.port);
+    s.port = null;
+  }
+  s.exposable = false;
   if (s.configPath) {
     await rm(s.configPath, { force: true }).catch(() => {});
     s.configPath = null;
@@ -237,14 +231,12 @@ export async function stop(ns: string): Promise<RunStatus> {
 
 /** Replay the namespace's current log buffer (oldest first). */
 export function snapshot(ns: string): LogLine[] {
-  return [...session(ns).logs];
+  return session(ns).logs.snapshot();
 }
 
 /** Subscribe to the namespace's new log lines; returns an unsubscribe function. */
-export function subscribe(ns: string, fn: Listener): () => void {
-  const s = session(ns);
-  s.listeners.add(fn);
-  return () => s.listeners.delete(fn);
+export function subscribe(ns: string, fn: (line: LogLine) => void): () => void {
+  return session(ns).logs.subscribe(fn);
 }
 
 /** Best-effort: don't leave any runner orphaned when the editor process exits. */

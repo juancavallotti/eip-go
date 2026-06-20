@@ -169,6 +169,7 @@ export default function DeploymentsSection({
 
       {modalOpen && (
         <DeployModal
+          integrationId={integrationId}
           integrationName={integrationName}
           busy={busy}
           error={error}

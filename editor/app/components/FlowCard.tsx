@@ -32,7 +32,8 @@ export default function FlowCard({
         })
       }
       className={[
-        "group rounded-3xl border-2 border-dashed bg-black/[0.015] dark:bg-white/[0.02] p-5",
+        "group rounded-3xl border-2 border-dashed p-5",
+        "bg-white/60 backdrop-blur-md dark:bg-zinc-900/50",
         active ? "border-sky-400/70" : "border-zinc-300 dark:border-zinc-700",
       ].join(" ")}
     >
@@ -65,6 +66,19 @@ export default function FlowCard({
           ariaLabel="Flow steps"
           emptyHint="Click or drag a component to build this flow"
         />
+        {flow.error && (
+          <>
+            <div className="my-3 w-full border-t border-dashed border-rose-300/70 dark:border-rose-500/30" />
+            <span className="mb-2 self-start font-mono text-[11px] text-rose-500/90 dark:text-rose-400/80">
+              on error
+            </span>
+            <FlowView
+              flow={flow.error}
+              ariaLabel="Error path"
+              emptyHint="Drop a component to handle errors"
+            />
+          </>
+        )}
       </div>
     </section>
   );

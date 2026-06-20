@@ -7,6 +7,7 @@ import {
   emptyDocument,
   isComposite,
   newId,
+  withErrorChain,
 } from "./document";
 import { connectorResolver, type ConnectorResolver } from "./connectors";
 import { envFromRuntime, envToRuntime } from "./serializeEnv";
@@ -75,6 +76,10 @@ function flowToRuntime(flow: FlowDoc, resolve: ConnectorResolver): RuntimeFlow {
   if (flow.name) out.name = flow.name;
   if (flow.source) out.source = sourceToRuntime(flow.source, resolve);
   out.process = flow.process.map((b) => blockToRuntime(b, resolve));
+  // The flow-level error path serializes as a bare block list, only when set.
+  if (flow.error && flow.error.process.length) {
+    out.error = flow.error.process.map((b) => blockToRuntime(b, resolve));
+  }
   return out;
 }
 
@@ -201,6 +206,10 @@ function flowFromRuntime(
     process: (flow.process ?? []).map((b) => blockFromRuntime(b, connTypes)),
   };
   if (flow.source) out.source = sourceFromRuntime(flow.source, connTypes);
+  if (flow.error) {
+    const process = flow.error.map((b) => blockFromRuntime(b, connTypes));
+    out.error = { id: newId(), name: "", process };
+  }
   return out;
 }
 
@@ -215,7 +224,11 @@ export function fromConfig(config: RuntimeConfig): EditorDocument {
   const env = (config.env ?? []).map(envFromRuntime);
   const connectors = (config.connectors ?? []).map(connectorFromRuntime);
   const connTypes = new Map(connectors.map((c) => [c.name, c.type]));
-  const flows = (config.flows ?? []).map((f) => flowFromRuntime(f, connTypes));
+  // Top-level flows always carry an error chain so the canvas shows the lane;
+  // seed an empty one for flows that declared no error path.
+  const flows = (config.flows ?? []).map((f) =>
+    withErrorChain(flowFromRuntime(f, connTypes)),
+  );
   if (flows.length === 0) return { ...emptyDocument(), connectors, env };
   return { flows, connectors, env, processors: [] };
 }

@@ -10,6 +10,8 @@ export interface RuntimeFlow {
   name?: string;
   source?: RuntimeSource;
   process?: RuntimeBlock[];
+  /** The flow-level error path: a bare block chain (root flows only). */
+  error?: RuntimeBlock[];
 }
 
 export interface RuntimeCase extends RuntimeFlow {

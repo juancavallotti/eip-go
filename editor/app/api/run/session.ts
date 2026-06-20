@@ -7,8 +7,6 @@ import { cachedVersion } from "./version";
 import { allocatePort, isExposable, releasePort } from "./ports";
 import { LogBuffer, type LogLine } from "./logbuffer";
 
-export type { LogLine };
-
 /**
  * Server-side manager that owns the running `octo` processes for the editor's dev
  * RUN feature. It renders nothing itself: the editor POSTs YAML, this spawns
@@ -36,6 +34,8 @@ export interface RunStatus {
   exposable: boolean;
   /** Allocated HTTP listen port for a networked run, null otherwise. */
   port: number | null;
+  /** BFF path that proxies to the running networked integration, null otherwise. */
+  testPath: string | null;
 }
 
 interface Session {
@@ -90,14 +90,29 @@ function namespaceDir(ns: string): string {
   return join(runDir(), ns);
 }
 
+/** The BFF path that proxies to a namespace's running networked integration. The
+ * proxy resolves the actual port server-side, so the path is port-independent. */
+export function testPath(ns: string): string {
+  return `/editor/runs/${ns}/`;
+}
+
 function statusOf(s: Session): RunStatus {
+  const networked = s.proc !== null && s.exposable && s.port !== null;
   return {
     available: !!process.env.OCTO_BIN_PATH,
     running: s.proc !== null,
     version: cachedVersion(),
     exposable: s.exposable,
     port: s.port,
+    testPath: networked ? testPath(s.namespace) : null,
   };
+}
+
+/** The listen port of a namespace's running networked integration, or null when it
+ * is not running or not networked. Used by the reverse proxy to find the target. */
+export function runningPort(ns: string): number | null {
+  const s = session(ns);
+  return s.proc !== null ? s.port : null;
 }
 
 export function status(ns: string): RunStatus {
@@ -150,6 +165,9 @@ export async function start(ns: string, yaml: string): Promise<RunStatus> {
   }
 
   s.logs.push(`▶ starting octo — ${configPath}`);
+  if (port !== null) {
+    s.logs.push(`🔗 test your integration at ${testPath(ns)}`);
+  }
   const proc = spawn(bin, ["run", "-config", configPath, "-watch"], {
     stdio: ["ignore", "pipe", "pipe"],
     env,

@@ -1,8 +1,7 @@
 # Remote state in GCS so the operator and the Cloud Build deploy step share one
-# release state (created by deploy/terraform/bootstrap). The bucket name is a literal
-# — backend blocks cannot interpolate variables; it must match the bootstrap bucket
-# (octo-tfstate-{project_id}). Migrate existing local state with:
-#   terraform init -migrate-state
+# release state. Create the bucket once with `task state:bucket PROJECT=...`. The
+# bucket name is a literal (backend blocks cannot interpolate variables) and must be
+# octo-tfstate-{project_id}; change it here if your project id differs.
 terraform {
   backend "gcs" {
     bucket = "octo-tfstate-juancavallotti"

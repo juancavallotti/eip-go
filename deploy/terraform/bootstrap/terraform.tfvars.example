@@ -1,3 +1,0 @@
-project_id = "your-gcp-project"
-# region      = "us-west1"
-# bucket_name = "octo-tfstate-your-gcp-project"

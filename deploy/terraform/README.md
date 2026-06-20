@@ -22,37 +22,35 @@ bootstraps the cluster, and the chart is installed/upgraded by applying the
 | `modules/base` | Reusable single-VM infra: SA, secret, static IP, firewall (80/443/22 + optional 6443), instance, DNS A + wildcard records. | (module) |
 | `modules/cloudbuild` | Cloud Build trigger + Artifact Registry writer IAM + (optional) deploy-step IAM. | (module) |
 | `modules/helm-release` | The octo `helm_release` from the Artifact Registry OCI chart. | (module) |
-| `bootstrap/` | GCS bucket for remote Terraform state. | once |
 | `infra/` | **Combined one-time root**: registry + the VM/k3s bootstrap + (optional) the Cloud Build trigger. | once |
 | `release/` | The Helm release (Terraform owns it; Cloud Build or `task deploy` applies it). | per deploy/upgrade |
 
-Region defaults to **us-west1** (Oregon). Shared values live in `octo.tfvars`
-(gitignored, used by both `infra/` and `release/`); infra-only extras live in
-`infra/terraform.tfvars`. `release/` state is in GCS so Cloud Build and your laptop
-share it; the generated Postgres password and the fetched kubeconfig are gitignored.
+Region defaults to **us-west1** (Oregon). There is **one tfvars file** — `octo.tfvars`
+(gitignored) — read by both roots; per-deploy values (`image_tag`, `chart_version`)
+come from the command line. `release/` state is in GCS (bucket created by
+`task state:bucket`) so Cloud Build and your laptop share it; the generated Postgres
+password and the fetched kubeconfig are gitignored.
 
 ## One-time setup
 
 ```sh
 gcloud auth application-default login
 
-# 0. Remote state bucket.
-cd deploy/terraform/bootstrap && cp terraform.tfvars.example terraform.tfvars  # set project_id
-terraform init && terraform apply
+# 0. Fill in the one tfvars file (project_id, domain, dns_managed_zone).
+cd deploy/terraform && cp octo.tfvars.example octo.tfvars
 
-# Shared values for the roots below.
-cd .. && cp octo.tfvars.example octo.tfvars   # set project_id, domain
+# 1. Remote state bucket for the release root (run once).
+task state:bucket PROJECT=<your-project>
 
-# 1. Everything one-time: registry + VM + k3s bootstrap. Leave enable_cloudbuild=false
+# 2. Everything one-time: registry + VM + k3s bootstrap. Leave enable_cloudbuild unset
 #    for now (the trigger needs the GitHub App connected first).
-cd infra && cp terraform.tfvars.example terraform.tfvars   # set dns_managed_zone
-terraform init && terraform apply -var-file=../octo.tfvars
-terraform output      # static_ip, url, kube_api_endpoint
+task infra:apply
+terraform -chdir=infra output      # static_ip, url, kube_api_endpoint
 
-# 2. (Optional) Cloud Build automation. Connect the GitHub repo once in the console
-#    (Cloud Build → Triggers → Connect repository), then flip the flag and re-apply.
-#    enable_cloudbuild=true in infra/terraform.tfvars
-terraform apply -var-file=../octo.tfvars
+# 3. (Optional) Cloud Build automation. Connect the GitHub repo once in the console
+#    (Cloud Build → Triggers → Connect repository), set enable_cloudbuild=true in
+#    octo.tfvars, and re-run:
+task infra:apply
 ```
 
 ## Publish images + chart

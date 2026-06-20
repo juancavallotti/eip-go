@@ -21,6 +21,12 @@ const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
  * server-side, so the identity can outlive any single run. */
 const MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
+/** isValidNamespace reports whether a slug is well-formed (used to validate a
+ * namespace taken from a URL path before it reaches the session manager). */
+export function isValidNamespace(ns: string): boolean {
+  return SLUG_RE.test(ns);
+}
+
 /** newNamespace mints a random 8-char slug. */
 export function newNamespace(): string {
   const bytes = randomBytes(8);

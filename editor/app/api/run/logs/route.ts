@@ -1,4 +1,5 @@
-import { snapshot, subscribe, type LogLine } from "../session";
+import { snapshot, subscribe } from "../session";
+import { type LogLine } from "../logbuffer";
 import { ensureNamespace } from "../namespace";
 
 export const runtime = "nodejs";

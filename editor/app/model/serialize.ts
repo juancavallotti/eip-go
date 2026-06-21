@@ -7,69 +7,37 @@ import {
   emptyDocument,
   isComposite,
   newId,
+  withErrorChain,
 } from "./document";
 import { connectorResolver, type ConnectorResolver } from "./connectors";
-import { envFromRuntime, envToRuntime, type RuntimeEnv } from "./serializeEnv";
+import { envFromRuntime, envToRuntime } from "./serializeEnv";
+import {
+  type RuntimeBlock,
+  type RuntimeCase,
+  type RuntimeConfig,
+  type RuntimeConnector,
+  type RuntimeFlow,
+  type RuntimeSource,
+} from "./serializeTypes";
 import { getBlockSpec } from "@/app/schema";
 
 /**
  * Maps the editor document to/from the runtime config shape (the YAML/JSON the
- * runtime loads — see runtime/types/flow.go). This keeps the model honest: it can
- * round-trip a file or start from scratch. Actual disk I/O is wired separately.
- *
- * The mapping is recursive: a composite block's slot fields (flow/flow-list/
- * case-list) become the runtime's typed slots (then/else/main/alternative/
- * branches/cases/default/body), each holding nested flows; its scalar fields
- * (condition/items/as) become top-level block keys; leaf blocks keep their
- * settings map.
+ * runtime loads — see runtime/types/flow.go), so the model can round-trip a file
+ * or start from scratch. The mapping is recursive: a composite block's slot
+ * fields (flow/flow-list/case-list) become the runtime's typed slots, block-list
+ * fields (handle-errors' process/error) become bare block lists, and its scalar
+ * fields become top-level keys; leaf blocks keep their settings map.
  */
 
-export interface RuntimeFlow {
-  name?: string;
-  source?: RuntimeSource;
-  process?: RuntimeBlock[];
-}
-
-export interface RuntimeCase extends RuntimeFlow {
-  when?: string;
-}
-
-export interface RuntimeSource {
-  connector?: string;
-  type?: string;
-  settings?: Record<string, unknown>;
-}
-
-export interface RuntimeBlock {
-  type?: string;
-  name?: string;
-  settings?: Record<string, unknown>;
-  // Composite slots (nested flows).
-  main?: RuntimeFlow;
-  alternative?: RuntimeFlow;
-  branches?: RuntimeFlow[];
-  then?: RuntimeFlow;
-  else?: RuntimeFlow;
-  cases?: RuntimeCase[];
-  default?: RuntimeFlow;
-  body?: RuntimeFlow;
-  // Composite scalars.
-  condition?: unknown;
-  items?: unknown;
-  as?: unknown;
-}
-
-export interface RuntimeConnector {
-  name?: string;
-  type?: string;
-  settings?: Record<string, unknown>;
-}
-
-export interface RuntimeConfig {
-  env?: RuntimeEnv[];
-  connectors?: RuntimeConnector[];
-  flows?: RuntimeFlow[];
-}
+export type {
+  RuntimeFlow,
+  RuntimeCase,
+  RuntimeSource,
+  RuntimeBlock,
+  RuntimeConnector,
+  RuntimeConfig,
+};
 
 const hasKeys = (o: Record<string, unknown>): boolean =>
   Object.keys(o).length > 0;
@@ -108,6 +76,10 @@ function flowToRuntime(flow: FlowDoc, resolve: ConnectorResolver): RuntimeFlow {
   if (flow.name) out.name = flow.name;
   if (flow.source) out.source = sourceToRuntime(flow.source, resolve);
   out.process = flow.process.map((b) => blockToRuntime(b, resolve));
+  // The flow-level error path serializes as a bare block list, only when set.
+  if (flow.error && flow.error.process.length) {
+    out.error = flow.error.process.map((b) => blockToRuntime(b, resolve));
+  }
   return out;
 }
 
@@ -137,6 +109,10 @@ function blockToRuntime(
       if (slot.length) out[field.name] = slot.map((f) => flowToRuntime(f, resolve));
     } else if (field.type === "case-list") {
       if (slot.length) out[field.name] = slot.map((f) => caseToRuntime(f, resolve));
+    } else if (field.type === "block-list") {
+      // A bare block chain: emit the held flow's process directly under the key.
+      const blocks = slot[0]?.process ?? [];
+      if (blocks.length) out[field.name] = blocks.map((b) => blockToRuntime(b, resolve));
     } else {
       const v = block.settings[field.name];
       if (v !== undefined) out[field.name] = v;
@@ -182,6 +158,15 @@ function blockFromRuntime(
     } else if (field.type === "case-list") {
       const list = (raw[field.name] as RuntimeCase[] | undefined) ?? [];
       slots[field.name] = list.map((f) => caseFromRuntime(f, connTypes));
+    } else if (field.type === "block-list") {
+      // Wrap the bare block chain back into a single holding flow.
+      const list = (raw[field.name] as RuntimeBlock[] | undefined) ?? [];
+      const flow: FlowDoc = {
+        id: newId(),
+        name: "",
+        process: list.map((b) => blockFromRuntime(b, connTypes)),
+      };
+      slots[field.name] = [flow];
     } else {
       const v = raw[field.name];
       if (v !== undefined) node.settings[field.name] = v;
@@ -221,6 +206,10 @@ function flowFromRuntime(
     process: (flow.process ?? []).map((b) => blockFromRuntime(b, connTypes)),
   };
   if (flow.source) out.source = sourceFromRuntime(flow.source, connTypes);
+  if (flow.error) {
+    const process = flow.error.map((b) => blockFromRuntime(b, connTypes));
+    out.error = { id: newId(), name: "", process };
+  }
   return out;
 }
 
@@ -235,7 +224,11 @@ export function fromConfig(config: RuntimeConfig): EditorDocument {
   const env = (config.env ?? []).map(envFromRuntime);
   const connectors = (config.connectors ?? []).map(connectorFromRuntime);
   const connTypes = new Map(connectors.map((c) => [c.name, c.type]));
-  const flows = (config.flows ?? []).map((f) => flowFromRuntime(f, connTypes));
+  // Top-level flows always carry an error chain so the canvas shows the lane;
+  // seed an empty one for flows that declared no error path.
+  const flows = (config.flows ?? []).map((f) =>
+    withErrorChain(flowFromRuntime(f, connTypes)),
+  );
   if (flows.length === 0) return { ...emptyDocument(), connectors, env };
   return { flows, connectors, env, processors: [] };
 }

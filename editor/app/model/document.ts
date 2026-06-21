@@ -23,9 +23,9 @@ export interface BlockNode {
   settings: Record<string, unknown>;
   /**
    * Nested sub-flows for composite blocks, keyed by the slot field name
-   * (then/else/main/alternative/body/default/branches/cases). Every slot is a
-   * list for uniformity: single-flow slots hold 0–1 entries, flow-list/case-list
-   * hold N.
+   * (then/else/body/default/branches/cases, and handle-errors' process/error).
+   * Every slot is a list for uniformity: single-flow and block-list slots hold
+   * 0–1 entries, flow-list/case-list hold N.
    */
   slots?: Record<string, FlowDoc[]>;
 }
@@ -53,12 +53,24 @@ export interface FlowDoc {
   name: string;
   source?: SourceNode;
   process: BlockNode[];
+  /**
+   * The flow-level error path (top-level flows only): a holding flow whose
+   * process is the error chain, run when the main process errors. Always present
+   * on top-level flows (empty by default) so the canvas has a drop target; it
+   * serializes to a bare `error:` block list only when it has steps.
+   */
+  error?: FlowDoc;
   /** CEL guard for a switch-case sub-flow (the case's `when`). */
   when?: string;
 }
 
-/** Field types whose value is one or more nested sub-flows. */
-export const SLOT_FIELD_TYPES = new Set(["flow", "flow-list", "case-list"]);
+/** Field types whose value is one or more nested sub-flows (or block chains). */
+export const SLOT_FIELD_TYPES = new Set([
+  "flow",
+  "flow-list",
+  "case-list",
+  "block-list",
+]);
 
 /** Whether a field's value is a nested sub-flow (managed on the canvas, not in the panel). */
 export function isSlotField(field: FieldSpec): boolean {
@@ -129,7 +141,7 @@ export function slotFields(type: string): FieldSpec[] {
   return spec.fields.filter((f) => SLOT_FIELD_TYPES.has(f.type));
 }
 
-/** Whether a block type nests sub-flows (if/switch/foreach/fork/scope). */
+/** Whether a block type nests sub-flows (if/switch/foreach/fork/handle-errors). */
 export function isComposite(type: string): boolean {
   return slotFields(type).length > 0;
 }
@@ -152,9 +164,18 @@ export function emptyFlow(name = "new-flow"): FlowDoc {
   return { id: newId(), name, process: [] };
 }
 
+/**
+ * Ensure a top-level flow carries an (empty) error chain so the canvas has a drop
+ * target for it. Sub-flows never get one (the flow-level error path is root-only).
+ */
+export function withErrorChain(flow: FlowDoc): FlowDoc {
+  return flow.error ? flow : { ...flow, error: emptyFlow("") };
+}
+
 /** A document with a single empty flow — the "new file" template / test baseline. */
 export function emptyDocument(): EditorDocument {
-  return { flows: [emptyFlow()], connectors: [], processors: [], env: [] };
+  const flows = [withErrorChain(emptyFlow())];
+  return { flows, connectors: [], processors: [], env: [] };
 }
 
 /** A truly empty document — no flows at all (the editor's scratch start state). */
@@ -177,7 +198,10 @@ type FlowFn = (flow: FlowDoc) => FlowDoc;
 /** Apply `fn` to the flow with `flowId` anywhere in the tree, returning a copy. */
 function mapFlowTree(flow: FlowDoc, flowId: string, fn: FlowFn): FlowDoc {
   if (flow.id === flowId) return fn(flow);
-  return { ...flow, process: flow.process.map((b) => mapBlock(b, flowId, fn)) };
+  const process = flow.process.map((b) => mapBlock(b, flowId, fn));
+  const next: FlowDoc = { ...flow, process };
+  if (flow.error) next.error = mapFlowTree(flow.error, flowId, fn);
+  return next;
 }
 
 /**
@@ -205,7 +229,9 @@ function mapBlockTree(flow: FlowDoc, blockId: string, fn: BlockFn): FlowDoc {
     }
     return { ...next, slots };
   });
-  return { ...flow, process };
+  const out: FlowDoc = { ...flow, process };
+  if (flow.error) out.error = mapBlockTree(flow.error, blockId, fn);
+  return out;
 }
 
 /**
@@ -236,6 +262,7 @@ export function findBlock(
         }
       }
     }
+    if (flow.error) return visit(flow.error);
     return undefined;
   };
   for (const flow of doc.flows) {
@@ -261,6 +288,7 @@ export function findFlow(
         }
       }
     }
+    if (flow.error) return visit(flow.error);
     return undefined;
   };
   for (const flow of doc.flows) {

@@ -7,6 +7,7 @@ import {
   mapBlockById,
   mapFlow,
   newBlock,
+  withErrorChain,
 } from "@/app/model/document";
 import type { EditorState } from "./reducer";
 import type {
@@ -47,7 +48,7 @@ function updateFlow(
 }
 
 export function addFlow(state: EditorState): EditorState {
-  const flow = emptyFlow(`flow-${state.document.flows.length + 1}`);
+  const flow = withErrorChain(emptyFlow(`flow-${state.document.flows.length + 1}`));
   return {
     ...state,
     document: { ...state.document, flows: [...state.document.flows, flow] },
@@ -64,7 +65,7 @@ export function addBlock(state: EditorState, p: AddBlockPayload): EditorState {
 
   // No target flow yet (scratch document) — create one and start it with this block.
   if (!flowId || !findFlow(state.document, flowId)) {
-    const flow = emptyFlow(`flow-${state.document.flows.length + 1}`);
+    const flow = withErrorChain(emptyFlow(`flow-${state.document.flows.length + 1}`));
     flow.process = [block];
     const document = {
       ...state.document,

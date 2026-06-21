@@ -185,6 +185,57 @@ describe("serialize", () => {
     expect(node.slots!.then[0].process[0].type).toBe("set-payload");
   });
 
+  it("serializes handle-errors process/error as bare block lists", () => {
+    const doc = emptyDocument();
+    const he = newBlock("handle-errors"); // seeds process/error block-list slots
+    he.slots!.process[0].process = [newBlock("rest")];
+    he.slots!.error[0].process = [newBlock("set-payload")];
+    doc.flows[0].process = [he];
+
+    const block = toConfig(doc).flows![0].process![0];
+    // Bare block lists, not wrapped flow objects.
+    expect(block.process![0].type).toBe("rest");
+    expect(block.error![0].type).toBe("set-payload");
+    expect(block.settings).toBeUndefined();
+  });
+
+  it("round-trips handle-errors back into block-list slots", () => {
+    const doc = emptyDocument();
+    const he = newBlock("handle-errors");
+    he.slots!.process[0].process = [newBlock("log")];
+    he.slots!.error[0].process = [newBlock("set-payload")];
+    doc.flows[0].process = [he];
+
+    const restored = fromConfig(toConfig(doc));
+    const node = restored.flows[0].process[0];
+    expect(node.type).toBe("handle-errors");
+    expect(node.slots!.process[0].process[0].type).toBe("log");
+    expect(node.slots!.error[0].process[0].type).toBe("set-payload");
+  });
+
+  it("serializes a flow-level error path as a bare block list", () => {
+    const doc = emptyDocument();
+    doc.flows[0].process = [newBlock("log")];
+    doc.flows[0].error!.process = [newBlock("set-payload")];
+
+    const flow = toConfig(doc).flows![0];
+    expect(flow.process![0].type).toBe("log");
+    expect(flow.error![0].type).toBe("set-payload"); // bare block list, sibling to process
+  });
+
+  it("round-trips a flow error path and seeds an empty one when absent", () => {
+    const doc = emptyDocument();
+    doc.flows[0].error!.process = [newBlock("log")];
+    const restored = fromConfig(toConfig(doc));
+    expect(restored.flows[0].error!.process[0].type).toBe("log");
+
+    // A flow that declared no error path still gets an empty error chain.
+    const seeded = fromConfig({
+      flows: [{ name: "f", process: [{ type: "log" }] }],
+    });
+    expect(seeded.flows[0].error!.process).toEqual([]);
+  });
+
   it("maps env declarations, dropping empty defaults and false required", () => {
     const doc = emptyDocument();
     doc.env = [

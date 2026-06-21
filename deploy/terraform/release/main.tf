@@ -25,6 +25,14 @@ data "google_client_config" "current" {}
 resource "random_password" "postgres" {
   length  = 24
   special = false
+
+  # `terraform import` can't recover the original generation flags, so an adopted
+  # password comes back with special=true and would otherwise force a regenerate
+  # (rotating the live DB password). Ignore the generation flags: the stored value
+  # is what matters, and fresh clusters still create an alphanumeric password.
+  lifecycle {
+    ignore_changes = [special, length, min_special, override_special]
+  }
 }
 
 # Auth.js session secret for the editor. Generated here too (state, not Secret

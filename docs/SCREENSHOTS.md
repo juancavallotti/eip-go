@@ -31,9 +31,10 @@ in `index.html`.
 ## Manual: backend-dependent shots
 
 These need the orchestrator / a running flow / SSO configured, so they aren't automated.
-Drop the PNG in `assets/screenshots/<id>.png` and replace the matching
-`<div class="shot-placeholder" data-shot="<id>">` in `index.html` with
-`<img class="shot" src="assets/screenshots/<id>.png" alt="…" />`.
+They are **not currently placed** on the site — the non-automatic placeholders were removed
+for now. When you capture one, drop the PNG in `assets/screenshots/<id>.png` and add an
+`<img class="shot" src="assets/screenshots/<id>.png" alt="…" />` where you want it (e.g. in
+the What's New section or a future "Product tour").
 
 | `data-shot` id      | What to capture | Notes |
 |---------------------|-----------------|-------|

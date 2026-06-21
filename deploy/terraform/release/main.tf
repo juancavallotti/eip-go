@@ -13,6 +13,9 @@
 locals {
   image_base = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_id}"
   kubeconfig = var.kubeconfig != "" ? var.kubeconfig : "${path.module}/../infra/kubeconfig.yaml"
+  # The release state bucket (matches the literal in backend.tf). Also holds oidc.json
+  # so the Cloud Build deploy step can read the OIDC creds without the local tfvars.
+  state_bucket = "octo-tfstate-${var.project_id}"
 }
 
 # Operator access token for pulling the OCI chart from Artifact Registry.
@@ -39,7 +42,7 @@ resource "random_password" "postgres" {
 # Manager); rotating it would log everyone out, so it is kept in state. Only created
 # when SSO is enabled.
 resource "random_password" "auth_secret" {
-  count   = var.oidc_enabled ? 1 : 0
+  count   = local.oidc_enabled_eff ? 1 : 0
   length  = 32
   special = false
 }
@@ -56,14 +59,54 @@ resource "null_resource" "pull_images" {
     interpreter = ["bash", "-c"]
     # --tunnel-through-iap so this works the same from a laptop and from the Cloud
     # Build deploy step (whose egress IP is dynamic); the IAP range reaches SSH via
-    # the existing firewall.
-    command = "gcloud compute ssh ${var.instance_name} --zone ${var.zone} --project ${var.project_id} --tunnel-through-iap --quiet --command 'sudo octo-pull ${var.image_tag}'"
+    # the existing firewall. Retried because the first SSH after the build's key is
+    # pushed often fails with "Connection closed ... port 65535" until the key
+    # propagates to the instance.
+    command = "for i in $(seq 1 5); do gcloud compute ssh ${var.instance_name} --zone ${var.zone} --project ${var.project_id} --tunnel-through-iap --quiet --command 'sudo octo-pull ${var.image_tag}' && exit 0; echo \"octo-pull SSH attempt $i failed; retrying in 15s\" >&2; sleep 15; done; exit 1"
   }
+}
+
+# OIDC creds, persisted in the release state bucket (no Secret Manager). A local
+# `task deploy` supplies them via octo.tfvars and seeds oidc.json here; the Cloud
+# Build deploy step runs without the (gitignored) tfvars, passes no OIDC vars, and
+# reads them back from the bucket. The mutually-exclusive counts (write when supplied,
+# read otherwise) keep the resource and data source from referencing each other.
+locals {
+  oidc_provided = var.oidc_client_id != ""
+  oidc_stored   = local.oidc_provided ? null : jsondecode(data.google_storage_bucket_object_content.oidc[0].content)
+
+  oidc_enabled_eff       = local.oidc_provided ? var.oidc_enabled : try(local.oidc_stored.enabled, false)
+  oidc_issuer_eff        = local.oidc_provided ? var.oidc_issuer : try(local.oidc_stored.issuer, var.oidc_issuer)
+  oidc_client_id_eff     = local.oidc_provided ? var.oidc_client_id : try(local.oidc_stored.client_id, "")
+  oidc_client_secret_eff = local.oidc_provided ? var.oidc_client_secret : try(local.oidc_stored.client_secret, "")
+  oidc_write_roles_eff   = local.oidc_provided ? var.oidc_write_roles : try(local.oidc_stored.write_roles, "")
+  oidc_roles_claim_eff   = local.oidc_provided ? var.oidc_roles_claim : try(local.oidc_stored.roles_claim, "")
+}
+
+resource "google_storage_bucket_object" "oidc" {
+  count  = local.oidc_provided ? 1 : 0
+  bucket = local.state_bucket
+  name   = "release/oidc.json"
+  content = jsonencode({
+    enabled       = var.oidc_enabled
+    issuer        = var.oidc_issuer
+    client_id     = var.oidc_client_id
+    client_secret = var.oidc_client_secret
+    write_roles   = var.oidc_write_roles
+    roles_claim   = var.oidc_roles_claim
+  })
+}
+
+data "google_storage_bucket_object_content" "oidc" {
+  count  = local.oidc_provided ? 0 : 1
+  bucket = local.state_bucket
+  name   = "release/oidc.json"
 }
 
 module "octo" {
   source = "../modules/helm-release"
 
+  namespace         = var.namespace
   image_base        = local.image_base
   chart_version     = var.chart_version
   image_tag         = var.image_tag
@@ -73,15 +116,16 @@ module "octo" {
   cluster_issuer    = var.cluster_issuer
   wildcard_tls      = var.wildcard_tls
 
-  # OIDC SSO. client id/secret come from octo.tfvars; the session secret is
-  # generated above. All land in the release state (bucket), not Secret Manager.
-  oidc_enabled       = var.oidc_enabled
-  oidc_issuer        = var.oidc_issuer
-  oidc_client_id     = var.oidc_client_id
-  oidc_client_secret = var.oidc_client_secret
-  auth_secret        = var.oidc_enabled ? random_password.auth_secret[0].result : ""
-  oidc_write_roles   = var.oidc_write_roles
-  oidc_roles_claim   = var.oidc_roles_claim
+  # OIDC SSO. A local deploy supplies client id/secret via octo.tfvars (which also
+  # seeds oidc.json in the bucket); Cloud Build reads them back from there. The
+  # session secret is generated above. All land in the release state, not Secret Manager.
+  oidc_enabled       = local.oidc_enabled_eff
+  oidc_issuer        = local.oidc_issuer_eff
+  oidc_client_id     = local.oidc_client_id_eff
+  oidc_client_secret = local.oidc_client_secret_eff
+  auth_secret        = local.oidc_enabled_eff ? random_password.auth_secret[0].result : ""
+  oidc_write_roles   = local.oidc_write_roles_eff
+  oidc_roles_claim   = local.oidc_roles_claim_eff
 
   depends_on = [null_resource.pull_images]
 }

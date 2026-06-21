@@ -458,6 +458,103 @@
           "description": "Runs when attempts are exhausted; reads vars.error."
         }
       ]
+    },
+    {
+      "type": "ai-router",
+      "label": "AI Router",
+      "category": "control-flow",
+      "icon": "Route",
+      "description": "Route the message to a named branch the LLM chooses after inspecting it; the default path is the guardrail taken when it is not confident.",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the LLM connector that picks the route.",
+          "ref": { "kind": "connector", "connectorCategory": "llm" }
+        },
+        {
+          "name": "prompt",
+          "label": "Prompt",
+          "type": "string",
+          "required": true,
+          "description": "Routing instruction; the model reads the body/variables before choosing."
+        },
+        {
+          "name": "guardrail",
+          "label": "Guardrail",
+          "type": "string",
+          "required": false,
+          "description": "Describes when to fall back to the default path (low confidence / ambiguity)."
+        },
+        {
+          "name": "routes",
+          "label": "Routes",
+          "type": "route-list",
+          "required": true,
+          "description": "Named, described branches; the model picks one by name."
+        },
+        {
+          "name": "default",
+          "label": "Default",
+          "type": "flow",
+          "required": false,
+          "description": "The guardrail path, run when the model is not confident."
+        }
+      ]
+    },
+    {
+      "type": "ai-agent",
+      "label": "AI Agent",
+      "category": "control-flow",
+      "icon": "Bot",
+      "description": "Let the LLM call branches as tools in a loop to accomplish a task; tool runs share accumulating variables. The default path is the guardrail.",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the LLM connector that drives the agent loop.",
+          "ref": { "kind": "connector", "connectorCategory": "llm" }
+        },
+        {
+          "name": "prompt",
+          "label": "Prompt",
+          "type": "string",
+          "required": true,
+          "description": "Task instruction; the model calls tools as needed, then stops."
+        },
+        {
+          "name": "guardrail",
+          "label": "Guardrail",
+          "type": "string",
+          "required": false,
+          "description": "Describes when to fall back to the default path (cannot complete with confidence)."
+        },
+        {
+          "name": "maxIterations",
+          "label": "Max iterations",
+          "type": "number",
+          "required": false,
+          "description": "Cap on tool-calling turns before falling back to the guardrail."
+        },
+        {
+          "name": "tools",
+          "label": "Tools",
+          "type": "tool-list",
+          "required": true,
+          "description": "Named, described branches wired to the model as callable functions."
+        },
+        {
+          "name": "default",
+          "label": "Default",
+          "type": "flow",
+          "required": false,
+          "description": "The guardrail path, run when the agent cannot complete the task."
+        }
+      ]
     }
   ],
   "connectors": [

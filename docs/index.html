@@ -281,6 +281,39 @@ flowchart TB
         <figcaption class="diagram-cap"><code>fork</code> — scatter-gather on the shared pool, joins before returning.</figcaption>
       </figure>
     </div>
+
+    <h3 style="margin-top:56px">The platform — native on Kubernetes</h3>
+    <p style="max-width:760px">That runtime is one process. The platform around it is cloud-native: a <strong>control plane</strong> — the editor (with OIDC SSO) and the orchestrator, backed by Postgres — and a <strong>data plane</strong> where every integration you deploy becomes its own Kubernetes Deployment of the very same runtime image. Replicas are pods; a Service gives each a stable in-cluster address; an Ingress makes it public when you ask. See the <a href="deployment.html">deployment guide</a>.</p>
+    <figure class="diagram" style="margin-top:22px">
+      <div class="mermaid">
+flowchart TB
+  USER([you · browser]):::ext --> ED
+  subgraph CP["Control plane"]
+    direction LR
+    ED["Editor<br/><small>Next.js · OIDC SSO</small>"]:::conn -->|BFF| OR["Orchestrator"]:::conn
+    OR --> PG[("Postgres<br/><small>integrations · deployments · secrets</small>")]:::pool
+  end
+  OR -->|"applies manifests"| K8S{{"Kubernetes API"}}:::ch
+  subgraph DP["Data plane — one Deployment per integration"]
+    direction LR
+    P1["pod<br/><small>octo runtime + your flows</small>"]:::f
+    P2["pod<br/><small>octo runtime</small>"]:::f
+  end
+  K8S --> P1
+  K8S --> P2
+  NET([public traffic]):::ext --> ING["Traefik Ingress<br/><small>slug.your-domain</small>"]:::src
+  ING --> SVC["Service<br/><small>octo-int-slug</small>"]:::src
+  SVC --> P1
+  SVC --> P2
+  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
+  classDef conn fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
+  classDef src fill:#141b24,stroke:#f5b14c,color:#e6edf3;
+  classDef f fill:#141b24,stroke:#36d399,color:#e6edf3;
+  classDef ch fill:#1a232e,stroke:#b692ff,color:#e6edf3;
+  classDef pool fill:#1a232e,stroke:#4aa8ff,color:#e6edf3;
+      </div>
+      <figcaption class="diagram-cap">The iPaaS, native on Kubernetes: the editor + orchestrator + Postgres control plane provisions one Deployment per integration; pods run the same runtime, behind a Service and an optional Ingress.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -486,16 +519,16 @@ flowchart TB
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">The vision</span>
-      <h2>A simple ESB today. A platform for what's next.</h2>
-      <p>With the integration core working, focus turns to the rest of the architecture: making the runtime Kubernetes-native, then AI-native.</p>
+      <h2>An AI-native iPaaS, running on Kubernetes — today.</h2>
+      <p>The cloud-native ESB, the AI blocks, and the Kubernetes-native platform are all shipping now. Focus turns next to clustering, stateful primitives, and a richer integration lifecycle.</p>
     </div>
 
     <figure class="diagram" style="margin-bottom:28px">
       <div class="mermaid">
 flowchart LR
-  A["<b>v0.1 — Cloud-native ESB</b><br/>flows · connectors · EIPs<br/>hot reload · CLI invoke"]:::now
-  A --> B["<b>Kubernetes-native</b><br/>operator · CRDs<br/>scale-to-zero · GitOps"]:::next
-  B --> C["<b>AI-native</b><br/>agents &amp; tools as blocks<br/>semantic routing · LLM steps"]:::later
+  A["<b>Shipping now</b><br/>cloud-native ESB · AI blocks<br/>Kubernetes-native platform"]:::now
+  A --> B["<b>Next</b><br/>clustering · KV state<br/>integration versioning · MCP"]:::next
+  B --> C["<b>Later</b><br/>autoscaling · operator &amp; CRDs<br/>GitOps · deeper agents"]:::later
   classDef now fill:#0f2a20,stroke:#36d399,color:#e6edf3;
   classDef next fill:#11212e,stroke:#4aa8ff,color:#e6edf3;
   classDef later fill:#1a142e,stroke:#b692ff,color:#e6edf3;
@@ -505,43 +538,39 @@ flowchart LR
     <div class="roadmap">
       <div class="phase now">
         <span class="tag">● Now — shipping</span>
-        <h3>Cloud-native ESB</h3>
+        <h3>ESB · AI · Platform</h3>
         <ul>
-          <li>YAML flows &amp; recursive composition</li>
-          <li>cron · http · http-client · database · logger connectors</li>
-          <li>switch · if · foreach · handle-errors · fork</li>
-          <li>Hot reload &amp; CLI invoke</li>
-          <li>Flow-event bus &amp; worker-pool concurrency</li>
+          <li>YAML flows, recursive composition &amp; the EIP blocks (switch · if · foreach · fork · handle-errors)</li>
+          <li>cron · http · http-client · database · logger connectors; hot reload &amp; CLI invoke</li>
+          <li>AI blocks: Anthropic / OpenAI / Gemini + ai-router · ai-agent · ai-mapping · ai-retry</li>
+          <li>Visual editor + orchestrator that deploy integrations as Kubernetes pods</li>
+          <li>OIDC SSO, public ingress &amp; automatic TLS</li>
         </ul>
       </div>
       <div class="phase next">
-        <span class="tag">→ Next</span>
-        <h3>Kubernetes-native</h3>
+        <span class="tag">→ Next — in progress</span>
+        <h3>Clustering &amp; state</h3>
         <ul>
-          <li>An operator and flow CRDs</li>
-          <li>Config from ConfigMaps / Secrets</li>
-          <li>Health, readiness &amp; metrics endpoints</li>
-          <li>Autoscaling on backpressure</li>
-          <li>GitOps-friendly deployments</li>
+          <li>Cluster leader election</li>
+          <li>Integration- &amp; cluster-level key–value storage</li>
+          <li>Integration versioning</li>
+          <li>Promote / rollback between deployments</li>
+          <li>Building integrations with MCP</li>
         </ul>
       </div>
       <div class="phase later">
         <span class="tag">◇ Later</span>
-        <h3>AI-native</h3>
+        <h3>Scale &amp; ecosystem</h3>
         <ul>
-          <li>LLM &amp; agent blocks as first-class processors</li>
-          <li>Tools &amp; MCP connectors</li>
-          <li>Semantic, content-aware routing</li>
-          <li>Structured extraction &amp; enrichment steps</li>
-          <li>Flows that agents can call — and compose</li>
+          <li>Autoscaling on backpressure</li>
+          <li>An operator and flow CRDs</li>
+          <li>GitOps-friendly deployments</li>
+          <li>Health, readiness &amp; metrics endpoints</li>
+          <li>Deeper agentic composition &amp; more connectors</li>
         </ul>
       </div>
     </div>
-    <div class="note" style="margin-top:24px;border-left-color:var(--accent-3)">
-      <strong>Coming soon.</strong> Actively in progress: cluster leader election, integration- and cluster-level
-      key–value storage, integration versioning, and building integrations with MCP.
-    </div>
-    <div class="note" style="margin-top:16px">This is a lab and an experiment — a dream of what a modern integration platform could be. Expectations welcome; many more features to come.</div>
+    <div class="note" style="margin-top:24px">This is a lab and an experiment — a dream of what a modern integration platform could be. Expectations welcome; many more features to come.</div>
   </div>
 </section>
 

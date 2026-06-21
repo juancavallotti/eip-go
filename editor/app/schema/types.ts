@@ -17,6 +17,12 @@ export type FieldType =
   | "flow"
   | "flow-list"
   | "case-list"
+  // A list of named, described sub-flows: ai-router's `routes`. Each entry serializes
+  // as {name, description, ...inline flow}.
+  | "route-list"
+  // A list of named, described, schema-bearing sub-flows: ai-agent's `tools`. Each
+  // entry serializes as {name, description, inputSchema?, ...inline flow}.
+  | "tool-list"
   // A bare block chain (not wrapped in a sub-flow), serialized directly as a
   // list of blocks under its field name — e.g. handle-errors' process/error.
   | "block-list";

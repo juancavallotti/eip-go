@@ -11,7 +11,7 @@ import type { EditorState } from "./reducer";
 import type {
   AddSlotFlowPayload,
   RemoveSlotFlowPayload,
-  SetFlowWhenPayload,
+  SetFlowMetaPayload,
 } from "./actions";
 
 /**
@@ -31,6 +31,11 @@ export function addSlotFlow(
     const fieldSpec = spec?.fields.find((f) => f.name === p.field);
     const sub: FlowDoc = emptyFlow("");
     if (fieldSpec?.type === "case-list") sub.when = "";
+    else if (fieldSpec?.type === "route-list") sub.description = "";
+    else if (fieldSpec?.type === "tool-list") {
+      sub.description = "";
+      sub.inputSchema = "";
+    }
     const slots = { ...(block.slots ?? {}) };
     slots[p.field] = [...(slots[p.field] ?? []), sub];
     return { ...block, slots };
@@ -70,14 +75,18 @@ export function removeSlotFlow(
   };
 }
 
-/** Set a switch-case sub-flow's CEL `when` guard. */
-export function setFlowWhen(
+/**
+ * Set one per-entry metadata field on a sub-flow: a switch-case's CEL `when`
+ * guard, an ai-router route / ai-agent tool's `description`, or a tool's
+ * `inputSchema`. The steps inside the sub-flow are edited on the canvas.
+ */
+export function setFlowMeta(
   state: EditorState,
-  p: SetFlowWhenPayload,
+  p: SetFlowMetaPayload,
 ): EditorState {
   const document = mapFlow(state.document, p.flowId, (flow) => ({
     ...flow,
-    when: p.when,
+    [p.field]: p.value,
   }));
   return { ...state, document };
 }

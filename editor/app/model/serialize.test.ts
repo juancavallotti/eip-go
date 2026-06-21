@@ -240,6 +240,66 @@ describe("serialize", () => {
     expect(node.slots!.error[0].process[0].type).toBe("set-payload");
   });
 
+  it("round-trips ai-router: scalars plus named/described routes + guardrail default", () => {
+    const doc = emptyDocument();
+    const router = newBlock("ai-router"); // seeds routes + default slots
+    router.settings.connector = "gpt";
+    router.settings.prompt = "Route the ticket.";
+    router.settings.guardrail = "When unsure, take the default.";
+    const route = router.slots!.routes[0];
+    route.name = "billing";
+    route.description = "Payment failures and refunds.";
+    route.process = [newBlock("log")];
+    router.slots!.default[0].process = [newBlock("set-payload")];
+    doc.flows[0].process = [router];
+
+    const block = toConfig(doc).flows![0].process![0];
+    expect(block.connector).toBe("gpt");
+    expect(block.guardrail).toBe("When unsure, take the default.");
+    expect(block.routes![0].name).toBe("billing");
+    expect(block.routes![0].description).toBe("Payment failures and refunds.");
+    expect(block.routes![0].process![0].type).toBe("log");
+    expect(block.default!.process![0].type).toBe("set-payload");
+
+    const node = fromConfig(toConfig(doc)).flows[0].process[0];
+    expect(node.type).toBe("ai-router");
+    expect(node.settings.connector).toBe("gpt");
+    const r = node.slots!.routes[0];
+    expect(r.name).toBe("billing");
+    expect(r.description).toBe("Payment failures and refunds.");
+    expect(r.process[0].type).toBe("log");
+    expect(node.slots!.default[0].process[0].type).toBe("set-payload");
+  });
+
+  it("round-trips ai-agent: tools carry name, description, and inputSchema", () => {
+    const doc = emptyDocument();
+    const agent = newBlock("ai-agent"); // seeds tools + default slots
+    agent.settings.connector = "claude";
+    agent.settings.maxIterations = 6;
+    const tool = agent.slots!.tools[0];
+    tool.name = "lookup_company";
+    tool.description = "Look up firmographics by domain.";
+    tool.inputSchema = '{ "type": "object" }';
+    tool.process = [newBlock("rest")];
+    doc.flows[0].process = [agent];
+
+    const block = toConfig(doc).flows![0].process![0];
+    expect(block.connector).toBe("claude");
+    expect(block.maxIterations).toBe(6);
+    expect(block.tools![0].name).toBe("lookup_company");
+    expect(block.tools![0].description).toBe("Look up firmographics by domain.");
+    expect(block.tools![0].inputSchema).toBe('{ "type": "object" }');
+    expect(block.tools![0].process![0].type).toBe("rest");
+
+    const node = fromConfig(toConfig(doc)).flows[0].process[0];
+    expect(node.type).toBe("ai-agent");
+    const t = node.slots!.tools[0];
+    expect(t.name).toBe("lookup_company");
+    expect(t.description).toBe("Look up firmographics by domain.");
+    expect(t.inputSchema).toBe('{ "type": "object" }');
+    expect(t.process[0].type).toBe("rest");
+  });
+
   it("serializes a flow-level error path as a bare block list", () => {
     const doc = emptyDocument();
     doc.flows[0].process = [newBlock("log")];

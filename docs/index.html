@@ -437,14 +437,14 @@ flowchart TB
       </div>
       <div>
         <h3>3 · Call a flow directly (no ports, no sources)</h3>
-        <div class="cmd"><span class="p">$</span> go run ./cli invoke \<br />&nbsp;&nbsp;--config samples/hello-invoke.yaml --flow greet \<br />&nbsp;&nbsp;--data '{"name":"Ada"}'<br /><span class="c"># → {"greeting":"hello, Ada!"}</span></div>
+        <div class="cmd"><span class="p">$</span> ./bin/octo invoke \<br />&nbsp;&nbsp;--config samples/hello-invoke.yaml --flow greet \<br />&nbsp;&nbsp;--data '{"name":"Ada"}'<br /><span class="c"># → {"greeting":"hello, Ada!"}</span></div>
 
         <h3 style="margin-top:28px">4 · Develop with hot reload</h3>
-        <div class="cmd"><span class="p">$</span> go run ./cli --config samples/http-orders.yaml --watch</div>
+        <div class="cmd"><span class="p">$</span> ./bin/octo --config samples/http-orders.yaml --watch</div>
         <p style="font-size:0.9rem">Edit the YAML (or a <code>.env</code>), save, and the runtime rebuilds itself.</p>
 
         <h3 style="margin-top:28px">5 · Check the version</h3>
-        <div class="cmd"><span class="p">$</span> go run ./cli --version<br /><span class="c"># → octo 0.1.4 (built 2026-06-18T22:31:23Z)</span></div>
+        <div class="cmd"><span class="p">$</span> ./bin/octo --version<br /><span class="c"># → octo 0.1.4 (built 2026-06-18T22:31:23Z)</span></div>
       </div>
     </div>
     <div class="note"><strong>Tip:</strong> sourceless flows (no <code>source:</code>) get an implicit source and become callable by name — ideal for <code>invoke</code> and for <code>flow-ref</code> sub-flows.</div>
@@ -632,7 +632,7 @@ flows:
 
 <script type="text/plain" data-sample-meta="hero"
   data-title="hello-invoke" data-blurb="The smallest useful flow: no source, callable by name, JSON in / JSON out."
-  data-run="go run ./cli invoke --config samples/hello-invoke.yaml --flow greet --data '{&quot;name&quot;:&quot;Ada&quot;}'"
+  data-run="./bin/octo invoke --config samples/hello-invoke.yaml --flow greet --data '{&quot;name&quot;:&quot;Ada&quot;}'"
   data-pills="set-payload|sourceless|invoke"></script>
 
 <div id="sample-data" hidden>
@@ -670,7 +670,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="http-orders"
     data-title="http-orders" data-blurb="An HTTP endpoint with content-based routing, a one-way audit (fire-and-forget), and a synchronous content-enricher sub-flow."
-    data-run="go run ./cli --config samples/http-orders.yaml"
+    data-run="./bin/octo --config samples/http-orders.yaml"
     data-pills="http|switch|flow-ref|if|set-payload"></script>
   <script type="text/plain" data-sample-src="http-orders">service:
   name: http-orders
@@ -939,7 +939,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="ai-router"
     data-title="ai-router" data-blurb="An LLM picks one of several named, described routes for each message. The default path is the guardrail, taken when the model isn't confident. Needs ANTHROPIC_API_KEY."
-    data-run="go run ./cli invoke --config samples/ai-router.yaml --flow triage --data '{&quot;subject&quot;:&quot;double charged&quot;}'"
+    data-run="./bin/octo invoke --config samples/ai-router.yaml --flow triage --data '{&quot;subject&quot;:&quot;double charged&quot;}'"
     data-pills="ai|llm-anthropic|router|guardrail"></script>
   <script type="text/plain" data-sample-src="ai-router">service:
   name: ai-router
@@ -985,7 +985,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="ai-agent"
     data-title="ai-agent" data-blurb="An LLM accomplishes a task by calling your sub-flows as tools in a loop — each tool's args arrive as the branch body, its output returns to the model. Needs ANTHROPIC_API_KEY."
-    data-run="go run ./cli invoke --config samples/ai-agent.yaml --flow enrich --data '{&quot;company&quot;:&quot;Acme&quot;,&quot;domain&quot;:&quot;acme.example&quot;}'"
+    data-run="./bin/octo invoke --config samples/ai-agent.yaml --flow enrich --data '{&quot;company&quot;:&quot;Acme&quot;,&quot;domain&quot;:&quot;acme.example&quot;}'"
     data-pills="ai|llm-anthropic|agent|tools"></script>
   <script type="text/plain" data-sample-src="ai-agent">service:
   name: ai-agent
@@ -1036,7 +1036,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="ai-mapping"
     data-title="ai-mapping" data-blurb="Reshape a message body to a target shape from a prompt, optional examples, and an output JSON Schema (validated). On a bad shape it errors — so it composes with ai-retry / handle-errors. Needs ANTHROPIC_API_KEY."
-    data-run="go run ./cli invoke --config samples/ai-mapping.yaml --flow normalize-contact --data '{&quot;name&quot;:&quot;Ada Lovelace&quot;,&quot;tel&quot;:&quot;(415) 555-0132&quot;}'"
+    data-run="./bin/octo invoke --config samples/ai-mapping.yaml --flow normalize-contact --data '{&quot;name&quot;:&quot;Ada Lovelace&quot;,&quot;tel&quot;:&quot;(415) 555-0132&quot;}'"
     data-pills="ai|llm-anthropic|transform|schema"></script>
   <script type="text/plain" data-sample-src="ai-mapping">service:
   name: ai-mapping
@@ -1082,7 +1082,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="ai-retry"
     data-title="ai-retry" data-blurb="Runs a protected chain and, on failure, lets an LLM inspect vars.error, revise the message, and re-run up to maxAttempts before falling through to the error chain. Self-healing. Needs ANTHROPIC_API_KEY."
-    data-run="go run ./cli invoke --config samples/ai-retry.yaml --flow charge --data '{&quot;order&quot;:{&quot;total&quot;:&quot;42.00&quot;,&quot;currency&quot;:&quot;usd&quot;}}'"
+    data-run="./bin/octo invoke --config samples/ai-retry.yaml --flow charge --data '{&quot;order&quot;:{&quot;total&quot;:&quot;42.00&quot;,&quot;currency&quot;:&quot;usd&quot;}}'"
     data-pills="ai|llm-anthropic|self-healing|errors"></script>
   <script type="text/plain" data-sample-src="ai-retry">service:
   name: ai-retry
@@ -1133,7 +1133,7 @@ flows:
 
   <script type="text/plain" data-sample-meta="error-handling"
     data-title="error-handling" data-blurb="Two recovery styles in one file: an inline handle-errors block (HTTP 200, degraded body) and a flow-level error: path (sets vars.httpStatus 502, returns vars.error). No external server needed."
-    data-run="go run ./cli --config samples/error-handling.yaml"
+    data-run="./bin/octo --config samples/error-handling.yaml"
     data-pills="handle-errors|error path|vars.error|httpStatus"></script>
   <script type="text/plain" data-sample-src="error-handling">service:
   name: error-handling

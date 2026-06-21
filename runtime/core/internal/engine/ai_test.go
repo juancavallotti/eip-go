@@ -1,0 +1,236 @@
+package engine
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/juancavallotti/eip-go/core"
+	"github.com/juancavallotti/eip-go/core/internal/pool"
+	"github.com/juancavallotti/eip-go/types"
+)
+
+// scriptedLLM is a core.Connector + core.LLMClient that returns a queued sequence
+// of responses, recording each request. When the queue is exhausted it returns
+// repeat (if set) or a bare end_turn with no tool calls.
+type scriptedLLM struct {
+	responses []*core.LLMResponse
+	repeat    *core.LLMResponse
+	i         int
+	calls     []core.LLMRequest
+}
+
+func (s *scriptedLLM) Start(context.Context, types.ConnectorConfig) error { return nil }
+func (s *scriptedLLM) Stop(context.Context) error                         { return nil }
+func (s *scriptedLLM) Complete(_ context.Context, req core.LLMRequest) (*core.LLMResponse, error) {
+	s.calls = append(s.calls, req)
+	if s.i < len(s.responses) {
+		r := s.responses[s.i]
+		s.i++
+		return r, nil
+	}
+	if s.repeat != nil {
+		return s.repeat, nil
+	}
+	return &core.LLMResponse{StopReason: core.LLMStopEndTurn}, nil
+}
+
+// toolCallResp builds a single-tool-call assistant response.
+func toolCallResp(name, input string) *core.LLMResponse {
+	call := core.LLMToolCall{ID: "call_" + name, Name: name, Input: json.RawMessage(input)}
+	return &core.LLMResponse{
+		ToolCalls:  []core.LLMToolCall{call},
+		StopReason: core.LLMStopToolUse,
+		Raw:        core.LLMMessage{Role: core.LLMRoleAssistant, ToolCalls: []core.LLMToolCall{call}},
+	}
+}
+
+func depsLLM(conn core.Connector) core.BlockDeps {
+	return core.BlockDeps{Connector: func(n string) (core.Connector, bool) {
+		if n == "claude" {
+			return conn, true
+		}
+		return nil, false
+	}}
+}
+
+//nolint:ireturn // a test helper that returns the built MessageProcessor interface
+func mustBuildAI(t *testing.T, reg *core.BlockRegistry, deps core.BlockDeps, cfg types.BlockConfig) core.MessageProcessor {
+	t.Helper()
+	block, err := (&builder{reg: reg, pool: pool.New(0, 0), deps: deps}).block(cfg)
+	if err != nil {
+		t.Fatalf("build %s: %v", cfg.Type, err)
+	}
+	return block.Processor
+}
+
+func aiMessage(t *testing.T) *types.Message {
+	t.Helper()
+	msg, err := types.NewMessage("")
+	if err != nil {
+		t.Fatalf("new message: %v", err)
+	}
+	if err := msg.SetBodyJSON([]byte(`{"subject":"refund please"}`)); err != nil {
+		t.Fatalf("set body: %v", err)
+	}
+	return msg
+}
+
+// routerConfig builds an ai-router with billing/tech routes and an optional
+// guardrail.
+func routerConfig(withGuardrail bool) types.BlockConfig {
+	cfg := types.BlockConfig{
+		Type:      "ai-router",
+		Connector: "claude",
+		Prompt:    "route the ticket",
+		Routes: []types.RouteConfig{
+			{Name: "billing", Description: "billing and refunds", Flow: tagFlow("billing")},
+			{Name: "tech", Description: "technical issues", Flow: tagFlow("tech")},
+		},
+	}
+	if withGuardrail {
+		def := tagFlow("guardrail")
+		cfg.Default = &def
+	}
+	return cfg
+}
+
+func TestAIRouterSelectsRoute(t *testing.T) {
+	var seen []any
+	reg := recordRegistry(&seen)
+	fake := &scriptedLLM{responses: []*core.LLMResponse{
+		toolCallResp("select_route", `{"route":"billing"}`),
+	}}
+
+	proc := mustBuildAI(t, reg, depsLLM(fake), routerConfig(true))
+	if _, err := proc.Process(context.Background(), aiMessage(t)); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != "billing" {
+		t.Errorf("seen = %v, want [billing]", seen)
+	}
+}
+
+func TestAIRouterInspectsThenSelects(t *testing.T) {
+	var seen []any
+	reg := recordRegistry(&seen)
+	fake := &scriptedLLM{responses: []*core.LLMResponse{
+		toolCallResp("get_body", `{}`),
+		toolCallResp("select_route", `{"route":"tech"}`),
+	}}
+
+	proc := mustBuildAI(t, reg, depsLLM(fake), routerConfig(true))
+	if _, err := proc.Process(context.Background(), aiMessage(t)); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != "tech" {
+		t.Errorf("seen = %v, want [tech]", seen)
+	}
+	if len(fake.calls) != 2 {
+		t.Fatalf("calls = %d, want 2", len(fake.calls))
+	}
+	// The second request should carry the get_body tool result.
+	second := fake.calls[1].Messages
+	last := second[len(second)-1]
+	if last.Role != core.LLMRoleTool || len(last.ToolResults) != 1 {
+		t.Errorf("second request did not carry a tool result: %+v", last)
+	}
+	if !strings.Contains(last.ToolResults[0].Content, "refund please") {
+		t.Errorf("get_body result missing body: %q", last.ToolResults[0].Content)
+	}
+}
+
+func TestAIRouterGuardrailPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		route    string
+		guard    bool
+		wantSeen []any
+	}{
+		{name: "explicit guardrail", route: routeGuardrailSentinel, guard: true, wantSeen: []any{"guardrail"}},
+		{name: "unknown route falls to guardrail", route: "nope", guard: true, wantSeen: []any{"guardrail"}},
+		{name: "no guardrail passes through", route: routeGuardrailSentinel, guard: false, wantSeen: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var seen []any
+			reg := recordRegistry(&seen)
+			fake := &scriptedLLM{responses: []*core.LLMResponse{
+				toolCallResp("select_route", `{"route":"`+tt.route+`"}`),
+			}}
+			proc := mustBuildAI(t, reg, depsLLM(fake), routerConfig(tt.guard))
+			out, err := proc.Process(context.Background(), aiMessage(t))
+			if err != nil {
+				t.Fatalf("process: %v", err)
+			}
+			if len(seen) != len(tt.wantSeen) {
+				t.Fatalf("seen = %v, want %v", seen, tt.wantSeen)
+			}
+			for i := range tt.wantSeen {
+				if seen[i] != tt.wantSeen[i] {
+					t.Errorf("seen = %v, want %v", seen, tt.wantSeen)
+				}
+			}
+			if !tt.guard && out == nil {
+				t.Error("expected passthrough message, got nil")
+			}
+		})
+	}
+}
+
+func TestAIRouterExhaustsRoundsToGuardrail(t *testing.T) {
+	var seen []any
+	reg := recordRegistry(&seen)
+	// The model keeps inspecting and never decides.
+	fake := &scriptedLLM{repeat: toolCallResp("get_body", `{}`)}
+
+	proc := mustBuildAI(t, reg, depsLLM(fake), routerConfig(true))
+	if _, err := proc.Process(context.Background(), aiMessage(t)); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != "guardrail" {
+		t.Errorf("seen = %v, want [guardrail]", seen)
+	}
+	if len(fake.calls) != defaultRouterRounds {
+		t.Errorf("calls = %d, want %d", len(fake.calls), defaultRouterRounds)
+	}
+}
+
+func TestAIRouterBuildValidation(t *testing.T) {
+	reg := testRegistry()
+	deps := depsLLM(&scriptedLLM{})
+	build := func(cfg types.BlockConfig) error {
+		_, err := (&builder{reg: reg, pool: pool.New(0, 0), deps: deps}).block(cfg)
+		return err
+	}
+
+	base := func() types.BlockConfig {
+		return types.BlockConfig{Type: "ai-router", Connector: "claude", Prompt: "x",
+			Routes: []types.RouteConfig{{Name: "a", Description: "d", Flow: tagFlow("a")}}}
+	}
+
+	if err := build(types.BlockConfig{Type: "ai-router", Connector: "claude", Prompt: "x"}); err == nil {
+		t.Error("expected error with no routes")
+	}
+	noPrompt := base()
+	noPrompt.Prompt = ""
+	if err := build(noPrompt); err == nil {
+		t.Error("expected error with no prompt")
+	}
+	noConn := base()
+	noConn.Connector = ""
+	if err := build(noConn); err == nil {
+		t.Error("expected error with no connector")
+	}
+	noDesc := base()
+	noDesc.Routes[0].Description = ""
+	if err := build(noDesc); err == nil {
+		t.Error("expected error with a route missing a description")
+	}
+	dup := base()
+	dup.Routes = append(dup.Routes, types.RouteConfig{Name: "a", Description: "d2", Flow: tagFlow("a2")})
+	if err := build(dup); err == nil {
+		t.Error("expected error with duplicate route names")
+	}
+}

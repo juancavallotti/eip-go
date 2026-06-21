@@ -240,22 +240,22 @@ sequenceDiagram
     </div>
 
     <h3 style="margin-top:56px">Composite blocks — composition all the way down</h3>
-    <p style="max-width:720px">A composite block embeds sub-flows through explicit, typed slots. <code>scope</code> is the single-threaded half (an error / transaction boundary); <code>fork</code> is the concurrent half (scatter, then join). Both keep the one-in / one-out seam intact.</p>
+    <p style="max-width:720px">A composite block embeds sub-flows through explicit, typed slots. <code>handle-errors</code> is the single-threaded half (an error boundary with recovery); <code>fork</code> is the concurrent half (scatter, then join). Both keep the one-in / one-out seam intact.</p>
     <div class="grid cols-2" style="margin-top:22px">
       <figure class="diagram">
         <div class="mermaid">
 flowchart TB
   IN([message]):::ext --> MAIN
-  subgraph SCOPE["scope — error / tx boundary · sequential"]
+  subgraph SCOPE["handle-errors — error boundary · sequential"]
     direction TB
-    MAIN["main flow"]:::blk -->|ok| OUT
-    MAIN -->|error| ALT["alternative flow<br/><small>catch · recover · compensate</small>"]:::alt --> OUT([continue]):::ext
+    MAIN["process chain"]:::blk -->|ok| OUT
+    MAIN -->|error| ALT["error chain<br/><small>sees vars.error · recover</small>"]:::alt --> OUT([continue]):::ext
   end
   classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
   classDef blk fill:#141b24,stroke:#b692ff,color:#e6edf3;
   classDef alt fill:#141b24,stroke:#f5b14c,color:#e6edf3;
         </div>
-        <figcaption class="diagram-cap"><code>scope</code> — try / catch, the recovery path.</figcaption>
+        <figcaption class="diagram-cap"><code>handle-errors</code> — try / catch, the recovery path.</figcaption>
       </figure>
       <figure class="diagram">
         <div class="mermaid">
@@ -301,7 +301,7 @@ flowchart TB
           <tr><td>Splitter / Iterator</td><td><code>foreach</code> block</td></tr>
           <tr><td>Scatter-Gather</td><td><code>fork</code> composite</td></tr>
           <tr><td>Wire Tap</td><td><code>log</code> (pass-through)</td></tr>
-          <tr><td>Dead Letter Channel</td><td><code>scope</code> alternative</td></tr>
+          <tr><td>Dead Letter Channel</td><td><code>handle-errors</code> / flow <code>error</code> path</td></tr>
           <tr><td>Process Manager</td><td>sourceless flow + <code>flow-ref</code></td></tr>
         </tbody>
       </table>
@@ -406,7 +406,7 @@ flowchart LR
         <ul>
           <li>YAML flows &amp; recursive composition</li>
           <li>cron · http · http-client · database · logger connectors</li>
-          <li>switch · if · foreach · scope · fork</li>
+          <li>switch · if · foreach · handle-errors · fork</li>
           <li>Hot reload &amp; CLI invoke</li>
           <li>Flow-event bus &amp; worker-pool concurrency</li>
         </ul>

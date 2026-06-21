@@ -192,9 +192,9 @@ func TestSwitchBuildValidation(t *testing.T) {
 		{
 			name: "foreign slot",
 			block: types.BlockConfig{
-				Type:  "switch",
-				Cases: []types.CaseConfig{{When: "true", Flow: tagFlow("x")}},
-				Main:  &types.FlowConfig{},
+				Type:     "switch",
+				Cases:    []types.CaseConfig{{When: "true", Flow: tagFlow("x")}},
+				Branches: []types.FlowConfig{{Process: []types.BlockConfig{{Type: "pass"}}}},
 			},
 		},
 	}

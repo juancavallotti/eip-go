@@ -8,6 +8,17 @@ import {
 } from "./document";
 
 describe("document tree helpers", () => {
+  it("finds a block and a flow nested in a flow's error path", () => {
+    const doc = emptyDocument();
+    const block = newBlock("log");
+    doc.flows[0].error!.process = [block];
+
+    expect(findBlock(doc, block.id)?.type).toBe("log");
+    expect(findFlow(doc, doc.flows[0].error!.id)?.id).toBe(
+      doc.flows[0].error!.id,
+    );
+  });
+
   it("finds a block and a flow nested inside a composite slot", () => {
     const doc = emptyDocument();
     const branch = newBlock("if"); // seeds then/else sub-flows

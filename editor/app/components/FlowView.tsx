@@ -44,7 +44,11 @@ export default function FlowView({
                   <BlockCard block={block} flowId={flow.id} />
                 )}
               </div>
-              <DropGap flowId={flow.id} index={i + 1} />
+              <DropGap
+                flowId={flow.id}
+                index={i + 1}
+                last={i === process.length - 1}
+              />
             </Fragment>
           ))}
         </>

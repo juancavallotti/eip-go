@@ -6,11 +6,11 @@ configuration schema, the concurrency model, and the start/stop lifecycle.
 
 > **Status.** The structure and the composite *execution model* are now defined:
 > processing is a hybrid of single-threaded composition and opt-in concurrency
-> (see [Execution model](#execution-model)). `scope` runs sequentially; `fork`
-> runs its branches concurrently on a flow-owned worker pool. Still deferred:
-> multi-output processors (what a block returns when it emits more than one
-> message), fire-and-forget stages, cross-composite backpressure, and the `loop`
-> composite.
+> (see [Execution model](#execution-model)). `handle-errors` runs sequentially;
+> `fork` runs its branches concurrently on a flow-owned worker pool. Still
+> deferred: multi-output processors (what a block returns when it emits more than
+> one message), fire-and-forget stages, cross-composite backpressure, and the
+> `loop` composite.
 
 ## Concepts
 
@@ -42,9 +42,11 @@ Composition is recursive: a `Flow` contains blocks, and a composite block embeds
 sub-flows. Composite kinds use **explicit typed slots**, so the YAML schema is
 self-documenting and the builder knows each kind's shape:
 
-- **`scope`** — an error/transaction boundary. Slots: `main` (the protected flow)
-  and optional `alternative` (the catch / recovery / compensation flow). Runs
-  **sequentially** (`main`, then `alternative` on failure).
+- **`handle-errors`** — an error boundary with recovery. Slots: `process` (the
+  protected chain) and `error` (the recovery chain). Runs **sequentially**:
+  `process`, then — on failure — `error`, with the error exposed to it as
+  `vars.error` (see [Error handling](#error-handling)). Both slots are bare block
+  chains, so the block reads as a mini-flow embedded inline.
 - **`fork`** — a scatter / multi-branch block. Slot: `branches` (an array of
   flows). Runs its branches **concurrently** on the flow's shared pool, each
   branch operating on its own `msg.Clone()`; it joins before returning and passes
@@ -67,8 +69,8 @@ The composition seam, `MessageProcessor.Process(ctx, *Message) (*Message, error)
 is synchronous and one-in / one-out, so a `Flow` runs its blocks in order — the
 simple, single-threaded path. A composite block may *opt into* concurrency
 internally and **join before it returns**, keeping the seam (and the one-terminal-
-event-per-message guarantee) intact. `scope` proves the simple half (sequential);
-`fork` proves the concurrent half.
+event-per-message guarantee) intact. `handle-errors` proves the simple half
+(sequential); `fork` proves the concurrent half.
 
 ### Two levels of concurrency
 
@@ -91,6 +93,37 @@ event-per-message guarantee) intact. `scope` proves the simple half (sequential)
   submits more work than the pool can accept (e.g. deeply nested forks), the pool
   is exhausted and **panics** rather than risk a silent deadlock. Size `pool` for
   the flow's fan-out. This is a deliberate limitation of the current model.
+
+## Error handling
+
+Error handling has two layers, both **recovery**-oriented (a successful recovery
+chain's output becomes the result) and both exposing the failure to the recovery
+chain as the structured variable `vars.error`:
+
+- **`handle-errors` block** — an inline boundary. Its `process` chain runs; on
+  error its `error` chain runs. See [Composite blocks](#composite-blocks).
+- **Flow-level `error` path** — a sibling `error:` chain on a root flow. When the
+  `process` chain errors, the message is redirected to `error`; on success that
+  chain's output becomes the flow's result. Error handling is **optional**: a flow
+  with no `error:` chain behaves like an empty handler — the error propagates and
+  the flow is reported `failed`.
+
+`vars.error` is a structured object available to a recovery chain (CEL:
+`vars.error.message`, `vars.error.flow`, `vars.error.block`):
+
+```jsonc
+{
+  "message": "block \"charge\": rest request: ... connection refused", // err.Error()
+  "flow":    "charge-flowlevel",  // enclosing flow or handle-errors block name
+  "block":   "charge"             // failing block label, when recoverable
+}
+```
+
+For HTTP-sourced flows, a recovery chain can set `vars.httpStatus` to a valid
+status code (100–599) and the HTTP source returns it instead of the default 200
+— e.g. set `httpStatus` to 502 alongside an error body. See
+[samples/error-handling.yaml](../samples/error-handling.yaml) for a runnable
+example of both layers, `vars.error`, and `httpStatus`.
 
 ## Flow events
 
@@ -119,8 +152,9 @@ stopping the source — following "whoever creates the channel closes it".
 ## Configuration
 
 Flows live under the top-level `flows:` key. A root flow binds a `source`, a
-worker-pool size, and a shared-pool size; sub-flows nested inside composite blocks
-must not declare `source`, `workers`, `buffer`, or `pool`.
+worker-pool size, a shared-pool size, and an optional flow-level `error` chain
+(see [Error handling](#error-handling)); sub-flows nested inside composite blocks
+must not declare `source`, `workers`, `buffer`, `pool`, or `error`.
 
 ```yaml
 service:
@@ -147,20 +181,20 @@ flows:
       - type: validate
         settings:
           schema: order.schema.json
-      - type: scope               # composite: error/transaction boundary
+      - type: handle-errors       # composite: error boundary with recovery
         name: persist
-        main:                     # protected flow
-          process:
-            - { type: transform, name: normalize }
-            - { type: pg.upsert, settings: { table: orders } }
-        alternative:              # catch / recovery / compensation flow
-          process:
-            - { type: deadletter }
+        process:                  # protected chain
+          - { type: transform, name: normalize }
+          - { type: pg.upsert, settings: { table: orders } }
+        error:                    # recovery chain; sees vars.error
+          - { type: deadletter }
       - type: fork                # composite: parallel branches
         name: notify-and-audit
         branches:
           - { name: notify, process: [ { type: email } ] }
           - { name: audit,  process: [ { type: log } ] }
+    error:                        # flow-level error path (root flows only)
+      - { type: deadletter }
 ```
 
 ### Named processors (`ref`)
@@ -347,9 +381,13 @@ its `timeout` returns **504**. Correlation rides the flow-event bus: the connect
 subscribes once and matches each terminal `FlowEvent` (which now carries the
 message in `Result`) back to the waiting request by `EventID`.
 
-> **Status / future work.** This is the foundation, not a complete HTTP stack. A
-> logical-error branch (e.g. the `default` case of a method `switch`) still returns
-> 200 today; mapping a flow result to an arbitrary HTTP status code is deferred.
+A completed flow can **override the status code** by setting `vars.httpStatus` to a
+valid code (100–599) — e.g. an [error path](#error-handling) that sets
+`httpStatus` to 502 alongside an error body. Invalid or absent values keep the
+default 200.
+
+> **Status / future work.** This is the foundation, not a complete HTTP stack.
+> Header control on the response is still deferred.
 
 ```yaml
 connectors:

@@ -11,6 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="icon" type="image/png" href="assets/octo.png" />
+<meta property="og:image" content="assets/octo.png" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
 <link rel="stylesheet" href="assets/styles.css" />
 </head>
@@ -19,13 +21,15 @@
 <!-- ============================== NAV ============================== -->
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="brand" href="#top"><span class="dot"></span> Octo</a>
+    <a class="brand" href="#top"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
     <nav class="nav-links">
       <a href="#concepts">Concepts</a>
       <a href="#architecture">Architecture</a>
       <a href="#patterns">Patterns</a>
+      <a href="#cel">CEL</a>
       <a href="#samples">Samples</a>
       <a href="#quickstart">Quickstart</a>
+      <a href="#whats-new">What's New</a>
       <a href="#roadmap">Roadmap</a>
       <a href="#releases">Releases</a>
       <a class="nav-gh" href="https://github.com/juancavallotti/eip-go" target="_blank" rel="noopener">GitHub ↗</a>
@@ -38,6 +42,7 @@
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
+      <img class="hero-logo" src="assets/octo.png" alt="Octo logo" />
       <div class="badges">
         <span class="badge">Go runtime</span>
         <span class="badge">YAML flows</span>
@@ -332,6 +337,103 @@ flowchart TB
   </div>
 </section>
 
+<!-- ============================== CEL CHEAT SHEET ============================== -->
+<section id="cel">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Expressions, demystified</span>
+      <h2>CEL cheat sheet.</h2>
+      <p>
+        Routing, transforms, conditions, and payloads are
+        <a href="https://github.com/google/cel-go" target="_blank" rel="noopener">CEL</a> expressions
+        (Google's Common Expression Language). They compile once when the flow builds — so a typo
+        fails at startup, not in production — and run read-only over each message. The upstream spec
+        is terse; here's everything you actually need.
+      </p>
+    </div>
+
+    <h3>What an expression can see</h3>
+    <p style="max-width:760px">Every message-driven block evaluates against the same activation. These are the variables in scope:</p>
+    <table class="eip-table" style="margin:18px 0 40px">
+      <thead><tr><th>Variable</th><th>Type</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>body</code></td><td>JSON value</td><td>The decoded message body — usually a map, sometimes a list/scalar. Rewritten by <code>set-payload</code>.</td></tr>
+        <tr><td><code>vars</code></td><td>map</td><td>Per-message variables. Read here; write with <code>set-variable</code>. Sources seed it (see below).</td></tr>
+        <tr><td><code>env</code></td><td>map</td><td>Resolved values of the flow's declared <code>env:</code> entries — e.g. <code>env.HTTP_PORT</code>. Only declared keys exist.</td></tr>
+        <tr><td><code>eventID</code></td><td>string</td><td>Stable unique id for this message.</td></tr>
+        <tr><td><code>correlationID</code></td><td>string</td><td>Caller-supplied id for grouping related messages (optional).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>What sources put in <code>vars</code></h3>
+    <table class="eip-table" style="margin:18px 0 40px">
+      <thead><tr><th>From</th><th>Variable</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>http source</td><td><code>vars.method</code></td><td><code>vars.method == "POST"</code></td></tr>
+        <tr><td>http source</td><td><code>vars.query</code> (always a map)</td><td><code>has(vars.query.currency)</code></td></tr>
+        <tr><td>http path <code>/orders/{id}</code></td><td><code>vars.&lt;param&gt;</code></td><td><code>vars.id</code></td></tr>
+        <tr><td>http captured header</td><td><code>vars["X-Header"]</code></td><td><code>vars["X-Tenant"]</code></td></tr>
+        <tr><td>cron source payload</td><td><code>now</code></td><td><code>string(now)</code></td></tr>
+        <tr><td>error path</td><td><code>vars.error</code></td><td><code>vars.error.message</code> · <code>.flow</code> · <code>.block</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Recipes</h3>
+    <p style="max-width:760px">Every snippet below is lifted from a working sample in <code>samples/</code>.</p>
+    <div class="grid cols-2" style="margin-top:18px">
+      <div>
+        <div class="sample-meta"><p class="run-label">Build a string · coerce types</p></div>
+        <pre><code class="language-yaml">"hello, " + body.name + "!"
+"processing " + string(size(body.orders)) + " orders"</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Safe access with a default</p></div>
+        <pre><code class="language-yaml">has(vars.query.currency) ? vars.query.currency : "USD"</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Route on method or value (switch / if)</p></div>
+        <pre><code class="language-yaml">vars.method == "POST"
+body.amount &gt;= 1000.0
+size(body.orders) &gt; 0</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Build a JSON object (set-payload)</p></div>
+        <pre><code class="language-yaml">{"orderId": vars.id, "currency": vars.currency, "status": "found"}</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Reach into nested fields &amp; dashed headers</p></div>
+        <pre><code class="language-yaml">body.current.temperature_2m
+vars["X-Tenant"]</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Read environment variables</p></div>
+        <pre><code class="language-yaml">"listening on " + env.HTTP_PORT</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Iterate a list (foreach)</p></div>
+        <pre><code class="language-yaml">items: body.orders        # the list to split
+as: order                 # each item -> vars.order
+vars.order.amount &gt;= vars.threshold</code></pre>
+      </div>
+      <div>
+        <div class="sample-meta"><p class="run-label">Recover from an error (error path)</p></div>
+        <pre><code class="language-yaml">{"error": vars.error.message,
+ "failedBlock": vars.error.block,
+ "flow": vars.error.flow}</code></pre>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:32px">
+      <strong>Gotchas worth knowing.</strong>
+      JSON numbers are always <code>double</code> (float) — wrap with <code>int(...)</code> when you need a whole number.
+      Use <code>has(map.key)</code> before reading a key that might be missing, or the expression errors.
+      Only <code>env:</code> entries you declare are in scope — an undeclared <code>env.X</code> fails at build time.
+      Expressions never mutate state: read <code>vars</code>/<code>body</code> here, and change them with
+      <code>set-variable</code> / <code>set-payload</code>. Use bracket syntax (<code>vars["X-Tenant"]</code>) for keys with dashes.
+    </div>
+  </div>
+</section>
+
 <!-- ============================== SAMPLES ============================== -->
 <section id="samples">
   <div class="wrap">
@@ -375,6 +477,77 @@ flowchart TB
       </div>
     </div>
     <div class="note"><strong>Tip:</strong> sourceless flows (no <code>source:</code>) get an implicit source and become callable by name — ideal for <code>invoke</code> and for <code>flow-ref</code> sub-flows.</div>
+  </div>
+</section>
+
+<!-- ============================== WHAT'S NEW ============================== -->
+<section id="whats-new">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Recently shipped</span>
+      <h2>What's new.</h2>
+      <p>The latest releases brought AI blocks, single sign-on for the editor, first-class error handling, and a friendlier developer console. Here's the tour.</p>
+    </div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="ic">🤖</div>
+        <h3>AI blocks &amp; LLM connectors</h3>
+        <p>
+          Connect Anthropic, OpenAI, or Gemini, then drop in
+          <a href="#samples">AI blocks</a>: <code>ai-router</code> (an LLM picks a route),
+          <code>ai-agent</code> (calls your sub-flows as tools), <code>ai-mapping</code>
+          (reshapes a payload to a schema), and <code>ai-retry</code> (self-healing recovery).
+        </p>
+      </div>
+      <div class="card">
+        <div class="ic">🔐</div>
+        <h3>Single sign-on for the editor</h3>
+        <p>
+          The visual editor now supports OIDC SSO (Auth.js). Backend routes are role-gated from an
+          id-token claim, sessions are stateless JWTs, and credentials moved out of Secret Manager.
+          SSO is opt-in — local <code>task dev</code> runs stay unauthenticated.
+        </p>
+      </div>
+      <div class="card">
+        <div class="ic">🧯</div>
+        <h3>First-class error handling</h3>
+        <p>
+          Wrap steps in a <code>handle-errors</code> block for inline recovery, or give a flow a
+          sibling <code>error:</code> chain. The recovery path sees
+          <code>vars.error.{message, flow, block}</code>, and <code>vars.httpStatus</code> sets the
+          response code. See the <a href="#samples">error-handling</a> sample.
+        </p>
+      </div>
+      <div class="card">
+        <div class="ic">🖥️</div>
+        <h3>A friendlier dev console</h3>
+        <p>
+          The editor's bottom panel is now tabbed — <strong>Logs</strong> alongside a
+          <strong>Dev .env</strong> editor for local secrets and variables — and a run's test URL is
+          surfaced right in the log panel so you can hit your endpoint in one click.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:22px">
+      <figure class="diagram">
+        <div class="shot-placeholder" data-shot="01-flow-canvas">📸 Screenshot: an AI router flow on the editor canvas — see SCREENSHOTS.md #1</div>
+        <figcaption class="diagram-cap">An <code>ai-router</code> flow rendered in the visual editor.</figcaption>
+      </figure>
+      <figure class="diagram">
+        <div class="shot-placeholder" data-shot="07-tabbed-console">📸 Screenshot: tabbed console with Logs / Dev .env and the test URL — see SCREENSHOTS.md #7</div>
+        <figcaption class="diagram-cap">The tabbed developer console: live logs, a Dev <code>.env</code> editor, and the run's test URL.</figcaption>
+      </figure>
+      <figure class="diagram">
+        <div class="shot-placeholder" data-shot="02-error-flow">📸 Screenshot: a flow with its error path — see SCREENSHOTS.md #2</div>
+        <figcaption class="diagram-cap">A flow's recovery path: the <code>error:</code> chain that sees <code>vars.error</code>.</figcaption>
+      </figure>
+      <figure class="diagram">
+        <div class="shot-placeholder" data-shot="06-oidc-signin">📸 Screenshot: the OIDC SSO sign-in screen — see SCREENSHOTS.md #6</div>
+        <figcaption class="diagram-cap">Signing in to the editor over OIDC SSO.</figcaption>
+      </figure>
+    </div>
   </div>
 </section>
 
@@ -466,7 +639,7 @@ flowchart LR
 <footer>
   <div class="wrap foot-inner">
     <div>
-      <a class="brand" href="#top"><span class="dot"></span> Octo</a>
+      <a class="brand" href="#top"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
       <div class="muted" style="margin-top:8px">A cloud-native, AI-native integration runtime. MIT licensed.</div>
     </div>
     <div class="foot-links">
@@ -799,6 +972,271 @@ flows:
                 process:
                   - type: log
                     settings: { message: '"low order " + string(vars.order.id)' }
+</script>
+
+  <script type="text/plain" data-sample-meta="ai-router"
+    data-title="ai-router" data-blurb="An LLM picks one of several named, described routes for each message. The default path is the guardrail, taken when the model isn't confident. Needs ANTHROPIC_API_KEY."
+    data-run="go run ./cli invoke --config samples/ai-router.yaml --flow triage --data '{&quot;subject&quot;:&quot;double charged&quot;}'"
+    data-pills="ai|llm-anthropic|router|guardrail"></script>
+  <script type="text/plain" data-sample-src="ai-router">service:
+  name: ai-router
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+
+flows:
+  - name: triage
+    process:
+      - type: ai-router
+        name: triage-ticket
+        connector: claude
+        prompt: >
+          Read the support ticket in the message body and route it to the team
+          best suited to handle it.
+        guardrail: >
+          If the ticket is ambiguous, spans multiple areas, or you are not
+          confident, take the default (human triage) path.
+        routes:
+          - name: billing
+            description: Payment failures, refunds, invoices, subscription changes.
+            process:
+              - type: set-payload
+                settings: { value: '{"team": "billing"}' }
+          - name: technical
+            description: Bugs, outages, API errors, integration problems.
+            process:
+              - type: set-payload
+                settings: { value: '{"team": "technical"}' }
+        default:
+          process:
+            - type: set-payload
+              settings: { value: '{"team": "human-triage"}' }
+</script>
+
+  <script type="text/plain" data-sample-meta="ai-agent"
+    data-title="ai-agent" data-blurb="An LLM accomplishes a task by calling your sub-flows as tools in a loop — each tool's args arrive as the branch body, its output returns to the model. Needs ANTHROPIC_API_KEY."
+    data-run="go run ./cli invoke --config samples/ai-agent.yaml --flow enrich --data '{&quot;company&quot;:&quot;Acme&quot;,&quot;domain&quot;:&quot;acme.example&quot;}'"
+    data-pills="ai|llm-anthropic|agent|tools"></script>
+  <script type="text/plain" data-sample-src="ai-agent">service:
+  name: ai-agent
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+
+flows:
+  - name: enrich
+    process:
+      - type: ai-agent
+        name: enrich-lead
+        connector: claude
+        maxIterations: 6
+        prompt: >
+          Enrich the inbound lead. Classify the company size and decide whether
+          it is a good fit. Call the tools as needed, then respond with a JSON
+          object {"tier": "...", "fit": true|false}.
+        guardrail: >
+          If you cannot classify the lead with confidence, take the default path.
+        tools:
+          - name: classify_size
+            description: Classify a company's size tier from its name and domain.
+            inputSchema: |
+              {
+                "type": "object",
+                "required": ["company"],
+                "properties": {
+                  "company": { "type": "string" },
+                  "domain":  { "type": "string" }
+                }
+              }
+            process:
+              - type: set-payload
+                settings: { value: '{"tier": "smb"}' }
+        default:
+          process:
+            - type: set-payload
+              settings: { value: '{"status": "needs-manual-review"}' }
+</script>
+
+  <script type="text/plain" data-sample-meta="ai-mapping"
+    data-title="ai-mapping" data-blurb="Reshape a message body to a target shape from a prompt, optional examples, and an output JSON Schema (validated). On a bad shape it errors — so it composes with ai-retry / handle-errors. Needs ANTHROPIC_API_KEY."
+    data-run="go run ./cli invoke --config samples/ai-mapping.yaml --flow normalize-contact --data '{&quot;name&quot;:&quot;Ada Lovelace&quot;,&quot;tel&quot;:&quot;(415) 555-0132&quot;}'"
+    data-pills="ai|llm-anthropic|transform|schema"></script>
+  <script type="text/plain" data-sample-src="ai-mapping">service:
+  name: ai-mapping
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+      # model defaults to claude-sonnet-4-6
+
+flows:
+  - name: normalize-contact
+    process:
+      - type: ai-mapping
+        name: normalize
+        settings:
+          connector: claude
+          prompt: >
+            Map the raw contact payload to our canonical contact shape.
+            Split the full name into firstName and lastName. Lowercase the email.
+            Normalize the phone number to E.164.
+          inputExample: |
+            { "name": "Ada Lovelace", "tel": "(415) 555-0132", "email": "ADA@EX.COM" }
+          outputExample: |
+            { "firstName": "Ada", "lastName": "Lovelace", "email": "ada@ex.com", "phone": "+14155550132" }
+          outputSchema: |
+            {
+              "type": "object",
+              "required": ["firstName", "lastName", "email"],
+              "properties": {
+                "firstName": { "type": "string" },
+                "lastName":  { "type": "string" },
+                "email":     { "type": "string" },
+                "phone":     { "type": "string" }
+              }
+            }
+</script>
+
+  <script type="text/plain" data-sample-meta="ai-retry"
+    data-title="ai-retry" data-blurb="Runs a protected chain and, on failure, lets an LLM inspect vars.error, revise the message, and re-run up to maxAttempts before falling through to the error chain. Self-healing. Needs ANTHROPIC_API_KEY."
+    data-run="go run ./cli invoke --config samples/ai-retry.yaml --flow charge --data '{&quot;order&quot;:{&quot;total&quot;:&quot;42.00&quot;,&quot;currency&quot;:&quot;usd&quot;}}'"
+    data-pills="ai|llm-anthropic|self-healing|errors"></script>
+  <script type="text/plain" data-sample-src="ai-retry">service:
+  name: ai-retry
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+
+flows:
+  - name: charge
+    process:
+      - type: ai-retry
+        name: resilient-charge
+        connector: claude
+        maxAttempts: 3
+        prompt: >
+          A step failed building the charge request. Inspect vars.error and the
+          message body, correct the body (for example, fix a malformed amount or
+          a missing currency), and produce a revised message to retry.
+        process:
+          # ai-mapping validates against outputSchema and errors on a bad shape,
+          # giving ai-retry something to recover from.
+          - type: ai-mapping
+            name: build-charge
+            settings:
+              connector: claude
+              prompt: "Build a Stripe charge request from the order."
+              outputSchema: |
+                {
+                  "type": "object",
+                  "required": ["amount", "currency"],
+                  "properties": {
+                    "amount":   { "type": "integer" },
+                    "currency": { "type": "string" }
+                  }
+                }
+        error:
+          - type: set-payload
+            settings:
+              value: '{"status": "degraded", "reason": vars.error.message}'
+</script>
+
+  <script type="text/plain" data-sample-meta="error-handling"
+    data-title="error-handling" data-blurb="Two recovery styles in one file: an inline handle-errors block (HTTP 200, degraded body) and a flow-level error: path (sets vars.httpStatus 502, returns vars.error). No external server needed."
+    data-run="go run ./cli --config samples/error-handling.yaml"
+    data-pills="handle-errors|error path|vars.error|httpStatus"></script>
+  <script type="text/plain" data-sample-src="error-handling">service:
+  name: error-handling
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      port: 8080
+  - name: payments
+    type: http-client
+    settings:
+      baseURL: http://127.0.0.1:9   # discard port -> every call fails to connect
+      timeout: 1s
+
+flows:
+  # 1. Inline recovery with handle-errors. The charge fails, so the error chain
+  #    runs, reads vars.error.message, and returns a friendly body (HTTP 200).
+  - name: charge-inline
+    source:
+      connector: api
+      type: http
+      settings: { path: /inline }
+    process:
+      - type: handle-errors
+        name: charge
+        process:
+          - type: rest
+            name: call-charge
+            settings:
+              connector: payments
+              method: POST
+              path: /charges
+              body: '{"amount": body.amount}'
+        error:
+          - type: set-payload
+            settings:
+              value: '{"status": "degraded", "reason": vars.error.message}'
+
+  # 2. Flow-level error path. No handle-errors: the rest call errors, so the
+  #    message is redirected to the flow error: chain, which sets a 502 status
+  #    and an error body the caller receives.
+  - name: charge-flowlevel
+    source:
+      connector: api
+      type: http
+      settings: { path: /flowlevel }
+    process:
+      - type: rest
+        name: call-charge
+        settings:
+          connector: payments
+          method: POST
+          path: /charges
+          body: '{"amount": body.amount}'
+    error:
+      - type: set-variable
+        settings: { name: httpStatus, value: "502" }
+      - type: set-payload
+        settings:
+          value: >
+            {
+              "error":       vars.error.message,
+              "failedBlock": vars.error.block,
+              "flow":        vars.error.flow
+            }
 </script>
 </div>
 

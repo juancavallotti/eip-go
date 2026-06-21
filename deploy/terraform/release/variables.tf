@@ -27,6 +27,12 @@ variable "repository_id" {
   default     = "octo"
 }
 
+variable "namespace" {
+  type        = string
+  description = "Kubernetes namespace for the production release. Overrides the helm-release module default (octo-dev, the devspace local-dev namespace). Changing it forces the release to be recreated."
+  default     = "octo"
+}
+
 variable "domain" {
   type        = string
   description = "Editor hostname; must match the k3s deployment. Per-integration subdomains live under *.{domain}."

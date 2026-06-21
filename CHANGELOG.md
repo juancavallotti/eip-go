@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.4](https://github.com/juancavallotti/eip-go/compare/v0.1.3...v0.1.4) (2026-06-21)
+
+
+### Features
+
+* **connectors:** add ai-mapping leaf block ([dd9ec5f](https://github.com/juancavallotti/eip-go/commit/dd9ec5f3bfb29e8bfa29840212cb87ee80088d2e))
+* **connectors:** add llm-anthropic connector ([46eb024](https://github.com/juancavallotti/eip-go/commit/46eb0242180f2cfdaf6b09b017ea07dcf23b596d))
+* **connectors:** add llm-gemini connector ([9986b47](https://github.com/juancavallotti/eip-go/commit/9986b47406fe249040d786e25a5d4cdd723b4f32))
+* **connectors:** add llm-openai connector ([31618a9](https://github.com/juancavallotti/eip-go/commit/31618a94c008a18f964be626e9b7804106140793))
+* **connectors:** update default LLM models ([2617cc7](https://github.com/juancavallotti/eip-go/commit/2617cc7b5da729ed21d8b340e740efd692e2cb2b))
+* **core:** add provider-agnostic LLMClient interface + DTOs ([360ef71](https://github.com/juancavallotti/eip-go/commit/360ef719b7e27c74d50f9495f63122a9a85db8c5))
+* **deploy:** wire editor OIDC SSO and drop Secret Manager ([d4c28fd](https://github.com/juancavallotti/eip-go/commit/d4c28fd30fb2debee0b2f1ff229788716a62e700))
+* **editor:** add LLM connectors + ai-mapping/ai-retry to capabilities ([1b7746a](https://github.com/juancavallotti/eip-go/commit/1b7746a18e91d50a5c2be8f23bae014101c89592))
+* **editor:** flow-level error path lane + canvas polish ([74db3e4](https://github.com/juancavallotti/eip-go/commit/74db3e4f7d6c53c6e84fcf52ebcd0e6f24123e11))
+* **editor:** OIDC SSO via Auth.js with role-gated BFF routes ([28d5860](https://github.com/juancavallotti/eip-go/commit/28d5860047bd3c7629cec4cd62e9a50def23e806))
+* **editor:** replace scope block with handle-errors ([b674f16](https://github.com/juancavallotti/eip-go/commit/b674f164068582e7caa8223172fc0f7daa43a6f3))
+* **editor:** route-list/tool-list field types for ai-router & ai-agent ([e15d4ff](https://github.com/juancavallotti/eip-go/commit/e15d4ffee850b14a19b9afbda618fc6a081ca16c))
+* **editor:** seed a starter inputSchema for new ai-agent tools ([393b0da](https://github.com/juancavallotti/eip-go/commit/393b0daa8220cf91ed80c1a52e14f7ff6939a146))
+* **editor:** tabbed console with Dev .env values ([766817c](https://github.com/juancavallotti/eip-go/commit/766817c9cbd9ca301e463ba305ab68d29047edef))
+* **engine:** add ai-agent composite ([a6bcbc9](https://github.com/juancavallotti/eip-go/commit/a6bcbc93fef0e4253a052777e5e694e1963ea606))
+* **engine:** add ai-retry composite ([80c2159](https://github.com/juancavallotti/eip-go/commit/80c21593c2298ee48cec9184e89d0d81cdd0606a))
+* **engine:** add ai-router composite ([cbb4779](https://github.com/juancavallotti/eip-go/commit/cbb47793b22e1f0c560e704c6a1ee2a46a6bf779))
+* **http:** propagate vars.httpStatus as the response status ([b808fa1](https://github.com/juancavallotti/eip-go/commit/b808fa13f2c85ebc159055c8cbee0a4bfdb42c45))
+* **log:** include variables in the default log line ([766036e](https://github.com/juancavallotti/eip-go/commit/766036e9e7872719cb63c98614f1bf9fb28a529e))
+* **runtime:** add flow-level error path with recovery ([578e7ef](https://github.com/juancavallotti/eip-go/commit/578e7efe26bc259e0aa975176eb1f35c7173530f))
+* **runtime:** add handle-errors block with structured vars.error ([cca5660](https://github.com/juancavallotti/eip-go/commit/cca5660adc02269b74fa7038939e55298321a2ea))
+* **types,engine:** add BlockConfig AI fields and slot tracking ([f29364b](https://github.com/juancavallotti/eip-go/commit/f29364b0038abe2db737d60fb4dcd8fce6606b98))
+
+
+### Bug Fixes
+
+* **ai:** self-healing ai-retry, component LLM logging, route/tool decode ([1003daf](https://github.com/juancavallotti/eip-go/commit/1003daf7e9f4a809cababd88d53d6b6f287ee7cf))
+* **ci:** extract terraform with python3 instead of unzip in deploy step ([3aba0e2](https://github.com/juancavallotti/eip-go/commit/3aba0e2019b0679709e8a35d34cbfc37dc43c443))
+* **ci:** extract terraform with python3 instead of unzip in deploy step ([cad4ab1](https://github.com/juancavallotti/eip-go/commit/cad4ab1c6196ef8dbe8950f2404add6603757e7e))
+* **deploy:** don't rotate adopted Postgres password on import ([3f91f33](https://github.com/juancavallotti/eip-go/commit/3f91f333ce1de1c9b09bcb435e0c409ace551b71))
+* **deploy:** don't rotate adopted Postgres password on import ([6a2f678](https://github.com/juancavallotti/eip-go/commit/6a2f6786bb82184993262fa68c6e5c6a09192bb6))
+* **gemini:** round-trip Gemini 3.x thought signatures in tool loops ([48f38a2](https://github.com/juancavallotti/eip-go/commit/48f38a2b914b706cefec28c0d06cc7e8371cfeba))
+
+
+### Documentation
+
+* document error handling + add error-handling sample ([2e8bea9](https://github.com/juancavallotti/eip-go/commit/2e8bea991f17b55d8bf91f110864c31b0e7a12c9))
+
 ## [0.1.3](https://github.com/juancavallotti/eip-go/compare/v0.1.2...v0.1.3) (2026-06-20)
 
 

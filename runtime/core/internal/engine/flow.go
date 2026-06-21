@@ -24,6 +24,7 @@ const (
 	blockKindSwitch       = "switch"
 	blockKindForeach      = "foreach"
 	blockKindAIRouter     = "ai-router"
+	blockKindAIAgent      = "ai-agent"
 )
 
 // blockError wraps the error a block returns with the block's label. It keeps the
@@ -192,6 +193,8 @@ func (b *builder) processor(
 		return b.foreachBlock(cfg)
 	case blockKindAIRouter:
 		return b.aiRouter(cfg)
+	case blockKindAIAgent:
+		return b.aiAgent(cfg)
 	default:
 		if err := rejectCompositeSlots(cfg); err != nil {
 			return nil, err

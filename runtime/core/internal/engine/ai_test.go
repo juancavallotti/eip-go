@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,6 +11,56 @@ import (
 	"github.com/juancavallotti/eip-go/core/internal/pool"
 	"github.com/juancavallotti/eip-go/types"
 )
+
+// endTurnResp builds a final (no-tool) assistant response.
+func endTurnResp(text string) *core.LLMResponse {
+	return &core.LLMResponse{
+		StopReason: core.LLMStopEndTurn,
+		Text:       text,
+		Raw:        core.LLMMessage{Role: core.LLMRoleAssistant, Text: text},
+	}
+}
+
+// refusalResp builds a refusal response.
+func refusalResp() *core.LLMResponse {
+	return &core.LLMResponse{StopReason: core.LLMStopRefusal, Raw: core.LLMMessage{Role: core.LLMRoleAssistant}}
+}
+
+// agentRegistry layers a "tool" leaf onto recordRegistry. The tool records the
+// JSON body it received into seen, optionally sets a variable (to observe shared
+// accumulation), optionally fails, and optionally replaces the body with a result.
+func agentRegistry(seen *[]any) *core.BlockRegistry {
+	reg := recordRegistry(seen)
+	reg.MustRegister("tool", func(s types.Settings, _ core.BlockDeps) (core.MessageProcessor, error) {
+		fail, _ := s.Bool("fail")
+		setVar, hasVar := s.String("setvar")
+		result, hasResult := s.String("result")
+		return processorFunc(func(_ context.Context, msg *types.Message) (*types.Message, error) {
+			if fail {
+				return nil, errors.New("tool failed")
+			}
+			raw, _ := msg.BodyJSON()
+			*seen = append(*seen, string(raw))
+			if hasVar {
+				msg.Variables.Set(setVar, true)
+			}
+			if hasResult {
+				_ = msg.SetBodyJSON([]byte(result))
+			}
+			return msg, nil
+		}), nil
+	})
+	return reg
+}
+
+// toolBranch builds an ai-agent tool branch running a single "tool" leaf.
+func toolBranch(name, desc string, settings types.Settings) types.ToolConfig {
+	return types.ToolConfig{
+		Name:        name,
+		Description: desc,
+		Flow:        types.FlowConfig{Process: []types.BlockConfig{{Type: "tool", Settings: settings}}},
+	}
+}
 
 // scriptedLLM is a core.Connector + core.LLMClient that returns a queued sequence
 // of responses, recording each request. When the queue is exhausted it returns
@@ -232,5 +283,179 @@ func TestAIRouterBuildValidation(t *testing.T) {
 	dup.Routes = append(dup.Routes, types.RouteConfig{Name: "a", Description: "d2", Flow: tagFlow("a2")})
 	if err := build(dup); err == nil {
 		t.Error("expected error with duplicate route names")
+	}
+}
+
+func TestAIAgentCallsToolThenFinishes(t *testing.T) {
+	var seen []any
+	reg := agentRegistry(&seen)
+	fake := &scriptedLLM{responses: []*core.LLMResponse{
+		toolCallResp("lookup", `{"domain":"x.com"}`),
+		endTurnResp(`{"done":true}`),
+	}}
+
+	cfg := types.BlockConfig{
+		Type: "ai-agent", Connector: "claude", Prompt: "enrich",
+		Tools: []types.ToolConfig{toolBranch("lookup", "look up a company", types.Settings{"result": `{"found":true}`})},
+	}
+	out, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t))
+	if err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	// The tool received the model's arguments as its body.
+	if len(seen) != 1 || seen[0] != `{"domain":"x.com"}` {
+		t.Errorf("seen = %v, want [the lookup args]", seen)
+	}
+	// The final assistant JSON was folded into the body.
+	if body, ok := out.Body.(map[string]any); !ok || body["done"] != true {
+		t.Errorf("final body = %#v", out.Body)
+	}
+	// The tool result was fed back on the second turn.
+	second := fake.calls[1].Messages
+	last := second[len(second)-1]
+	if last.Role != core.LLMRoleTool || !strings.Contains(last.ToolResults[0].Content, "found") {
+		t.Errorf("second turn missing tool result: %+v", last)
+	}
+}
+
+func TestAIAgentAccumulatesVariablesAcrossTools(t *testing.T) {
+	var seen []any
+	reg := agentRegistry(&seen)
+	fake := &scriptedLLM{responses: []*core.LLMResponse{
+		toolCallResp("a", `{}`),
+		toolCallResp("b", `{}`),
+		endTurnResp(`{}`),
+	}}
+
+	cfg := types.BlockConfig{
+		Type: "ai-agent", Connector: "claude", Prompt: "do both",
+		Tools: []types.ToolConfig{
+			toolBranch("a", "tool a", types.Settings{"setvar": "ka"}),
+			toolBranch("b", "tool b", types.Settings{"setvar": "kb"}),
+		},
+	}
+	out, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t))
+	if err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if out.Variables["ka"] != true || out.Variables["kb"] != true {
+		t.Errorf("variables did not accumulate across tools: %#v", out.Variables)
+	}
+}
+
+func TestAIAgentBranchErrorIsFedBack(t *testing.T) {
+	var seen []any
+	reg := agentRegistry(&seen)
+	fake := &scriptedLLM{responses: []*core.LLMResponse{
+		toolCallResp("boom", `{}`),
+		endTurnResp(`{"ok":true}`),
+	}}
+
+	cfg := types.BlockConfig{
+		Type: "ai-agent", Connector: "claude", Prompt: "try",
+		Tools: []types.ToolConfig{toolBranch("boom", "fails", types.Settings{"fail": true})},
+	}
+	out, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t))
+	if err != nil {
+		t.Fatalf("process should not abort on a branch error: %v", err)
+	}
+	if body, ok := out.Body.(map[string]any); !ok || body["ok"] != true {
+		t.Errorf("final body = %#v", out.Body)
+	}
+	second := fake.calls[1].Messages
+	last := second[len(second)-1]
+	if !last.ToolResults[0].IsError {
+		t.Errorf("branch error should produce an is_error result: %+v", last.ToolResults[0])
+	}
+}
+
+func TestAIAgentGuardrailAndErrorOnCap(t *testing.T) {
+	t.Run("cap with guardrail runs guardrail", func(t *testing.T) {
+		var seen []any
+		reg := agentRegistry(&seen)
+		fake := &scriptedLLM{repeat: toolCallResp("noop", `{}`)}
+		def := tagFlow("guardrail")
+		cfg := types.BlockConfig{
+			Type: "ai-agent", Connector: "claude", Prompt: "loop", MaxIterations: 3,
+			Tools:   []types.ToolConfig{toolBranch("noop", "does nothing", types.Settings{})},
+			Default: &def,
+		}
+		if _, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t)); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(seen) == 0 || seen[len(seen)-1] != "guardrail" {
+			t.Errorf("guardrail did not run last: %v", seen)
+		}
+		if len(fake.calls) != 3 {
+			t.Errorf("calls = %d, want 3", len(fake.calls))
+		}
+	})
+
+	t.Run("refusal with guardrail runs guardrail", func(t *testing.T) {
+		var seen []any
+		reg := agentRegistry(&seen)
+		fake := &scriptedLLM{responses: []*core.LLMResponse{refusalResp()}}
+		def := tagFlow("guardrail")
+		cfg := types.BlockConfig{
+			Type: "ai-agent", Connector: "claude", Prompt: "x",
+			Tools:   []types.ToolConfig{toolBranch("noop", "n", types.Settings{})},
+			Default: &def,
+		}
+		if _, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t)); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(seen) != 1 || seen[0] != "guardrail" {
+			t.Errorf("seen = %v, want [guardrail]", seen)
+		}
+	})
+
+	t.Run("cap without guardrail errors", func(t *testing.T) {
+		var seen []any
+		reg := agentRegistry(&seen)
+		fake := &scriptedLLM{repeat: toolCallResp("noop", `{}`)}
+		cfg := types.BlockConfig{
+			Type: "ai-agent", Connector: "claude", Prompt: "loop", MaxIterations: 2,
+			Tools: []types.ToolConfig{toolBranch("noop", "n", types.Settings{})},
+		}
+		if _, err := mustBuildAI(t, reg, depsLLM(fake), cfg).Process(context.Background(), aiMessage(t)); err == nil {
+			t.Error("expected an error when the cap is hit with no guardrail")
+		}
+	})
+}
+
+func TestAIAgentBuildValidation(t *testing.T) {
+	reg := agentRegistry(&[]any{})
+	deps := depsLLM(&scriptedLLM{})
+	build := func(cfg types.BlockConfig) error {
+		_, err := (&builder{reg: reg, pool: pool.New(0, 0), deps: deps}).block(cfg)
+		return err
+	}
+	base := func() types.BlockConfig {
+		return types.BlockConfig{Type: "ai-agent", Connector: "claude", Prompt: "x",
+			Tools: []types.ToolConfig{toolBranch("a", "d", types.Settings{})}}
+	}
+
+	if err := build(types.BlockConfig{Type: "ai-agent", Connector: "claude", Prompt: "x"}); err == nil {
+		t.Error("expected error with no tools")
+	}
+	noPrompt := base()
+	noPrompt.Prompt = ""
+	if err := build(noPrompt); err == nil {
+		t.Error("expected error with no prompt")
+	}
+	noDesc := base()
+	noDesc.Tools[0].Description = ""
+	if err := build(noDesc); err == nil {
+		t.Error("expected error with a tool missing a description")
+	}
+	dup := base()
+	dup.Tools = append(dup.Tools, toolBranch("a", "d2", types.Settings{}))
+	if err := build(dup); err == nil {
+		t.Error("expected error with duplicate tool names")
+	}
+	badSchema := base()
+	badSchema.Tools[0].InputSchema = `{not json`
+	if err := build(badSchema); err == nil {
+		t.Error("expected error with an invalid inputSchema")
 	}
 }

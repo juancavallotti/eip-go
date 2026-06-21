@@ -182,6 +182,248 @@ func routeFromCall(call core.LLMToolCall) string {
 	return args.Route
 }
 
+// defaultAgentIterations caps how many tool-calling turns an agent runs before
+// falling back to the guardrail. Each turn is one model call.
+const defaultAgentIterations = 8
+
+// aiAgent is a composite that lets an LLM accomplish a task by calling its
+// branches as tools, one or more times, in a loop. Each branch is wired to the
+// model as a function: the model's arguments become the branch's message body and
+// the branch's output body is returned to the model as the tool result. Tool
+// branches share the message, so variables they set accumulate across the loop.
+// The guardrail (Default) flow is taken when the model refuses or never finishes.
+type aiAgent struct {
+	client        core.LLMClient
+	system        string
+	tools         []core.LLMTool
+	branches      map[string]*Flow
+	guardrail     *Flow
+	maxIterations int
+}
+
+//nolint:ireturn // builders intentionally return the MessageProcessor interface
+func (b *builder) aiAgent(cfg types.BlockConfig) (core.MessageProcessor, error) {
+	if len(cfg.Tools) == 0 {
+		return nil, errors.New("ai-agent block requires at least one tool")
+	}
+	if strings.TrimSpace(cfg.Prompt) == "" {
+		return nil, errors.New("ai-agent block requires a prompt")
+	}
+	if err := allowSlots(cfg, blockKindAIAgent,
+		"tools", "default", "connector", "prompt", "guardrail", "maxIterations"); err != nil {
+		return nil, err
+	}
+
+	client, err := resolveLLM(blockKindAIAgent, cfg.Connector, b.deps)
+	if err != nil {
+		return nil, err
+	}
+
+	branches, tools, err := b.agentTools(cfg.Tools)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIterations := cfg.MaxIterations
+	if maxIterations <= 0 {
+		maxIterations = defaultAgentIterations
+	}
+
+	block := &aiAgent{
+		client:        client,
+		system:        buildAgentSystem(cfg.Prompt, cfg.Guardrail),
+		tools:         tools,
+		branches:      branches,
+		maxIterations: maxIterations,
+	}
+	if cfg.Default != nil {
+		guardrail, defErr := b.subFlow(*cfg.Default)
+		if defErr != nil {
+			return nil, fmt.Errorf("ai-agent default: %w", defErr)
+		}
+		block.guardrail = guardrail
+	}
+	return block, nil
+}
+
+// agentTools builds the tool branches and their model-facing definitions,
+// validating names, descriptions, uniqueness, and schemas.
+func (b *builder) agentTools(configs []types.ToolConfig) (map[string]*Flow, []core.LLMTool, error) {
+	branches := make(map[string]*Flow, len(configs))
+	tools := make([]core.LLMTool, 0, len(configs))
+	for i := range configs {
+		tool := configs[i]
+		if tool.Name == "" {
+			return nil, nil, fmt.Errorf("ai-agent tool %d requires a name", i)
+		}
+		if tool.Description == "" {
+			return nil, nil, fmt.Errorf("ai-agent tool %q requires a description", tool.Name)
+		}
+		if _, dup := branches[tool.Name]; dup {
+			return nil, nil, fmt.Errorf("ai-agent tool %q is defined more than once", tool.Name)
+		}
+		schema, err := toolInputSchema(tool)
+		if err != nil {
+			return nil, nil, err
+		}
+		flow, err := b.subFlow(tool.Flow)
+		if err != nil {
+			return nil, nil, fmt.Errorf("ai-agent tool %q: %w", tool.Name, err)
+		}
+		branches[tool.Name] = flow
+		tools = append(tools, core.LLMTool{Name: tool.Name, Description: tool.Description, InputSchema: schema})
+	}
+	return branches, tools, nil
+}
+
+// Process runs the agentic loop: the model calls tools (branches) until it
+// finishes with a final result or the iteration cap is hit. Tool branches run on
+// the shared message so variables accumulate; the final assistant text is folded
+// into the body as the result.
+func (a *aiAgent) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
+	body, err := msg.BodyJSON()
+	if err != nil {
+		return nil, fmt.Errorf("ai-agent: encode input body: %w", err)
+	}
+	messages := []core.LLMMessage{{
+		Role: core.LLMRoleUser,
+		Text: "Accomplish the task for this input message body:\n" + string(body),
+	}}
+
+	current := msg
+	for iter := 0; iter < a.maxIterations; iter++ {
+		resp, completeErr := a.client.Complete(ctx, core.LLMRequest{
+			System:     a.system,
+			Messages:   messages,
+			Tools:      a.tools,
+			ToolChoice: core.LLMToolChoice{Mode: core.LLMToolChoiceAuto},
+		})
+		if completeErr != nil {
+			return nil, fmt.Errorf("ai-agent: %w", completeErr)
+		}
+		messages = append(messages, resp.Raw)
+
+		if resp.StopReason == core.LLMStopRefusal {
+			return a.fallback(ctx, current, "model refused")
+		}
+		if len(resp.ToolCalls) == 0 {
+			return foldResult(current, resp.Text), nil
+		}
+
+		results := make([]core.LLMToolResult, 0, len(resp.ToolCalls))
+		for _, call := range resp.ToolCalls {
+			var res core.LLMToolResult
+			res, current = a.runTool(ctx, call, current)
+			results = append(results, res)
+		}
+		messages = append(messages, core.LLMMessage{Role: core.LLMRoleTool, ToolResults: results})
+	}
+
+	return a.fallback(ctx, current, "exceeded max iterations")
+}
+
+// runTool dispatches one tool call to its branch: the call arguments become the
+// branch's body and the branch's output body is the tool result. A branch error
+// or a dropped message becomes an error result fed back to the model rather than
+// aborting the agent. It returns the (possibly updated) current message so shared
+// state carries forward.
+func (a *aiAgent) runTool(
+	ctx context.Context, call core.LLMToolCall, current *types.Message,
+) (core.LLMToolResult, *types.Message) {
+	flow, ok := a.branches[call.Name]
+	if !ok {
+		return errorResult(call.ID, fmt.Sprintf("unknown tool %q", call.Name)), current
+	}
+	args := call.Input
+	if len(args) == 0 {
+		args = json.RawMessage("{}")
+	}
+	if err := current.SetBodyJSON(args); err != nil {
+		return errorResult(call.ID, fmt.Sprintf("invalid arguments: %v", err)), current
+	}
+	out, err := flow.Process(ctx, current)
+	if err != nil {
+		return errorResult(call.ID, err.Error()), current
+	}
+	if out == nil {
+		return errorResult(call.ID, "tool produced no result"), current
+	}
+	content, err := out.BodyJSON()
+	if err != nil {
+		return errorResult(call.ID, fmt.Sprintf("encode result: %v", err)), out
+	}
+	return core.LLMToolResult{ToolCallID: call.ID, Content: string(content)}, out
+}
+
+// fallback runs the guardrail flow, or errors when none is configured so the
+// failure propagates to a recovery path.
+func (a *aiAgent) fallback(ctx context.Context, msg *types.Message, reason string) (*types.Message, error) {
+	if a.guardrail != nil {
+		return a.guardrail.Process(ctx, msg)
+	}
+	return nil, fmt.Errorf("ai-agent: %s and no guardrail configured", reason)
+}
+
+// foldResult sets the message body to the model's final answer, parsing it as
+// JSON when possible and otherwise storing it as text. An empty answer leaves the
+// body untouched (the last tool's effect stands).
+func foldResult(msg *types.Message, text string) *types.Message {
+	trimmed := stripJSONFence(text)
+	if trimmed == "" {
+		return msg
+	}
+	var decoded any
+	if json.Unmarshal([]byte(trimmed), &decoded) == nil {
+		msg.Body = decoded
+	} else {
+		msg.Body = text
+	}
+	return msg
+}
+
+// toolInputSchema returns the tool's JSON Schema as raw JSON, defaulting to an
+// empty object schema and validating any supplied schema is well-formed JSON.
+func toolInputSchema(tool types.ToolConfig) (json.RawMessage, error) {
+	schema := strings.TrimSpace(tool.InputSchema)
+	if schema == "" {
+		return json.RawMessage(`{"type":"object"}`), nil
+	}
+	if !json.Valid([]byte(schema)) {
+		return nil, fmt.Errorf("ai-agent tool %q: inputSchema is not valid JSON", tool.Name)
+	}
+	return json.RawMessage(schema), nil
+}
+
+// buildAgentSystem assembles the agent's task system prompt.
+func buildAgentSystem(prompt, guardrail string) string {
+	var b strings.Builder
+	b.WriteString("You are an agent that accomplishes a task by calling the available tools. ")
+	b.WriteString("Call tools as needed; when the task is complete, respond with the final result ")
+	b.WriteString("as JSON only (no prose, no markdown code fences).\n\n")
+	b.WriteString(strings.TrimSpace(prompt))
+	if strings.TrimSpace(guardrail) != "" {
+		b.WriteString("\n\nGuardrail: ")
+		b.WriteString(strings.TrimSpace(guardrail))
+	}
+	return b.String()
+}
+
+// stripJSONFence removes a surrounding ```json ... ``` (or bare ``` ... ```)
+// markdown fence if the model wrapped its answer in one.
+func stripJSONFence(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimPrefix(s, "json")
+	s = strings.TrimPrefix(s, "JSON")
+	if i := strings.LastIndex(s, "```"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
 // buildRouterSystem assembles the routing system prompt: the user's instruction,
 // the route catalog, and the guardrail guidance.
 func buildRouterSystem(prompt string, routes []types.RouteConfig, guardrail string) string {

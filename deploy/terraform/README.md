@@ -82,6 +82,12 @@ then installs/upgrades the chart. Bumping the tag rewrites the pod templates, so
 Deployments roll automatically; Postgres is untouched when only the tag moves. First TLS
 issuance takes a minute after DNS resolves.
 
+**OIDC + Cloud Build:** `octo.tfvars` is gitignored, so the Cloud Build deploy step never
+sees it — it passes the non-secret config via `-var` from substitutions and reads the OIDC
+creds back from `release/oidc.json` in the state bucket. That file is written by a local
+`task deploy` (which has `octo.tfvars`), so **run `task deploy` once after changing any
+`oidc_*` value** to (re)seed it before relying on the automated build.
+
 Verify:
 
 ```sh

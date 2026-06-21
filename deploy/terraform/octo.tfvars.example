@@ -19,6 +19,9 @@ dns_managed_zone = "your-clouddns-zone-name"  # Cloud DNS zone NAME, e.g. "juanc
 # client secret is kept in the release Terraform state (the GCS bucket), and the
 # Auth.js session secret is generated automatically — no Secret Manager. Register the
 # redirect URI https://{domain}/api/auth/callback/eetr on the IdP.
+# A local `task deploy` also seeds these into release/oidc.json in the state bucket so
+# the Cloud Build deploy step (which never sees this gitignored file) reads them back;
+# re-run `task deploy` once after changing any oidc_* value.
 # oidc_enabled       = true
 # oidc_client_id     = "eetr_xxxxxxxxxxxxxxxxxxxxxxxx"
 # oidc_client_secret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

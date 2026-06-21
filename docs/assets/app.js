@@ -80,6 +80,12 @@ function buildSamples() {
         </div>
         <div class="sample-meta">
           <h3>${title}</h3>
+          <figure class="sample-shot">
+            <img src="assets/screenshots/sample-${id}.png" loading="lazy"
+                 alt="The ${title} flow rendered in the Octo visual editor"
+                 onerror="this.closest('.sample-shot').remove()" />
+            <figcaption>Rendered in the visual editor</figcaption>
+          </figure>
           <p>${blurb}</p>
           <div class="pill-row">${pills.map((p) => `<span class="pill">${p}</span>`).join('')}</div>
           <div class="run-label">Run it</div>

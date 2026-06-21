@@ -1,63 +1,52 @@
-# Screenshot shoot list
+# Screenshots
 
-The landing page ([index.html](index.html)) carries styled placeholder boxes
-(`<div class="shot-placeholder" data-shot="…">`) wherever a screenshot belongs.
-This file is the checklist for producing those images.
+Most screenshots on the docs site are **generated automatically** by a Playwright
+harness in `editor/` that renders flows in the real editor. A few (auth, console,
+deployments) need a running backend and are captured manually.
 
-When an image is ready, drop the PNG in `assets/screenshots/<id>.png` and replace the
-placeholder `<div>` in `index.html` with:
+## Auto: per-sample editor shots
 
-```html
-<img class="shot" src="assets/screenshots/<id>.png" alt="…" />
-```
+`editor/e2e/screenshots.spec.ts` loads every gallery sample at `/preview?sample=<file>`
+and captures a full-editor viewport (palette + canvas + settings panel) into
+`docs/assets/screenshots/sample-<id>.png`. The samples gallery shows each one inside its
+panel (see [assets/app.js](assets/app.js)); the What's New section reuses two of them.
 
-(The `.shot` class is already styled in [assets/styles.css](assets/styles.css).)
-
-**Target format:** ~16:9, ≥1600px wide, PNG. The Playwright harness renders at 1600×900
-with `deviceScaleFactor: 2` (effective 3200×1800) so the "auto" shots come out crisp.
-
-## How the "auto" shots are produced
-
-Shots #1–#3 are captured by the Playwright harness in `editor/` (Increment 2). From the
-editor directory:
+Regenerate them all:
 
 ```bash
-npm run screenshots
+cd editor && npm run screenshots
 ```
 
-It starts the editor dev server **without** the OIDC env vars (so it's unauthenticated),
-loads each sample via `/preview?sample=<name>`, waits for the canvas, and writes the PNGs
-straight into `docs/assets/screenshots/`.
+It boots the editor dev server with the OIDC env vars cleared (so it's unauthenticated —
+see `auth.config.ts` `authEnabled`), renders each sample, and writes the PNGs. Output is
+1440×900 @2x (2880×1800).
 
-## Shots
+Covered samples (id → `samples/<file>.yaml`): hello-world, http-orders, db-orders,
+weather, flow-to-flow (flow-to-flow-http), builtins (builtins-demo), ai-router, ai-agent,
+ai-mapping, ai-retry, error-handling, file-logger, heartbeat.
 
-| # | `data-shot` id        | File                        | Source  | What to capture |
-|---|-----------------------|-----------------------------|---------|-----------------|
-| 1 | `01-flow-canvas`      | `01-flow-canvas.png`        | auto    | The `ai-router` sample on the editor canvas — the router block with its named routes + default path. Referenced in **What's New**. |
-| 2 | `02-error-flow`       | `02-error-flow.png`         | auto    | The `error-handling` sample — a flow showing the `error:` recovery chain. Referenced in **What's New**. |
-| 3 | `03-flow-overview`    | `03-flow-overview.png`      | auto    | A representative flow (e.g. `http-orders`) for a hero/overview shot of the canvas. (Spare — wire in where useful.) |
-| 4 | `04-block-palette`    | `04-block-palette.png`      | manual  | The component palette open, scrolled to the LLM connectors + AI blocks (`ai-router`, `ai-agent`, `ai-mapping`, `ai-retry`). |
-| 5 | `05-ai-settings`      | `05-ai-settings.png`        | manual  | An AI block's settings panel — the `route-list` (ai-router) or `tool-list` (ai-agent) editor with an `inputSchema`. Select the block on the canvas to open it. |
-| 6 | `06-oidc-signin`      | `06-oidc-signin.png`        | manual  | The OIDC SSO sign-in screen (`/auth/signin`). Requires running the editor with the `AUTH_EETR_*` env vars set. Referenced in **What's New**. |
-| 7 | `07-tabbed-console`   | `07-tabbed-console.png`     | manual  | The bottom console showing the **Logs** / **Dev .env** tabs, with a run's test URL visible in the log panel. Referenced in **What's New**. |
+To add a sample to the shoot, add it to the `SAMPLES` list in the spec and to the gallery
+in `index.html`.
 
-## Manual shots — notes
+## Manual: backend-dependent shots
 
-- **#4 / #5** need an AI sample loaded with the palette/settings open. The harness in
-  `editor/` can be extended to click a block and screenshot the settings panel if you'd
-  rather automate these.
-- **#6** is the only shot that needs auth wired up — run the editor with
-  `AUTH_EETR_ISSUER`, `AUTH_EETR_CLIENT_ID`, `AUTH_EETR_CLIENT_SECRET`, and `AUTH_SECRET`
-  set, then visit a protected route to be redirected to `/auth/signin`.
-- **#7** needs a flow actually running (the test URL only appears once a run starts), so
-  it needs `OCTO_BIN_PATH` pointed at a built `octo` binary.
+These need the orchestrator / a running flow / SSO configured, so they aren't automated.
+Drop the PNG in `assets/screenshots/<id>.png` and replace the matching
+`<div class="shot-placeholder" data-shot="<id>">` in `index.html` with
+`<img class="shot" src="assets/screenshots/<id>.png" alt="…" />`.
+
+| `data-shot` id      | What to capture | Notes |
+|---------------------|-----------------|-------|
+| `06-oidc-signin`    | The OIDC SSO sign-in screen (`/auth/signin`). | Run the editor with `AUTH_EETR_*` + `AUTH_SECRET` set. Referenced in What's New. |
+| `07-tabbed-console` | Bottom console: Logs / Dev `.env` tabs + a run's test URL. | Needs `OCTO_BIN_PATH` so a run can start. Referenced in What's New. |
+| `08-deployments`    | The deployments management view for an integration. | Needs `ORCHESTRATOR_URL` + a saved integration with deployments. Not yet placed. |
+| `09-integrations`   | The integrations list / manager (`/integrations`). | Needs `ORCHESTRATOR_URL`. Not yet placed. |
 
 ## Checklist
 
-- [x] 1. `01-flow-canvas.png` (auto) — generated + placed in What's New
-- [x] 2. `02-error-flow.png` (auto) — generated + placed in What's New
-- [x] 3. `03-flow-overview.png` (auto) — generated (spare; not yet placed)
-- [ ] 4. `04-block-palette.png` (manual)
-- [ ] 5. `05-ai-settings.png` (manual)
-- [ ] 6. `06-oidc-signin.png` (manual)
-- [ ] 7. `07-tabbed-console.png` (manual)
+- [x] Per-sample gallery shots (`sample-*.png`, ×13) — generated + shown in the gallery
+- [x] What's New reuses `sample-ai-router.png` + `sample-error-handling.png`
+- [ ] `06-oidc-signin.png` (manual)
+- [ ] `07-tabbed-console.png` (manual)
+- [ ] `08-deployments.png` (manual)
+- [ ] `09-integrations.png` (manual)

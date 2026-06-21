@@ -532,7 +532,7 @@ vars.order.amount &gt;= vars.threshold</code></pre>
 
     <div class="grid cols-2" style="margin-top:22px">
       <figure class="diagram">
-        <img class="shot" src="assets/screenshots/01-flow-canvas.png" alt="An ai-router flow on the Octo editor canvas: an AI Router block fanning out to billing, technical, and default routes." />
+        <img class="shot" src="assets/screenshots/sample-ai-router.png" alt="An ai-router flow on the Octo editor canvas: an AI Router block fanning out to billing, technical, and default routes." />
         <figcaption class="diagram-cap">An <code>ai-router</code> flow rendered in the visual editor.</figcaption>
       </figure>
       <figure class="diagram">
@@ -540,7 +540,7 @@ vars.order.amount &gt;= vars.threshold</code></pre>
         <figcaption class="diagram-cap">The tabbed developer console: live logs, a Dev <code>.env</code> editor, and the run's test URL.</figcaption>
       </figure>
       <figure class="diagram">
-        <img class="shot" src="assets/screenshots/02-error-flow.png" alt="The error-handling sample on the canvas: a handle-errors block with a recovery lane, and a flow-level error path." />
+        <img class="shot" src="assets/screenshots/sample-error-handling.png" alt="The error-handling sample on the canvas: a handle-errors block with a recovery lane, and a flow-level error path." />
         <figcaption class="diagram-cap">A flow's recovery path: the <code>error:</code> chain that sees <code>vars.error</code>.</figcaption>
       </figure>
       <figure class="diagram">
@@ -1237,6 +1237,75 @@ flows:
               "failedBlock": vars.error.block,
               "flow":        vars.error.flow
             }
+</script>
+
+  <script type="text/plain" data-sample-meta="file-logger"
+    data-title="file-logger" data-blurb="A named logger connector owns its own output file (opened on start, closed on shutdown). A cron tick writes a JSON audit line through it."
+    data-run="task run:sample -- file-logger.yaml"
+    data-pills="cron|logger|file|json"></script>
+  <script type="text/plain" data-sample-src="file-logger">service:
+  name: file-logger-demo
+
+connectors:
+  - name: ticker
+    type: cron
+  # A named logger connector. It owns its output file (opened on start, closed
+  # on shutdown). Any settings can be omitted to take the defaults
+  # (output: stdout, format: text, level: info).
+  - name: audit
+    type: logger
+    settings:
+      output: /tmp/octo-audit.log
+      format: json
+      level: info
+      addSource: false
+
+flows:
+  - name: audit-ticks
+    source:
+      connector: ticker
+      type: cron
+      settings:
+        schedule: "@every 2s"
+        payload: '{"date": string(now)}'
+    process:
+      # This log block writes through the named "audit" logger connector.
+      - type: log
+        settings:
+          logger: audit
+          message: '"tick at " + body.date'
+</script>
+
+  <script type="text/plain" data-sample-meta="heartbeat"
+    data-title="heartbeat" data-blurb="The minimal cron flow: a ticker fires on a schedule and a reusable named processor logs a CEL-rendered heartbeat line."
+    data-run="task run:sample -- heartbeat.yaml"
+    data-pills="cron|log|processors (ref)"></script>
+  <script type="text/plain" data-sample-src="heartbeat">service:
+  name: heartbeat
+
+connectors:
+  - name: ticker
+    type: cron
+
+# Named processor definitions. Flow blocks reference these by `ref`.
+processors:
+  - name: heartbeat-log
+    type: log
+    settings:
+      level: info
+      message: '"heartbeat fired at " + body.firedAt'
+
+flows:
+  - name: heartbeat
+    source:
+      connector: ticker
+      type: cron
+      settings:
+        # Descriptor schedule: fire every two seconds.
+        schedule: "@every 2s"
+        payload: '{"firedAt": string(now), "kind": "tick"}'
+    process:
+      - ref: heartbeat-log
 </script>
 </div>
 

@@ -26,8 +26,9 @@
       <a href="#concepts">Concepts</a>
       <a href="#architecture">Architecture</a>
       <a href="#patterns">Patterns</a>
-      <a href="#cel">CEL</a>
+      <a href="cel.html">CEL</a>
       <a href="#samples">Samples</a>
+      <a href="#guides">Guides</a>
       <a href="#quickstart">Quickstart</a>
       <a href="#whats-new">What's New</a>
       <a href="#roadmap">Roadmap</a>
@@ -288,26 +289,27 @@ flowchart TB
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">Enterprise integration patterns</span>
-      <h2>The patterns you know — each a first-class construct.</h2>
-      <p>Every classic EIP maps directly onto a block, a composite, or a connector capability. Nothing exotic to learn; just the vocabulary you already speak.</p>
+      <h2>The patterns you know — mapped to real blocks.</h2>
+      <p>Many classic EIPs map onto a block, a composite, or a connector capability that ships today. Every entry below names a construct you can actually write in a flow — nothing aspirational.</p>
     </div>
 
     <div class="sample-grid">
       <table class="eip-table">
         <thead><tr><th>Pattern</th><th>In Octo</th></tr></thead>
         <tbody>
-          <tr><td>Message</td><td>JSON body + <code>Variables</code> + <code>CorrelationID</code></td></tr>
+          <tr><td>Message</td><td>JSON body + <code>vars</code> + <code>correlationID</code></td></tr>
           <tr><td>Polling Consumer</td><td><code>cron</code> source</td></tr>
-          <tr><td>Request–Reply</td><td><code>http</code> source (sync response)</td></tr>
+          <tr><td>Request–Reply</td><td><code>http</code> source (synchronous response)</td></tr>
           <tr><td>Content-Based Router</td><td><code>switch</code> block</td></tr>
-          <tr><td>Message Filter</td><td>processor returns <code>(nil, nil)</code></td></tr>
-          <tr><td>Message Translator</td><td><code>set-payload</code> / <code>transform</code></td></tr>
-          <tr><td>Content Enricher</td><td><code>flow-ref</code> (sync fold-back)</td></tr>
-          <tr><td>Splitter / Iterator</td><td><code>foreach</code> block</td></tr>
+          <tr><td>Conditional branch</td><td><code>if</code> block</td></tr>
+          <tr><td>Message Translator</td><td><code>set-payload</code> (CEL) · <code>ai-mapping</code> (LLM)</td></tr>
+          <tr><td>Content Enricher</td><td><code>flow-ref</code> (synchronous; result folds back)</td></tr>
+          <tr><td>Splitter</td><td><code>foreach</code> block</td></tr>
           <tr><td>Scatter-Gather</td><td><code>fork</code> composite</td></tr>
-          <tr><td>Wire Tap</td><td><code>log</code> (pass-through)</td></tr>
-          <tr><td>Dead Letter Channel</td><td><code>handle-errors</code> / flow <code>error</code> path</td></tr>
+          <tr><td>Wire Tap</td><td><code>log</code> block (passes the message through)</td></tr>
+          <tr><td>Dead Letter / recovery</td><td><code>handle-errors</code> block · flow <code>error:</code> chain</td></tr>
           <tr><td>Process Manager</td><td>sourceless flow + <code>flow-ref</code></td></tr>
+          <tr><td>Content-based routing (LLM)</td><td><code>ai-router</code> composite</td></tr>
         </tbody>
       </table>
 
@@ -337,103 +339,6 @@ flowchart TB
   </div>
 </section>
 
-<!-- ============================== CEL CHEAT SHEET ============================== -->
-<section id="cel">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">Expressions, demystified</span>
-      <h2>CEL cheat sheet.</h2>
-      <p>
-        Routing, transforms, conditions, and payloads are
-        <a href="https://github.com/google/cel-go" target="_blank" rel="noopener">CEL</a> expressions
-        (Google's Common Expression Language). They compile once when the flow builds — so a typo
-        fails at startup, not in production — and run read-only over each message. The upstream spec
-        is terse; here's everything you actually need.
-      </p>
-    </div>
-
-    <h3>What an expression can see</h3>
-    <p style="max-width:760px">Every message-driven block evaluates against the same activation. These are the variables in scope:</p>
-    <table class="eip-table" style="margin:18px 0 40px">
-      <thead><tr><th>Variable</th><th>Type</th><th>What it is</th></tr></thead>
-      <tbody>
-        <tr><td><code>body</code></td><td>JSON value</td><td>The decoded message body — usually a map, sometimes a list/scalar. Rewritten by <code>set-payload</code>.</td></tr>
-        <tr><td><code>vars</code></td><td>map</td><td>Per-message variables. Read here; write with <code>set-variable</code>. Sources seed it (see below).</td></tr>
-        <tr><td><code>env</code></td><td>map</td><td>Resolved values of the flow's declared <code>env:</code> entries — e.g. <code>env.HTTP_PORT</code>. Only declared keys exist.</td></tr>
-        <tr><td><code>eventID</code></td><td>string</td><td>Stable unique id for this message.</td></tr>
-        <tr><td><code>correlationID</code></td><td>string</td><td>Caller-supplied id for grouping related messages (optional).</td></tr>
-      </tbody>
-    </table>
-
-    <h3>What sources put in <code>vars</code></h3>
-    <table class="eip-table" style="margin:18px 0 40px">
-      <thead><tr><th>From</th><th>Variable</th><th>Example</th></tr></thead>
-      <tbody>
-        <tr><td>http source</td><td><code>vars.method</code></td><td><code>vars.method == "POST"</code></td></tr>
-        <tr><td>http source</td><td><code>vars.query</code> (always a map)</td><td><code>has(vars.query.currency)</code></td></tr>
-        <tr><td>http path <code>/orders/{id}</code></td><td><code>vars.&lt;param&gt;</code></td><td><code>vars.id</code></td></tr>
-        <tr><td>http captured header</td><td><code>vars["X-Header"]</code></td><td><code>vars["X-Tenant"]</code></td></tr>
-        <tr><td>cron source payload</td><td><code>now</code></td><td><code>string(now)</code></td></tr>
-        <tr><td>error path</td><td><code>vars.error</code></td><td><code>vars.error.message</code> · <code>.flow</code> · <code>.block</code></td></tr>
-      </tbody>
-    </table>
-
-    <h3>Recipes</h3>
-    <p style="max-width:760px">Every snippet below is lifted from a working sample in <code>samples/</code>.</p>
-    <div class="grid cols-2" style="margin-top:18px">
-      <div>
-        <div class="sample-meta"><p class="run-label">Build a string · coerce types</p></div>
-        <pre><code class="language-yaml">"hello, " + body.name + "!"
-"processing " + string(size(body.orders)) + " orders"</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Safe access with a default</p></div>
-        <pre><code class="language-yaml">has(vars.query.currency) ? vars.query.currency : "USD"</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Route on method or value (switch / if)</p></div>
-        <pre><code class="language-yaml">vars.method == "POST"
-body.amount &gt;= 1000.0
-size(body.orders) &gt; 0</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Build a JSON object (set-payload)</p></div>
-        <pre><code class="language-yaml">{"orderId": vars.id, "currency": vars.currency, "status": "found"}</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Reach into nested fields &amp; dashed headers</p></div>
-        <pre><code class="language-yaml">body.current.temperature_2m
-vars["X-Tenant"]</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Read environment variables</p></div>
-        <pre><code class="language-yaml">"listening on " + env.HTTP_PORT</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Iterate a list (foreach)</p></div>
-        <pre><code class="language-yaml">items: body.orders        # the list to split
-as: order                 # each item -> vars.order
-vars.order.amount &gt;= vars.threshold</code></pre>
-      </div>
-      <div>
-        <div class="sample-meta"><p class="run-label">Recover from an error (error path)</p></div>
-        <pre><code class="language-yaml">{"error": vars.error.message,
- "failedBlock": vars.error.block,
- "flow": vars.error.flow}</code></pre>
-      </div>
-    </div>
-
-    <div class="note" style="margin-top:32px">
-      <strong>Gotchas worth knowing.</strong>
-      JSON numbers are always <code>double</code> (float) — wrap with <code>int(...)</code> when you need a whole number.
-      Use <code>has(map.key)</code> before reading a key that might be missing, or the expression errors.
-      Only <code>env:</code> entries you declare are in scope — an undeclared <code>env.X</code> fails at build time.
-      Expressions never mutate state: read <code>vars</code>/<code>body</code> here, and change them with
-      <code>set-variable</code> / <code>set-payload</code>. Use bracket syntax (<code>vars["X-Tenant"]</code>) for keys with dashes.
-    </div>
-  </div>
-</section>
-
 <!-- ============================== SAMPLES ============================== -->
 <section id="samples">
   <div class="wrap">
@@ -448,8 +353,41 @@ vars.order.amount &gt;= vars.threshold</code></pre>
   </div>
 </section>
 
+<!-- ============================== GUIDES ============================== -->
+<section id="guides" class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Go deeper</span>
+      <h2>Guides.</h2>
+      <p>Beyond the landing tour: reference pages for the pieces you'll reach for most. More to come.</p>
+    </div>
+    <div class="grid cols-2">
+      <a class="card" href="connectors.html" style="text-decoration:none">
+        <div class="ic">🔌</div>
+        <h3>Connectors</h3>
+        <p>Every connector — cron, http, http-client, database, logger, and the LLM providers — the blocks they provide, and their settings.</p>
+      </a>
+      <a class="card" href="cel.html" style="text-decoration:none">
+        <div class="ic">🔤</div>
+        <h3>CEL cheat sheet</h3>
+        <p>The variables in scope, what each source exposes, and copy-paste recipes for routing, transforms, payloads, and error recovery.</p>
+      </a>
+      <a class="card" href="error-handling.html" style="text-decoration:none">
+        <div class="ic">🧯</div>
+        <h3>Error handling</h3>
+        <p>The <code>handle-errors</code> block, flow-level <code>error:</code> paths, <code>vars.error</code>, HTTP status codes, and self-healing with <code>ai-retry</code>.</p>
+      </a>
+      <a class="card" href="deployment.html" style="text-decoration:none">
+        <div class="ic">🚀</div>
+        <h3>Deployment</h3>
+        <p>Run locally, in Docker, on k3d, or managed on GCP — plus public vs private exposure, OIDC SSO, TLS, and secrets.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
 <!-- ============================== QUICKSTART ============================== -->
-<section id="quickstart" class="alt">
+<section id="quickstart">
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">Quickstart</span>
@@ -536,16 +474,8 @@ vars.order.amount &gt;= vars.threshold</code></pre>
         <figcaption class="diagram-cap">An <code>ai-router</code> flow rendered in the visual editor.</figcaption>
       </figure>
       <figure class="diagram">
-        <div class="shot-placeholder" data-shot="07-tabbed-console">📸 Screenshot: tabbed console with Logs / Dev .env and the test URL — see SCREENSHOTS.md #7</div>
-        <figcaption class="diagram-cap">The tabbed developer console: live logs, a Dev <code>.env</code> editor, and the run's test URL.</figcaption>
-      </figure>
-      <figure class="diagram">
         <img class="shot" src="assets/screenshots/sample-error-handling.png" alt="The error-handling sample on the canvas: a handle-errors block with a recovery lane, and a flow-level error path." />
         <figcaption class="diagram-cap">A flow's recovery path: the <code>error:</code> chain that sees <code>vars.error</code>.</figcaption>
-      </figure>
-      <figure class="diagram">
-        <div class="shot-placeholder" data-shot="06-oidc-signin">📸 Screenshot: the OIDC SSO sign-in screen — see SCREENSHOTS.md #6</div>
-        <figcaption class="diagram-cap">Signing in to the editor over OIDC SSO.</figcaption>
       </figure>
     </div>
   </div>
@@ -607,7 +537,11 @@ flowchart LR
         </ul>
       </div>
     </div>
-    <div class="note" style="margin-top:24px">This is a lab and an experiment — a dream of what a modern integration platform could be. Expectations welcome; many more features to come.</div>
+    <div class="note" style="margin-top:24px;border-left-color:var(--accent-3)">
+      <strong>Coming soon.</strong> Actively in progress: cluster leader election, integration- and cluster-level
+      key–value storage, integration versioning, and building integrations with MCP.
+    </div>
+    <div class="note" style="margin-top:16px">This is a lab and an experiment — a dream of what a modern integration platform could be. Expectations welcome; many more features to come.</div>
   </div>
 </section>
 

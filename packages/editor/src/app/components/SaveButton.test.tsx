@@ -6,6 +6,7 @@ import {
   FileSystemProvider,
   type FileSystemCapability,
 } from "../providers/FileSystemProvider";
+import { SaveProvider } from "../save/SaveContext";
 
 // A fake capability injected via context — no module mocking needed, which is
 // the point of the FileSystemProvider seam.
@@ -18,7 +19,9 @@ function renderWith(value: FileSystemCapability | null) {
   return render(
     <EditorStateProvider>
       <FileSystemProvider value={value}>
-        <SaveButton />
+        <SaveProvider>
+          <SaveButton />
+        </SaveProvider>
       </FileSystemProvider>
     </EditorStateProvider>,
   );

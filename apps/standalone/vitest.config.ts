@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +18,9 @@ export default defineConfig({
     testTimeout: 15000,
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
+    // `.next` contains a copy of the app source (standalone output tracing); never
+    // scan it for tests — those copies have no tsconfig and would fail to load.
+    exclude: [...configDefaults.exclude, "**/.next/**"],
     css: true,
   },
 });

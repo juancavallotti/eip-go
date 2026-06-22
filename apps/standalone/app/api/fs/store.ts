@@ -6,7 +6,7 @@
  * tampered id can never escape the root.
  */
 
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface FlowDoc {
@@ -20,14 +20,23 @@ export function fsRoot(): string {
   return process.env.OCTO_FS_DIR || path.join(process.cwd(), "flows");
 }
 
-/** A single `*.yaml`/`*.yml` filename, no path separators. */
+// A single `*.yaml`/`*.yml` filename living directly in the root: must start with
+// an alphanumeric (so no leading-dot dotfiles) and contain only word/dot/dash
+// characters — which excludes `/`, `\`, and any other separator, so no id can
+// name a parent (`..`) or nested directory. This is the path-traversal guard.
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.ya?ml$/;
 
 function nameOf(id: string): string {
   return id.replace(/\.ya?ml$/i, "");
 }
 
-/** Resolve an id to an absolute path inside the root, rejecting anything else. */
+/**
+ * Resolve a user-supplied id to an absolute path inside the store root, rejecting
+ * anything that isn't a plain `*.yaml` filename in the root. Every read/write goes
+ * through here, so a tampered id (`../../etc/passwd`, an absolute path, a nested
+ * dir) can never escape the root: ID_RE blocks separators up front, and the
+ * resolved-parent check is a second line of defense.
+ */
 function resolveSafe(id: string): string {
   if (!ID_RE.test(id)) throw new Error("invalid file name");
   const root = path.resolve(fsRoot());
@@ -80,19 +89,43 @@ export async function writeFlow(id: string, definition: string): Promise<FlowDoc
   return { id, name: nameOf(id), definition };
 }
 
-/** Create a new flow file from a name, de-duplicating the slug. */
-export async function createFlow(
-  name: string,
-  definition: string,
-): Promise<FlowDoc> {
+/** First unused `<slug>.yaml` (or `<slug>-N.yaml`) filename under the root. */
+async function freeId(slug: string): Promise<string> {
   const root = fsRoot();
-  await mkdir(root, { recursive: true });
-  const slug = slugify(name);
   let id = `${slug}.yaml`;
   let n = 2;
   while (await exists(path.join(root, id))) {
     id = `${slug}-${n}.yaml`;
     n++;
   }
-  return writeFlow(id, definition);
+  return id;
+}
+
+/** Create a new flow file from a name, de-duplicating the slug. */
+export async function createFlow(
+  name: string,
+  definition: string,
+): Promise<FlowDoc> {
+  await mkdir(fsRoot(), { recursive: true });
+  return writeFlow(await freeId(slugify(name)), definition);
+}
+
+/**
+ * Update an existing flow. The filename is the flow's identity, so when the
+ * name's slug no longer matches the current file the flow is renamed on disk:
+ * the new file is written first, then the old one removed (a slug collision with
+ * a different flow is de-duplicated to `-2`, `-3`, …). Returns the (possibly new)
+ * record so the editor can adopt the new id.
+ */
+export async function updateFlow(
+  oldId: string,
+  name: string,
+  definition: string,
+): Promise<FlowDoc> {
+  const current = resolveSafe(oldId); // validate before touching disk
+  const desired = `${slugify(name)}.yaml`;
+  if (desired === oldId) return writeFlow(oldId, definition);
+  const written = await writeFlow(await freeId(slugify(name)), definition);
+  await rm(current, { force: true }); // drop the old file only after the new one lands
+  return written;
 }

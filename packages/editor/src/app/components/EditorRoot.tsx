@@ -4,7 +4,9 @@ import { EditorStateProvider } from "../state/editorState";
 import {
   FileSystemProvider,
   type FileSystemCapability,
+  type StoredDocument,
 } from "../providers/FileSystemProvider";
+import { SaveProvider } from "../save/SaveContext";
 import { RunProvider } from "../run/RunContext";
 import type { RunTransport } from "../run/transport";
 import DndProvider from "./DndProvider";
@@ -34,6 +36,7 @@ export default function EditorRoot({
   header,
   fs,
   run,
+  onSaved,
 }: {
   integrationId?: string;
   loader?: React.ReactNode;
@@ -43,6 +46,8 @@ export default function EditorRoot({
   fs?: FileSystemCapability | null;
   /** Run capability; omit to hide the RUN control and log panel. */
   run?: RunTransport | null;
+  /** Called after a save with the stored record (e.g. to update the URL). */
+  onSaved?: (stored: StoredDocument) => void;
 }) {
   let tree = (
     <>
@@ -67,9 +72,15 @@ export default function EditorRoot({
   );
 
   // Wrap in the capability providers only when supplied, so absence is structural
-  // (the consuming controls read a null context and render nothing).
+  // (the consuming controls read a null context and render nothing). The save
+  // controller sits inside the filesystem provider it depends on.
   if (run) tree = <RunProvider transport={run}>{tree}</RunProvider>;
-  if (fs) tree = <FileSystemProvider value={fs}>{tree}</FileSystemProvider>;
+  if (fs)
+    tree = (
+      <FileSystemProvider value={fs}>
+        <SaveProvider onSaved={onSaved}>{tree}</SaveProvider>
+      </FileSystemProvider>
+    );
 
   return <EditorStateProvider>{tree}</EditorStateProvider>;
 }

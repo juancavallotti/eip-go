@@ -17,7 +17,16 @@ export default function StandaloneEditor({ file }: { file?: string }) {
       integrationId={file}
       fs={localDiskFileSystem}
       run={localRunTransport}
-      header={<StandaloneHeader current={file} />}
+      header={<StandaloneHeader />}
+      onSaved={(stored) =>
+        // Reflect the open file in the URL so a reload reopens it; the header
+        // reads the current id from editor state, so no remount is needed.
+        window.history.replaceState(
+          null,
+          "",
+          `/?file=${encodeURIComponent(stored.id)}`,
+        )
+      }
     />
   );
 }

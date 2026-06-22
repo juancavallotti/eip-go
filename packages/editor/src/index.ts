@@ -16,6 +16,7 @@ export {
 // Editor controls (composed by an app's header)
 export { default as RunBar } from "./app/components/RunBar";
 export { default as SaveButton } from "./app/components/SaveButton";
+export { useSave, type SaveController } from "./app/save/SaveContext";
 export { default as FolderPicker } from "./app/components/FolderPicker";
 export { default as IntegrationTitle } from "./app/components/IntegrationTitle";
 export { default as IntegrationLoader } from "./app/components/IntegrationLoader";

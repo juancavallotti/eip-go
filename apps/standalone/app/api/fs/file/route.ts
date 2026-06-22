@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFlow, writeFlow } from "../store";
+import { readFlow, updateFlow, writeFlow } from "../store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,23 +17,32 @@ export async function GET(req: Request) {
   }
 }
 
-/** PUT /api/fs/file?path=<id> { definition } — overwrite an existing flow. */
+/**
+ * PUT /api/fs/file?path=<id> { name?, definition } — overwrite an existing flow.
+ * When `name` is given and its slug differs from the current filename the flow is
+ * renamed on disk (the response carries the new id).
+ */
 export async function PUT(req: Request) {
   const id = new URL(req.url).searchParams.get("path");
   if (!id) {
     return NextResponse.json({ error: "missing `path`" }, { status: 400 });
   }
-  let definition: unknown;
+  let body: { name?: unknown; definition?: unknown };
   try {
-    definition = (await req.json())?.definition;
+    body = (await req.json()) ?? {};
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  if (typeof definition !== "string") {
+  if (typeof body.definition !== "string") {
     return NextResponse.json({ error: "missing `definition`" }, { status: 400 });
   }
+  const definition = body.definition;
   try {
-    return NextResponse.json(await writeFlow(id, definition));
+    const stored =
+      typeof body.name === "string"
+        ? await updateFlow(id, body.name, definition)
+        : await writeFlow(id, definition);
+    return NextResponse.json(stored);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }

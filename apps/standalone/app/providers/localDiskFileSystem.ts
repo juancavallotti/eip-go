@@ -25,10 +25,15 @@ export const localDiskFileSystem: FileSystemCapability = {
 
   async save(id, input) {
     if (id) {
+      // Send the name too: the store renames the file when its slug changes, so
+      // the response may carry a new id (the editor adopts it).
       const res = await fetch(`/api/fs/file?path=${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ definition: input.definition }),
+        body: JSON.stringify({
+          name: input.name,
+          definition: input.definition,
+        }),
       });
       return json<StoredDocument>(res);
     }

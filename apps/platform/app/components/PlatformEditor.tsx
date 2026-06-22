@@ -28,6 +28,11 @@ export default function PlatformEditor({
       header={<EditorHeader userMenu={userMenu} />}
       fs={available ? orchestratorFileSystem : null}
       run={bffRunTransport}
+      onSaved={(stored) =>
+        // Promote the address bar to the bookmarkable /i/<id> URL without
+        // remounting the editor (Next syncs the router for manual updates).
+        window.history.replaceState(null, "", `/i/${stored.id}`)
+      }
     />
   );
 }

@@ -2,16 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, FilePlus, FolderOpen } from "lucide-react";
-import { useFileSystem, type StoredDocument } from "@octo/editor";
+import {
+  useFileSystem,
+  useEditorState,
+  EditorActionType,
+  type StoredDocument,
+} from "@octo/editor";
 
 /**
  * Open/new menu for the standalone editor. Lists the `*.yaml` flows in the local
- * store (via the filesystem capability) and links to `/?file=<id>` to open one,
- * or `/` for a fresh document. Renders nothing without a filesystem capability.
+ * store (via the filesystem capability) and links to `/?file=<id>` to open one.
+ * The currently-open file comes from editor state (the id the Save button records
+ * after a save), not the URL, so a freshly-saved flow shows up immediately.
+ * "New flow" clears the editor to a blank document. Renders nothing without a
+ * filesystem capability.
  */
-export default function StandaloneFileMenu({ current }: { current?: string }) {
+export default function StandaloneFileMenu() {
   const fs = useFileSystem();
+  const { state, dispatch } = useEditorState();
+  const router = useRouter();
+  const current = state.integration.id;
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<StoredDocument[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,6 +54,14 @@ export default function StandaloneFileMenu({ current }: { current?: string }) {
 
   if (!fs) return null;
 
+  // Reset the canvas to a fresh, unsaved flow and drop the ?file= query (without
+  // a reload — the editor is already mounted).
+  const newFlow = () => {
+    dispatch({ type: EditorActionType.NEW_INTEGRATION });
+    router.replace("/");
+    setOpen(false);
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -55,14 +75,14 @@ export default function StandaloneFileMenu({ current }: { current?: string }) {
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-zinc-900">
-          <Link
-            href="/"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 border-b border-black/5 px-3 py-2 text-sm transition-colors hover:bg-black/[0.04] dark:border-white/5 dark:hover:bg-white/[0.06]"
+          <button
+            type="button"
+            onClick={newFlow}
+            className="flex w-full items-center gap-2 border-b border-black/5 px-3 py-2 text-left text-sm transition-colors hover:bg-black/[0.04] dark:border-white/5 dark:hover:bg-white/[0.06]"
           >
             <FilePlus size={16} className="shrink-0 text-zinc-400" />
             <span className="flex-1">New flow</span>
-          </Link>
+          </button>
           <ul className="max-h-72 overflow-y-auto py-1">
             {files.length === 0 && (
               <li className="px-3 py-2 text-xs text-zinc-400">

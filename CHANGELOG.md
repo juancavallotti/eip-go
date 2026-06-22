@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/juancavallotti/octo/compare/v0.1.5...v0.1.6) (2026-06-22)
+
+
+### Bug Fixes
+
+* **ci:** trigger release build from release-please + add pnpm to release job ([7ce2010](https://github.com/juancavallotti/octo/commit/7ce2010d79b152820074dac84d4de73669b81251))
+* **deploy:** SSH to the VM as a non-root user from Cloud Build ([7f73255](https://github.com/juancavallotti/octo/commit/7f732555188ca290f2e37b93df693f35254a273c))
+
+
+### Refactoring
+
+* **deploy:** rename deployed workload + image editor → platform ([182dee6](https://github.com/juancavallotti/octo/commit/182dee6c06d5267989a93a195e7ea07b0fe184e6))
+
 ## [0.1.5](https://github.com/juancavallotti/octo/compare/v0.1.4...v0.1.5) (2026-06-22)
 
 

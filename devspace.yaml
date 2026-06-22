@@ -34,12 +34,14 @@ dev:
     namespace: octo-dev
     # Hot-reload image (next dev). Build+import with `task cluster:images:dev`.
     devImage: octo-editor-dev:dev
-    command: ["npm", "run", "dev"]
+    command: ["pnpm", "run", "dev"]
+    workingDir: /app/apps/platform
     sync:
-      - path: ./editor:/app
+      - path: ./apps/platform:/app/apps/platform
         # These live only in the container, not the local tree; excluding them
         # keeps DevSpace's initial mirror from deleting them. (The octo runtime
-        # lives at /usr/local/bin/octo, outside /app, so it's never synced.)
+        # lives at /usr/local/bin/octo, outside /app, so it's never synced; pnpm
+        # hoists deps to /app/node_modules, also outside the synced path.)
         excludePaths:
           - node_modules/
           - .next/

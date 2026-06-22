@@ -1,11 +1,12 @@
-# Bundled editor + runtime image.
+# Bundled platform app + runtime image (octo-editor image).
 #
-# The editor is a Next.js app that shells out to the `octo` runtime binary via
-# OCTO_BIN_PATH (see editor/app/api/run/session.ts), so a single image carries
-# both: the compiled Go binary plus the Next.js standalone server.
+# apps/platform is a Next.js app that shells out to the `octo` runtime binary via
+# OCTO_BIN_PATH (see apps/platform/app/api/run/session.ts), so a single image
+# carries both: the compiled Go binary plus the Next.js standalone server.
 #
-# IMPORTANT: build context must be the repo ROOT (not editor/) so this Dockerfile
-# can reach both runtime/ and editor/. devspace.yaml sets context accordingly.
+# IMPORTANT: build context must be the repo ROOT (not apps/platform/) so this
+# Dockerfile can reach runtime/ (to build octo) and the whole pnpm workspace.
+# devspace.yaml / cloudbuild.yaml set the context accordingly.
 
 # --- Stage 1: build the octo runtime binary from the Go workspace -------------
 FROM golang:1.25-alpine AS runtime-build
@@ -18,13 +19,19 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /out/octo .
 
-# --- Stage 2: build the Next.js editor (standalone output) --------------------
+# --- Stage 2: build the Next.js platform app (standalone output) ---------------
 FROM node:22-alpine AS editor-build
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 WORKDIR /app
-COPY editor/package.json editor/package-lock.json* ./
-RUN npm ci
-COPY editor/ ./
-RUN npm run build
+# Install deps from the workspace lockfile; manifests first for layer caching.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/platform/package.json ./apps/platform/
+RUN pnpm install --frozen-lockfile
+# Shared base tsconfig + app source, then build (standalone output traces the
+# workspace root, so the server lands at apps/platform/.next/standalone/...).
+COPY tsconfig.base.json ./
+COPY apps/platform/ ./apps/platform/
+RUN pnpm --filter platform build
 
 # --- Stage 3: minimal runtime image -------------------------------------------
 FROM node:22-alpine AS runtime
@@ -35,12 +42,13 @@ ENV NODE_ENV=production \
     OCTO_BIN_PATH=/usr/local/bin/octo \
     OCTO_RUN_DIR=/app/.octo-run
 
-# Next.js standalone server + its static assets and public files.
-COPY --from=editor-build /app/.next/standalone ./
-COPY --from=editor-build /app/.next/static ./.next/static
-COPY --from=editor-build /app/public ./public
-# The octo runtime the editor's RUN feature spawns. Kept OUTSIDE /app so the dev
-# image's DevSpace source-sync (./editor <-> /app) can never delete it.
+# Next.js standalone bundle (server + hoisted node_modules) plus static assets
+# and public files. The monorepo standalone nests under apps/platform/.
+COPY --from=editor-build /app/apps/platform/.next/standalone ./
+COPY --from=editor-build /app/apps/platform/.next/static ./apps/platform/.next/static
+COPY --from=editor-build /app/apps/platform/public ./apps/platform/public
+# The octo runtime the RUN feature spawns. Kept OUTSIDE /app so the dev image's
+# DevSpace source-sync can never delete it.
 COPY --from=runtime-build /out/octo /usr/local/bin/octo
 
 # OCTO_RUN_DIR must be writable at runtime; back it with an emptyDir in k8s.
@@ -48,4 +56,4 @@ RUN mkdir -p /app/.octo-run
 
 EXPOSE 3000
 # server.js is the entrypoint emitted by Next.js standalone output.
-CMD ["node", "server.js"]
+CMD ["node", "apps/platform/server.js"]

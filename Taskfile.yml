@@ -135,9 +135,9 @@ tasks:
   cluster:images:
     desc: Build the editor/orchestrator/schema/runtime images and load them into the k3d 'octo' cluster
     cmds:
-      # Editor build context is the repo ROOT so its Dockerfile can reach both
-      # runtime/ (to build octo) and editor/ (the Next.js app).
-      - docker build -t octo-editor:dev -f editor/Dockerfile .
+      # Platform build context is the repo ROOT so its Dockerfile can reach both
+      # runtime/ (to build octo) and the pnpm workspace (apps/platform).
+      - docker build -t octo-editor:dev -f apps/platform/Dockerfile .
       - docker build -t octo-orchestrator:dev -f orchestrator/Dockerfile ./orchestrator
       - docker build -t octo-schema:dev -f sql/Dockerfile ./sql
       # Generic runtime image the orchestrator deploys per integration (build
@@ -149,7 +149,7 @@ tasks:
   cluster:images:dev:
     desc: Build + load the dev (hot-reload) images into the k3d 'octo' cluster
     cmds:
-      - docker build -t octo-editor-dev:dev -f editor/Dockerfile.dev .
+      - docker build -t octo-editor-dev:dev -f apps/platform/Dockerfile.dev .
       - docker build -t octo-orchestrator-dev:dev -f orchestrator/Dockerfile.dev ./orchestrator
       - k3d image import octo-editor-dev:dev octo-orchestrator-dev:dev -c octo
 
@@ -228,9 +228,9 @@ tasks:
     requires:
       vars: [IMAGE_BASE, TAG]
     cmds:
-      # Same build contexts as cluster:images; the editor context is the repo root
-      # so its Dockerfile reaches both runtime/ and editor/.
-      - docker build -t {{.IMAGE_BASE}}/octo-editor:{{.TAG}} -f editor/Dockerfile .
+      # Same build contexts as cluster:images; the platform context is the repo
+      # root so its Dockerfile reaches both runtime/ and the pnpm workspace.
+      - docker build -t {{.IMAGE_BASE}}/octo-editor:{{.TAG}} -f apps/platform/Dockerfile .
       - docker build -t {{.IMAGE_BASE}}/octo-orchestrator:{{.TAG}} -f orchestrator/Dockerfile ./orchestrator
       - docker build -t {{.IMAGE_BASE}}/octo-schema:{{.TAG}} -f sql/Dockerfile ./sql
       - docker build -t {{.IMAGE_BASE}}/octo-runtime:{{.TAG}} -f runtime/Dockerfile ./runtime

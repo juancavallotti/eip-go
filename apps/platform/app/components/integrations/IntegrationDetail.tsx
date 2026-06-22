@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { ExternalLink, Trash2 } from "lucide-react";
-import { fromDefinitionYaml } from "@/app/model/runConfig";
+import { fromDefinitionYaml } from "@octo/editor";
 import type { Integration } from "@/app/model/orchestrator";
 import DeploymentsSection from "./DeploymentsSection";
 

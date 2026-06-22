@@ -15,7 +15,7 @@ import {
   unassignIntegration,
   updateIntegration,
 } from "@/app/model/orchestrator";
-import type { FileSystemCapability } from "./FileSystemProvider";
+import type { FileSystemCapability } from "@octo/editor";
 
 export const orchestratorFileSystem: FileSystemCapability = {
   async load(id) {

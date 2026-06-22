@@ -1,9 +1,10 @@
 "use client";
 
+import { EditorRoot } from "@octo/editor";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
 import { orchestratorFileSystem } from "@/app/providers/orchestratorFileSystem";
 import { bffRunTransport } from "@/app/run/transport";
-import EditorRoot from "./EditorRoot";
+import EditorHeader from "./EditorHeader";
 
 /**
  * Platform wiring for the shared editor: supplies the orchestrator-backed
@@ -24,7 +25,7 @@ export default function PlatformEditor({
   return (
     <EditorRoot
       integrationId={integrationId}
-      userMenu={userMenu}
+      header={<EditorHeader userMenu={userMenu} />}
       fs={available ? orchestratorFileSystem : null}
       run={bffRunTransport}
     />

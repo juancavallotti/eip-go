@@ -1,11 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useFileSystem } from "@/app/providers/FileSystemProvider";
-import RunBar from "./RunBar";
-import IntegrationTitle from "./IntegrationTitle";
-import FolderPicker from "./FolderPicker";
-import SaveButton from "./SaveButton";
+import {
+  useFileSystem,
+  RunBar,
+  IntegrationTitle,
+  FolderPicker,
+  SaveButton,
+} from "@octo/editor";
 import IntegrationsButton from "./IntegrationsButton";
 
 /**

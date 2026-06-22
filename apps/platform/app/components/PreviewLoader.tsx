@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useEditorState, EditorActionType } from "@/app/state/editorState";
-import { fromDefinitionYaml } from "@/app/model/runConfig";
+import {
+  useEditorState,
+  EditorActionType,
+  fromDefinitionYaml,
+} from "@octo/editor";
 
 /**
  * Dev-only counterpart to IntegrationLoader: loads a repo sample (by slug) into

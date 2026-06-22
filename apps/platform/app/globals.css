@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* The editor library lives outside this app's module graph; scan its source so
+   Tailwind includes the utility classes used by its components. */
+@source "../../../packages/editor/src";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

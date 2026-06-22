@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import EditorRoot from "@/app/components/EditorRoot";
+import { EditorRoot } from "@octo/editor";
 import PreviewLoader from "@/app/components/PreviewLoader";
 
 /**

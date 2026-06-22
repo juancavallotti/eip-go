@@ -4,11 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Folder as FolderIcon, FolderOpen } from "lucide-react";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
 import {
-  assignIntegration,
-  listFolders,
-  unassignIntegration,
-  type Folder,
-} from "@/app/model/orchestrator";
+  useFileSystem,
+  type FolderNode,
+} from "@/app/providers/FileSystemProvider";
 
 /**
  * Google-docs-style folder picker for the current integration. The trigger shows
@@ -26,7 +24,7 @@ interface FlatFolder {
 }
 
 /** Depth-first flatten of the folder tree for indented rendering. */
-function flatten(folders: Folder[], depth = 0): FlatFolder[] {
+function flatten(folders: FolderNode[], depth = 0): FlatFolder[] {
   return folders.flatMap((f) => [
     { id: f.id, name: f.name, depth },
     ...flatten(f.children ?? [], depth + 1),
@@ -35,6 +33,8 @@ function flatten(folders: Folder[], depth = 0): FlatFolder[] {
 
 export default function FolderPicker() {
   const { state, dispatch } = useEditorState();
+  const fs = useFileSystem();
+  const folderCap = fs?.folders;
   const { id: integrationId, folderId } = state.integration;
 
   const [open, setOpen] = useState(false);
@@ -44,8 +44,10 @@ export default function FolderPicker() {
 
   // Load the tree once available so the trigger can name the current folder.
   useEffect(() => {
+    if (!folderCap) return;
     let cancelled = false;
-    listFolders()
+    folderCap
+      .list()
       .then((tree) => {
         if (!cancelled) setFolders(flatten(tree));
       })
@@ -53,7 +55,7 @@ export default function FolderPicker() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [folderCap]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,9 +82,9 @@ export default function FolderPicker() {
     try {
       // Apply to the server only when the integration already exists; otherwise
       // Save will assign the chosen folder when it first creates the row.
-      if (integrationId) {
-        if (next) await assignIntegration(next, integrationId);
-        else if (folderId) await unassignIntegration(folderId, integrationId);
+      if (integrationId && folderCap) {
+        if (next) await folderCap.assign(next, integrationId);
+        else if (folderId) await folderCap.unassign(folderId, integrationId);
       }
       dispatch({
         type: EditorActionType.SET_INTEGRATION_FOLDER,
@@ -92,6 +94,9 @@ export default function FolderPicker() {
       setError((e as Error).message);
     }
   };
+
+  // No folder organization capability => no folder picker.
+  if (!folderCap) return null;
 
   return (
     <div ref={ref} className="relative">

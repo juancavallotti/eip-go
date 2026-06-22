@@ -1,9 +1,9 @@
-# Dev image for `devspace dev` (task cluster:watch). Runs `next dev` so the editor
-# hot-reloads as DevSpace syncs source from the host into /app. Still bundles the
-# octo binary so the RUN feature works in-cluster.
+# Dev image for `devspace dev` (task cluster:dev). Runs `next dev` so the app
+# hot-reloads as DevSpace syncs source from the host into /app/apps/platform.
+# Still bundles the octo binary so the RUN feature works in-cluster.
 #
-# Build context must be the repo ROOT (same as the prod editor image) so it can
-# reach runtime/ to build octo.
+# Build context must be the repo ROOT (same as the prod image) so it can reach
+# runtime/ to build octo and the whole pnpm workspace.
 
 # --- Stage 1: build the octo runtime binary ----------------------------------
 FROM golang:1.25-alpine AS runtime-build
@@ -15,22 +15,25 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /out/octo .
 
-# --- Stage 2: editor dev server ----------------------------------------------
+# --- Stage 2: platform dev server --------------------------------------------
 FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 WORKDIR /app
 ENV NODE_ENV=development \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     OCTO_BIN_PATH=/usr/local/bin/octo \
     OCTO_RUN_DIR=/app/.octo-run
-# Install deps from the lockfile; source is layered on top and then live-synced
-# by DevSpace at runtime (node_modules/.next are excluded from the sync).
-COPY editor/package.json editor/package-lock.json* ./
-RUN npm ci
-COPY editor/ ./
-# octo lives OUTSIDE /app so DevSpace's source-sync (./editor <-> /app) can't
-# delete it during the initial mirror.
+# Install deps from the workspace lockfile; source is layered on top and then
+# live-synced by DevSpace at runtime (node_modules/.next are excluded).
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/platform/package.json ./apps/platform/
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.base.json ./
+COPY apps/platform/ ./apps/platform/
+# octo lives OUTSIDE /app so DevSpace's source-sync can't delete it.
 COPY --from=runtime-build /out/octo /usr/local/bin/octo
 RUN mkdir -p /app/.octo-run
+WORKDIR /app/apps/platform
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]

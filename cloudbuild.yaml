@@ -26,10 +26,11 @@ options:
 # Each image is tagged with both _TAG (the git tag) and 'latest' so the deployment can
 # default image_tag to "latest".
 steps:
-  # Editor build context is the repo root so its Dockerfile reaches runtime/ + editor/.
+  # Platform build context is the repo root so its Dockerfile reaches runtime/ +
+  # the pnpm workspace (apps/platform).
   - id: build-editor
     name: gcr.io/cloud-builders/docker
-    args: ["build", "-t", "${_IMAGE_BASE}/octo-editor:${_TAG}", "-t", "${_IMAGE_BASE}/octo-editor:latest", "-f", "editor/Dockerfile", "."]
+    args: ["build", "-t", "${_IMAGE_BASE}/octo-editor:${_TAG}", "-t", "${_IMAGE_BASE}/octo-editor:latest", "-f", "apps/platform/Dockerfile", "."]
   - id: build-orchestrator
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_IMAGE_BASE}/octo-orchestrator:${_TAG}", "-t", "${_IMAGE_BASE}/octo-orchestrator:latest", "-f", "orchestrator/Dockerfile", "./orchestrator"]

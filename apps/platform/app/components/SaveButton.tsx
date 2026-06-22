@@ -3,13 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Save } from "lucide-react";
 import { useEditorState, EditorActionType } from "@/app/state/editorState";
+import { useFileSystem } from "@/app/providers/FileSystemProvider";
 import type { EditorDocument } from "@/app/model/document";
 import { toDefinitionYaml } from "@/app/model/runConfig";
-import {
-  assignIntegration,
-  createIntegration,
-  updateIntegration,
-} from "@/app/model/orchestrator";
 
 /**
  * Persists the current document as an integration via the orchestrator. The
@@ -22,6 +18,7 @@ import {
 const DEFAULT_NAME = "Untitled integration";
 export default function SaveButton() {
   const { state, dispatch } = useEditorState();
+  const fs = useFileSystem();
   const { id, name, folderId } = state.integration;
   const doc = state.document;
 
@@ -58,26 +55,25 @@ export default function SaveButton() {
         : "Save as a new integration (⌘/Ctrl+S)";
 
   const save = async () => {
+    if (!fs) return;
     setBusy(true);
     setError(null);
     const saveName = name.trim() || DEFAULT_NAME;
     try {
       const definition = toDefinitionYaml(doc, saveName);
-      if (id) {
-        await updateIntegration(id, { name: saveName, definition });
-      } else {
-        const created = await createIntegration({
-          name: saveName,
-          definition,
-        });
-        if (folderId) await assignIntegration(folderId, created.id);
+      const stored = await fs.save(id || null, {
+        name: saveName,
+        definition,
+        folderId,
+      });
+      if (!id) {
         dispatch({
           type: EditorActionType.SET_INTEGRATION_ID,
-          data: { id: created.id },
+          data: { id: stored.id },
         });
         // Promote the address bar to the bookmarkable URL without remounting the
         // editor (Next syncs the router for manual history updates).
-        window.history.replaceState(null, "", `/i/${created.id}`);
+        window.history.replaceState(null, "", `/i/${stored.id}`);
       }
       // Reflect a defaulted name in the title field so the UI matches what was
       // stored (and so the saved-snapshot comparison holds).
@@ -114,6 +110,9 @@ export default function SaveButton() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // No filesystem capability => nothing to save against, so render nothing.
+  if (!fs) return null;
 
   return (
     <div className="flex items-center gap-2">

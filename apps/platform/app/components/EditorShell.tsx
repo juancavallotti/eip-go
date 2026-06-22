@@ -1,4 +1,5 @@
 import { EditorStateProvider } from "@/app/state/editorState";
+import { FileSystemProvider } from "@/app/providers/FileSystemProvider";
 import { RunProvider } from "@/app/run/RunContext";
 import DndProvider from "./DndProvider";
 import Sidebar from "./Sidebar";
@@ -29,26 +30,28 @@ export default function EditorShell({
 }) {
   return (
     <EditorStateProvider>
-      <RunProvider>
-        <IntegrationLoader integrationId={integrationId} />
-        {loader}
-        <div className="flex flex-1 flex-col h-full">
-          {/* Top bar — UserMenu is a server component passed in as a slot. */}
-          <EditorHeader userMenu={<UserMenu />} />
+      <FileSystemProvider>
+        <RunProvider>
+          <IntegrationLoader integrationId={integrationId} />
+          {loader}
+          <div className="flex flex-1 flex-col h-full">
+            {/* Top bar — UserMenu is a server component passed in as a slot. */}
+            <EditorHeader userMenu={<UserMenu />} />
 
-          {/* Body: sidebar + canvas (one drag-and-drop session) above the logs */}
-          <div className="flex flex-1 min-h-0 flex-col">
-            <DndProvider>
-              <div className="flex flex-1 min-h-0">
-                <Sidebar />
-                <Canvas />
-                <SettingsPanel />
-              </div>
-            </DndProvider>
-            <LogPanel />
+            {/* Body: sidebar + canvas (one drag-and-drop session) above the logs */}
+            <div className="flex flex-1 min-h-0 flex-col">
+              <DndProvider>
+                <div className="flex flex-1 min-h-0">
+                  <Sidebar />
+                  <Canvas />
+                  <SettingsPanel />
+                </div>
+              </DndProvider>
+              <LogPanel />
+            </div>
           </div>
-        </div>
-      </RunProvider>
+        </RunProvider>
+      </FileSystemProvider>
     </EditorStateProvider>
   );
 }

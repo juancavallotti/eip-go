@@ -1,19 +1,44 @@
 name: release
 
+# Triggered automatically by the release-please workflow once it creates a version
+# tag (it calls this as a reusable workflow — release-please can't cascade-trigger
+# a tag-driven workflow because it pushes the tag with the default GITHUB_TOKEN).
+# Also runnable on a manually-pushed v* tag or from the Actions UI.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
+    inputs:
+      tag:
+        description: "Version tag to build/publish (e.g. v0.1.6). Blank = just run checks on the default branch."
+        required: false
+  workflow_call:
+    inputs:
+      tag:
+        description: "Version tag to build and publish (e.g. v0.1.6)."
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   release-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release tag for call/dispatch, else the triggering ref (a v* tag).
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: runtime/go.work
+      # `task build` builds the pnpm workspace (apps/platform + apps/standalone)
+      # alongside the Go runtime, so Node + pnpm must be on PATH here too.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/platform/.nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Install Task
         run: |
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b "$(go env GOPATH)/bin"
@@ -22,16 +47,18 @@ jobs:
       - run: task build
 
   # Publish the self-contained standalone "try Octo" image to public Docker Hub,
-  # multi-arch so it runs natively on Apple Silicon and x86. Runs only on version
-  # tags (the v* tags release-please creates), after the release checks pass.
+  # multi-arch so it runs natively on Apple Silicon and x86. Runs only when a
+  # version tag is in play (call/dispatch input, or a pushed v* tag).
   publish-standalone:
     needs: release-check
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -39,7 +66,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: ver
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          REF="${{ inputs.tag || github.ref_name }}"
+          echo "version=${REF#v}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .

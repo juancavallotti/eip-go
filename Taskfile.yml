@@ -2,28 +2,33 @@ version: '3'
 
 # Module taskfiles live next to the code they drive and are imported here.
 # Their tasks are available under a namespace, e.g. `task runtime:test`,
-# `task editor:dev`. The thin aggregators below preserve the short top-level
+# `task platform:dev`. The thin aggregators below preserve the short top-level
 # targets (`task lint`, `task test`, ...) used by CI and day-to-day work.
 includes:
   runtime:
     taskfile: ./runtime/Taskfile.yml
     dir: ./runtime
-  editor:
-    taskfile: ./editor/Taskfile.yml
-    dir: ./editor
+  platform:
+    taskfile: ./apps/platform/Taskfile.yml
+    dir: ./apps/platform
+  standalone:
+    taskfile: ./apps/standalone/Taskfile.yml
+    dir: ./apps/standalone
   orchestrator:
     taskfile: ./orchestrator/Taskfile.yml
     dir: ./orchestrator
 
 # Global env reaches every task, including those in included taskfiles (task-level
-# env does not propagate to called tasks). The editor reads these server-side to
-# enable its dev RUN feature: OCTO_BIN_PATH is the runner spawned on RUN, and
+# env does not propagate to called tasks). The platform app reads these server-side
+# to enable its dev RUN feature: OCTO_BIN_PATH is the runner spawned on RUN, and
 # OCTO_RUN_DIR is where the rendered config is written for `octo -watch`. Running
-# the editor directly inside the module (bypassing this root Taskfile) leaves them
+# the app directly inside the module (bypassing this root Taskfile) leaves them
 # unset, which simply disables RUN.
 env:
   OCTO_BIN_PATH: '{{.ROOT_DIR}}/bin/octo'
   OCTO_RUN_DIR: '{{.ROOT_DIR}}/.octo-run'
+  # Where the standalone app reads/writes local flow YAML under `task dev`.
+  OCTO_FS_DIR: '{{.ROOT_DIR}}/.octo-flows'
 
 # The kube context k3d creates for our cluster. Every cluster:* task pins to it
 # explicitly so a stray current-context (e.g. a remote EKS cluster) can never be
@@ -39,24 +44,26 @@ tasks:
       - task: orchestrator:fmt
 
   test:
-    desc: Run tests across all modules (runtime + editor + orchestrator)
+    desc: Run tests across all modules (runtime + platform + standalone + orchestrator)
     cmds:
       - task: runtime:test
-      - task: editor:test
+      - task: platform:test
+      - task: standalone:test
       - task: orchestrator:test
 
   build:
-    desc: Build all modules (CLI binary + editor + orchestrator)
+    desc: Build all modules (CLI binary + platform + standalone + orchestrator)
     cmds:
       - task: runtime:build
-      - task: editor:build
+      - task: platform:build
+      - task: standalone:build
       - task: orchestrator:build
 
   dev:
-    desc: Build the runner, then run the editor dev server (RUN button enabled)
+    desc: Build the runner, then run the standalone editor (local files + RUN enabled)
     cmds:
       - task: runtime:build
-      - task: editor:dev
+      - task: standalone:dev
 
   tidy:
     desc: Tidy all Go modules
@@ -65,10 +72,11 @@ tasks:
       - task: orchestrator:tidy
 
   lint:
-    desc: Lint all modules (runtime + editor + orchestrator)
+    desc: Lint all modules (runtime + platform + standalone + orchestrator)
     cmds:
       - task: runtime:lint
-      - task: editor:lint
+      - task: platform:lint
+      - task: standalone:lint
       - task: orchestrator:lint
 
   run:
@@ -135,9 +143,9 @@ tasks:
   cluster:images:
     desc: Build the editor/orchestrator/schema/runtime images and load them into the k3d 'octo' cluster
     cmds:
-      # Editor build context is the repo ROOT so its Dockerfile can reach both
-      # runtime/ (to build octo) and editor/ (the Next.js app).
-      - docker build -t octo-editor:dev -f editor/Dockerfile .
+      # Platform build context is the repo ROOT so its Dockerfile can reach both
+      # runtime/ (to build octo) and the pnpm workspace (apps/platform).
+      - docker build -t octo-editor:dev -f apps/platform/Dockerfile .
       - docker build -t octo-orchestrator:dev -f orchestrator/Dockerfile ./orchestrator
       - docker build -t octo-schema:dev -f sql/Dockerfile ./sql
       # Generic runtime image the orchestrator deploys per integration (build
@@ -149,7 +157,7 @@ tasks:
   cluster:images:dev:
     desc: Build + load the dev (hot-reload) images into the k3d 'octo' cluster
     cmds:
-      - docker build -t octo-editor-dev:dev -f editor/Dockerfile.dev .
+      - docker build -t octo-editor-dev:dev -f apps/platform/Dockerfile.dev .
       - docker build -t octo-orchestrator-dev:dev -f orchestrator/Dockerfile.dev ./orchestrator
       - k3d image import octo-editor-dev:dev octo-orchestrator-dev:dev -c octo
 
@@ -228,9 +236,9 @@ tasks:
     requires:
       vars: [IMAGE_BASE, TAG]
     cmds:
-      # Same build contexts as cluster:images; the editor context is the repo root
-      # so its Dockerfile reaches both runtime/ and editor/.
-      - docker build -t {{.IMAGE_BASE}}/octo-editor:{{.TAG}} -f editor/Dockerfile .
+      # Same build contexts as cluster:images; the platform context is the repo
+      # root so its Dockerfile reaches both runtime/ and the pnpm workspace.
+      - docker build -t {{.IMAGE_BASE}}/octo-editor:{{.TAG}} -f apps/platform/Dockerfile .
       - docker build -t {{.IMAGE_BASE}}/octo-orchestrator:{{.TAG}} -f orchestrator/Dockerfile ./orchestrator
       - docker build -t {{.IMAGE_BASE}}/octo-schema:{{.TAG}} -f sql/Dockerfile ./sql
       - docker build -t {{.IMAGE_BASE}}/octo-runtime:{{.TAG}} -f runtime/Dockerfile ./runtime

@@ -27,20 +27,16 @@ jobs:
       - run: task runtime:test
       - run: task runtime:build
 
-  editor:
+  platform:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
-      - run: npm ci
-        working-directory: editor
-      - run: npm run lint
-        working-directory: editor
-      - run: npm test
-        working-directory: editor
-      - run: npm run build
-        working-directory: editor
+          node-version-file: apps/platform/.nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter platform lint
+      - run: pnpm --filter platform test
+      - run: pnpm --filter platform build

@@ -1,15 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Playwright config for the docs screenshot harness (npm run screenshots).
+ * Playwright config for the docs screenshot harness (pnpm run screenshots).
  *
- * It boots the editor dev server with the OIDC env vars CLEARED so `authEnabled`
- * is false and the proxy/middleware is a no-op — Playwright can drive the editor
- * with no sign-in wall. @next/env won't override a process var that's already
- * set, so passing them empty here wins over editor/.env.
+ * It boots the standalone editor dev server and drives the /preview route, which
+ * renders a repo sample on a pure editor canvas — no auth, no orchestrator, so
+ * there is no sign-in wall to clear.
  *
- * Shots render at 1600x900 with deviceScaleFactor 2 (effective 3200x1800) so the
- * PNGs are crisp on the landing page. Outputs land in docs/assets/screenshots/.
+ * Shots render at 1440x900 with deviceScaleFactor 2 so the PNGs are crisp on the
+ * landing page. Outputs land in docs/assets/screenshots/.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -33,15 +32,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    command: "pnpm run dev",
     url: "http://localhost:3000/preview?sample=hello-world",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: {
-      ...process.env,
-      // Disable SSO so the proxy is a no-op (see auth.config.ts authEnabled).
-      AUTH_EETR_ISSUER: "",
-      AUTH_SECRET: "",
-    },
   },
 });

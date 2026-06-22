@@ -1,0 +1,38 @@
+version: '3'
+
+# Tasks for the Octo standalone app (Next.js) — the local, single-user editor
+# with a local-disk filesystem and the bundled runner. Included from the root
+# Taskfile under the `standalone:` namespace (working dir apps/standalone/).
+# Dependencies are installed at the workspace root via pnpm (`pnpm install`).
+
+tasks:
+  install:
+    desc: Install the workspace dependencies (pnpm, run from the repo root)
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - pnpm install
+
+  dev:
+    desc: Run the Octo standalone dev server (use root `task dev` to build the runner + enable RUN)
+    cmds:
+      - pnpm run dev
+
+  lint:
+    desc: Lint the Octo standalone app
+    cmds:
+      - pnpm run lint
+
+  test:
+    desc: Run the Octo standalone unit tests
+    cmds:
+      - pnpm run test
+
+  build:
+    desc: Build the Octo standalone app for production
+    cmds:
+      - pnpm run build
+
+  screenshots:
+    desc: Regenerate the docs gallery screenshots (boots the dev server, drives /preview)
+    cmds:
+      - pnpm run screenshots

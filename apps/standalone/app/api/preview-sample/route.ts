@@ -22,8 +22,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "invalid sample name" }, { status: 400 });
   }
 
-  // `next dev` runs with cwd = editor/, so samples live one level up.
-  const file = path.join(process.cwd(), "..", "samples", `${name}.yaml`);
+  // `next dev` runs with cwd = apps/standalone/, so the repo's samples/ dir is
+  // two levels up.
+  const file = path.join(process.cwd(), "..", "..", "samples", `${name}.yaml`);
   try {
     const yaml = await readFile(file, "utf8");
     return new NextResponse(yaml, {

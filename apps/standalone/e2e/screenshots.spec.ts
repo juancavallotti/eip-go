@@ -26,7 +26,7 @@ const SAMPLES = [
   { id: "heartbeat", file: "heartbeat" },
 ];
 
-const OUT_DIR = "../docs/assets/screenshots";
+const OUT_DIR = "../../docs/assets/screenshots";
 
 for (const { id, file } of SAMPLES) {
   test(`screenshot sample ${id}`, async ({ page }) => {

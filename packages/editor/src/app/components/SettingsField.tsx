@@ -176,6 +176,9 @@ function renderInput(
     case "string-map":
       return <StringMapEditor value={value} onChange={onChange} />;
 
+    case "object":
+      return <ObjectGroup field={field} value={value} onChange={onChange} />;
+
     default:
       // string and any unknown scalar.
       return (
@@ -188,4 +191,41 @@ function renderInput(
         />
       );
   }
+}
+
+/**
+ * Renders an `object` field: a bordered group of its sub-fields, each edited
+ * through SettingsField so they get the same inputs, env toggles and validation.
+ * A sub-field with `showIf` only appears when the named sibling holds the given
+ * value, so e.g. the OAuth2 inputs show only when auth `type` is "oauth2". The
+ * group owns the nested record and merges each sub-change back into it.
+ */
+function ObjectGroup({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldSpec;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const group =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const visible = (sub: FieldSpec) =>
+    !sub.showIf || group[sub.showIf.field] === sub.showIf.equals;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-black/10 dark:border-white/15 p-3">
+      {(field.fields ?? []).filter(visible).map((sub) => (
+        <SettingsField
+          key={sub.name}
+          field={sub}
+          value={group[sub.name]}
+          onChange={(v) => onChange({ ...group, [sub.name]: v })}
+        />
+      ))}
+    </div>
+  );
 }

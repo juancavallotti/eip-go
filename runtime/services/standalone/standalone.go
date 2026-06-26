@@ -30,26 +30,14 @@ func New() *Services {
 	return &Services{kv: newStore()}
 }
 
+// LeaderElection returns the no-op (always-leader) election from core: with a
+// single replica there is nothing to coordinate.
+//
 //nolint:ireturn // satisfies core.RuntimeServices
-func (s *Services) LeaderElection() core.LeaderElection { return leaderElection{} }
+func (s *Services) LeaderElection() core.LeaderElection { return core.NoopLeaderElection() }
 
 //nolint:ireturn // satisfies core.RuntimeServices
 func (s *Services) KV() core.KV { return s.kv }
 
 // Close releases resources. The standalone module holds none.
 func (s *Services) Close() error { return nil }
-
-// leaderElection grants leadership unconditionally: with a single replica there is
-// nothing to coordinate.
-type leaderElection struct{}
-
-//nolint:ireturn // satisfies core.LeaderElection
-func (leaderElection) Acquire(context.Context, string) (core.Leadership, error) {
-	return leadership{}, nil
-}
-
-// leadership is permanently the leader.
-type leadership struct{}
-
-func (leadership) IsLeader() bool { return true }
-func (leadership) Close() error   { return nil }

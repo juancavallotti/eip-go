@@ -13,13 +13,19 @@ import (
 // source's leader gating in tests.
 type fakeServices struct{ leader bool }
 
+//nolint:ireturn // implements core.RuntimeServices, which returns interfaces
 func (f fakeServices) LeaderElection() core.LeaderElection { return fakeLeaderElection(f) }
-func (fakeServices) KV() core.KV                           { return nil }
-func (fakeServices) Secrets() core.SecretStore             { return nil }
-func (fakeServices) Close() error                          { return nil }
+
+//nolint:ireturn // implements core.RuntimeServices
+func (fakeServices) KV() core.KV { return nil }
+
+//nolint:ireturn // implements core.RuntimeServices
+func (fakeServices) Secrets() core.SecretStore { return nil }
+func (fakeServices) Close() error              { return nil }
 
 type fakeLeaderElection struct{ leader bool }
 
+//nolint:ireturn // implements core.LeaderElection
 func (f fakeLeaderElection) Acquire(context.Context, string) (core.Leadership, error) {
 	return fakeLeadership(f), nil
 }

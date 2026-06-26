@@ -23,6 +23,7 @@ const (
 	blockKindIf           = "if"
 	blockKindSwitch       = "switch"
 	blockKindForeach      = "foreach"
+	blockKindCacheScope   = "cache-scope"
 	blockKindAIRouter     = "ai-router"
 	blockKindAIAgent      = "ai-agent"
 	blockKindAIRetry      = "ai-retry"
@@ -192,6 +193,8 @@ func (b *builder) processor(
 		return b.switchBlock(cfg)
 	case blockKindForeach:
 		return b.foreachBlock(cfg)
+	case blockKindCacheScope:
+		return b.cacheScope(cfg)
 	case blockKindAIRouter:
 		return b.aiRouter(cfg)
 	case blockKindAIAgent:
@@ -244,6 +247,8 @@ func compositeSlots(cfg types.BlockConfig) []string {
 	add(cfg.Items != "", "items")
 	add(cfg.As != "", "as")
 	add(cfg.Body != nil, "body")
+	add(cfg.Key != "", "key")
+	add(cfg.TTL != "", "ttl")
 	add(cfg.Connector != "", "connector")
 	add(cfg.Prompt != "", "prompt")
 	add(cfg.Guardrail != "", "guardrail")

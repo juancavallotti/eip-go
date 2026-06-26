@@ -555,6 +555,99 @@
           "description": "The guardrail path, run when the agent cannot complete the task."
         }
       ]
+    },
+    {
+      "type": "cache-scope",
+      "label": "Cache",
+      "category": "control-flow",
+      "icon": "Clock",
+      "description": "Memoize the body flow's result in the runtime store, keyed by a CEL expression.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "Cache Key",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression evaluated to the cache key."
+        },
+        {
+          "name": "ttl",
+          "label": "TTL",
+          "type": "string",
+          "required": false,
+          "default": "60s",
+          "description": "How long an entry stays fresh (e.g. '5m'); '0' never expires."
+        },
+        {
+          "name": "body",
+          "label": "Body",
+          "type": "flow",
+          "required": true,
+          "description": "Flow whose result is cached and replayed on a hit."
+        }
+      ]
+    },
+    {
+      "type": "invalidate-cache",
+      "label": "Invalidate Cache",
+      "category": "processor",
+      "icon": "Eraser",
+      "description": "Evict a cache-scope entry by its key so the next run recomputes.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "Cache Key",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression evaluated to the cache key to evict."
+        }
+      ]
+    },
+    {
+      "type": "object-read",
+      "label": "Object Read",
+      "category": "processor",
+      "icon": "ArrowDownToLine",
+      "description": "Read an object from the runtime store into the body or a variable.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "Key",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression evaluated to the object key."
+        },
+        {
+          "name": "as",
+          "label": "As variable",
+          "type": "string",
+          "required": false,
+          "description": "Variable to store the object under; empty replaces the body."
+        }
+      ]
+    },
+    {
+      "type": "object-write",
+      "label": "Object Write",
+      "category": "processor",
+      "icon": "ArrowUpFromLine",
+      "description": "Write an object to the runtime store under a key.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "Key",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression evaluated to the object key."
+        },
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the value to store; empty stores the whole body."
+        }
+      ]
     }
   ],
   "connectors": [
@@ -738,6 +831,79 @@
           "required": false,
           "default": 1048576,
           "description": "Response body size cap."
+        },
+        {
+          "name": "auth",
+          "label": "Authentication",
+          "type": "object",
+          "required": false,
+          "description": "Authentication applied to every request.",
+          "fields": [
+            {
+              "name": "type",
+              "label": "Type",
+              "type": "enum",
+              "required": false,
+              "enum": ["bearer", "basic", "oauth2"],
+              "description": "Authentication scheme."
+            },
+            {
+              "name": "token",
+              "label": "Bearer token",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "bearer" },
+              "description": "Token sent as 'Authorization: Bearer'."
+            },
+            {
+              "name": "username",
+              "label": "Username",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "basic" },
+              "description": "Basic auth username."
+            },
+            {
+              "name": "password",
+              "label": "Password",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "basic" },
+              "description": "Basic auth password."
+            },
+            {
+              "name": "tokenURL",
+              "label": "Token URL",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "oauth2" },
+              "description": "OAuth2 token endpoint (client-credentials grant)."
+            },
+            {
+              "name": "clientID",
+              "label": "Client ID",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "oauth2" },
+              "description": "OAuth2 client identifier."
+            },
+            {
+              "name": "clientSecret",
+              "label": "Client secret",
+              "type": "string",
+              "required": false,
+              "showIf": { "field": "type", "equals": "oauth2" },
+              "description": "OAuth2 client secret."
+            },
+            {
+              "name": "scopes",
+              "label": "Scopes",
+              "type": "string-list",
+              "required": false,
+              "showIf": { "field": "type", "equals": "oauth2" },
+              "description": "Requested OAuth2 scopes."
+            }
+          ]
         }
       ],
       "sources": []

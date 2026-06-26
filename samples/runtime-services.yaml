@@ -1,0 +1,123 @@
+service:
+  name: runtime-services
+
+# Demonstrates the runtime-services building blocks:
+#   - object-write / object-read: persist and read values in the runtime store
+#   - cache-scope + invalidate-cache: memoize a sub-flow's result with a TTL
+#   - OAuth 2.0 client-credentials auth on the http-client connector
+#
+# Run it (standalone services module, in-process store):
+#   task run:sample -- runtime-services.yaml
+#
+# Watch the logs: the `report` flow logs "cache MISS" only on the first tick, then
+# serves the cached report on later ticks until the 1m TTL lapses. Bust the cache
+# by invoking the `reset` flow and the next tick recomputes:
+#   octo invoke --config samples/runtime-services.yaml --flow reset
+
+env:
+  - name: API_CLIENT_ID
+    default: demo-client
+  - name: API_CLIENT_SECRET
+    default: demo-secret
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+  - name: ticker
+    type: cron
+
+  # An http-client using OAuth 2.0 client-credentials. On the first request the
+  # connector fetches an access token from tokenURL, caches it, and refreshes it
+  # automatically (persisting it in the runtime secret store). Point baseURL and
+  # tokenURL at a real API + token endpoint to exercise it.
+  - name: secure-api
+    type: http-client
+    settings:
+      baseURL: https://api.example.com
+      auth:
+        type: oauth2
+        tokenURL: https://auth.example.com/oauth/token
+        clientID: ${API_CLIENT_ID}
+        clientSecret: ${API_CLIENT_SECRET}
+        scopes:
+          - read
+
+flows:
+  # Every 5s: read a run counter from the store, bump it, write it back, then
+  # produce a "report" inside a cache scope. The cache scope runs its body only on
+  # a miss, so "cache MISS" is logged once and later ticks are served from the
+  # cached body until the 1m TTL lapses or the cache is invalidated.
+  - name: report
+    source:
+      connector: ticker
+      type: cron
+      settings:
+        schedule: "@every 5s"
+    process:
+      - type: object-read
+        name: load-counter
+        settings:
+          key: '"counter"'
+          as: counter
+      - type: set-variable
+        name: bump
+        settings:
+          name: counter
+          value: "has(vars.counter) ? vars.counter + 1.0 : 1.0"
+      - type: object-write
+        name: save-counter
+        settings:
+          key: '"counter"'
+          value: vars.counter
+      - type: cache-scope
+        name: cached-report
+        key: '"report"'
+        ttl: 1m
+        body:
+          process:
+            - type: log
+              name: compute
+              settings:
+                logger: out
+                message: '"cache MISS — generating report"'
+            - type: set-payload
+              settings:
+                value: '{"report": "generated", "event": eventID}'
+      - type: log
+        name: emit
+        settings:
+          logger: out
+          message: '"report run #" + string(vars.counter) + " -> " + string(body.report)'
+
+  # Invoke to evict the cached report so the next `report` tick recomputes:
+  #   octo invoke --config samples/runtime-services.yaml --flow reset
+  - name: reset
+    process:
+      - type: invalidate-cache
+        name: bust-report
+        settings:
+          key: '"report"'
+      - type: set-payload
+        settings:
+          value: '{"reset": true}'
+
+  # Invoke to call an OAuth2-protected API through the secure-api connector
+  # (needs a real tokenURL/baseURL + credentials):
+  #   octo invoke --config samples/runtime-services.yaml --flow fetch
+  - name: fetch
+    process:
+      - type: rest
+        name: call-api
+        settings:
+          connector: secure-api
+          method: GET
+          path: /v1/resource
+      - type: log
+        name: report-status
+        settings:
+          logger: out
+          message: '"status " + string(vars.statusCode)'

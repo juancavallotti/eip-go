@@ -43,6 +43,7 @@ const (
 	authNone   = ""
 	authBearer = "bearer"
 	authBasic  = "basic"
+	authOAuth2 = "oauth2" // OAuth 2.0 client-credentials grant
 )
 
 // connectorSettings is the client-wide configuration decoded from the
@@ -65,12 +66,18 @@ type connectorSettings struct {
 }
 
 // authSettings selects and configures the authentication scheme. Type is "",
-// "bearer", or "basic"; the remaining fields are read per scheme.
+// "bearer", "basic", or "oauth2"; the remaining fields are read per scheme.
 type authSettings struct {
 	Type     string `json:"type"`
 	Token    string `json:"token"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+
+	// OAuth 2.0 client-credentials fields (read when Type is "oauth2").
+	TokenURL     string   `json:"tokenURL"`
+	ClientID     string   `json:"clientID"`
+	ClientSecret string   `json:"clientSecret"`
+	Scopes       []string `json:"scopes"`
 }
 
 // cacheSettings configures the optional GET response cache.
@@ -89,11 +96,14 @@ type Connector struct {
 	headers  map[string]string
 	maxBytes int64
 	cache    *responseCache
+	// tokenSource is non-nil only for oauth2 auth; it mints and refreshes the
+	// bearer token applied to each request.
+	tokenSource *tokenSource
 }
 
 // Start parses the settings, validates the base URL and auth, and builds the
 // client so a bad configuration fails at startup rather than on first request.
-func (c *Connector) Start(_ context.Context, config types.ConnectorConfig) error {
+func (c *Connector) Start(ctx context.Context, config types.ConnectorConfig) error {
 	var set connectorSettings
 	if err := config.Settings.Decode(&set); err != nil {
 		return err
@@ -138,6 +148,10 @@ func (c *Connector) Start(_ context.Context, config types.ConnectorConfig) error
 		c.cache = newResponseCache(ttl, maxEntries)
 	}
 
+	if set.Auth.Type == authOAuth2 {
+		c.configureOAuth2(ctx, config.Name, set.Auth, timeout)
+	}
+
 	slog.Info("http client connector started",
 		"connector", config.Name,
 		"baseURL", base.Redacted(),
@@ -172,7 +186,9 @@ func (c *Connector) Do(req *http.Request) (*http.Response, error) {
 			req.Header.Set(k, v)
 		}
 	}
-	c.applyAuth(req)
+	if err := c.authorize(req); err != nil {
+		return nil, err
+	}
 
 	cacheable := c.cache != nil && req.Method == http.MethodGet
 	if cacheable {
@@ -232,12 +248,42 @@ func joinPath(base, ref string) string {
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(ref, "/")
 }
 
-// applyAuth sets the Authorization header per the configured scheme, unless the
-// request already carries one.
-func (c *Connector) applyAuth(req *http.Request) {
+// configureOAuth2 builds the token source for client-credentials auth, capturing
+// the secret store from the context so refreshed tokens persist across restarts
+// where the store is durable.
+func (c *Connector) configureOAuth2(ctx context.Context, name string, auth authSettings, timeout time.Duration) {
+	secrets := core.RuntimeServicesFromContext(ctx).Secrets()
+	c.tokenSource = newTokenSource(name, oauth2Config{
+		tokenURL:     auth.TokenURL,
+		clientID:     auth.ClientID,
+		clientSecret: auth.ClientSecret,
+		scope:        strings.Join(auth.Scopes, " "),
+	}, &http.Client{Timeout: timeout}, secrets)
+}
+
+// authorize applies authentication to the request unless it already carries an
+// Authorization header. For oauth2 it mints/refreshes a bearer token (which may
+// call the token endpoint and the secret store, hence the error); the static
+// schemes never fail.
+func (c *Connector) authorize(req *http.Request) error {
 	if req.Header.Get("Authorization") != "" {
-		return
+		return nil
 	}
+	if c.tokenSource != nil {
+		token, err := c.tokenSource.Token(req.Context())
+		if err != nil {
+			return fmt.Errorf("http-client oauth2: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return nil
+	}
+	c.applyAuth(req)
+	return nil
+}
+
+// applyAuth sets the Authorization header for the static schemes (bearer, basic).
+// The caller has already checked that no Authorization header is present.
+func (c *Connector) applyAuth(req *http.Request) {
 	switch c.auth.Type {
 	case authBearer:
 		req.Header.Set("Authorization", "Bearer "+c.auth.Token)
@@ -259,8 +305,15 @@ func validateAuth(a authSettings) error {
 		if a.Username == "" {
 			return fmt.Errorf("auth type %q requires a username", a.Type)
 		}
+	case authOAuth2:
+		if a.TokenURL == "" {
+			return fmt.Errorf("auth type %q requires a tokenURL", a.Type)
+		}
+		if a.ClientID == "" || a.ClientSecret == "" {
+			return fmt.Errorf("auth type %q requires a clientID and clientSecret", a.Type)
+		}
 	default:
-		return fmt.Errorf("auth type %q is not one of bearer/basic", a.Type)
+		return fmt.Errorf("auth type %q is not one of bearer/basic/oauth2", a.Type)
 	}
 	return nil
 }

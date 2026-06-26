@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   ChevronRight,
   FolderPlus,
@@ -10,7 +11,13 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { type Bucket, type FlatFolder, isFolderBucket } from "./model";
+import {
+  type Bucket,
+  type DragData,
+  type DropData,
+  type FlatFolder,
+  isFolderBucket,
+} from "./model";
 
 /** localStorage key holding the ids of collapsed folders (so new folders default open). */
 const COLLAPSED_KEY = "octo.folderTree.collapsed";
@@ -18,8 +25,10 @@ const COLLAPSED_KEY = "octo.folderTree.collapsed";
 /**
  * The folder tree sidebar of the management view: the "All"/"Unfiled" buckets
  * plus the folder tree with inline create/rename and delete. It owns only the
- * transient inline-edit UI state; folder mutations are delegated to the manager
- * via callbacks.
+ * transient inline-edit and collapse UI state; folder mutations are delegated to
+ * the manager via callbacks. Folders and the buckets are drop targets (an
+ * integration dragged here is filed/unfiled; a folder dragged here is reparented),
+ * and each folder row is itself a drag source.
  */
 interface Props {
   folders: FlatFolder[];
@@ -139,110 +148,49 @@ export default function FolderTree({
       </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
-        <li>
-          <button
-            type="button"
-            onClick={() => onSelect("all")}
-            className={bucketRow(bucket === "all")}
-          >
-            <Layers size={15} className="text-zinc-400" />
-            <span className="flex-1">All integrations</span>
-            <span className="text-xs text-zinc-400">{total}</span>
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            onClick={() => onSelect("unfiled")}
-            className={bucketRow(bucket === "unfiled")}
-          >
-            <Inbox size={15} className="text-zinc-400" />
-            <span className="flex-1">Unfiled</span>
-            <span className="text-xs text-zinc-400">{unfiledCount}</span>
-          </button>
-        </li>
+        <BucketRow
+          dropId="bucket:root"
+          dropData={{ kind: "root" }}
+          active={bucket === "all"}
+          onClick={() => onSelect("all")}
+        >
+          <Layers size={15} className="text-zinc-400" />
+          <span className="flex-1">All integrations</span>
+          <span className="text-xs text-zinc-400">{total}</span>
+        </BucketRow>
+        <BucketRow
+          dropId="bucket:unfiled"
+          dropData={{ kind: "unfiled" }}
+          active={bucket === "unfiled"}
+          onClick={() => onSelect("unfiled")}
+        >
+          <Inbox size={15} className="text-zinc-400" />
+          <span className="flex-1">Unfiled</span>
+          <span className="text-xs text-zinc-400">{unfiledCount}</span>
+        </BucketRow>
 
-        {folders.filter(isVisible).map((f) => {
-          const expandable = hasChildren.has(f.id);
-          const isCollapsed = collapsed.has(f.id);
-          // Indent by depth; the chevron column (1rem) keeps folder icons aligned
-          // whether or not a row is expandable.
-          const indent = `${0.75 + f.depth * 0.85}rem`;
-          return (
-            <li key={f.id} className="group/row relative">
-              {editingId === f.id ? (
-                <input
-                  autoFocus
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  onBlur={() => submitRename(f)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitRename(f);
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  style={{ paddingLeft: `calc(${indent} + 1rem)` }}
-                  className="w-full bg-transparent py-1.5 pr-2 text-sm outline-none ring-1 ring-sky-500/40"
-                />
-              ) : (
-                <div
-                  className={`flex w-full items-center pr-14 text-sm ${
-                    isFolderBucket(bucket, f.id)
-                      ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                      : "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                  }`}
-                  style={{ paddingLeft: indent }}
-                >
-                  {expandable ? (
-                    <button
-                      type="button"
-                      aria-label={isCollapsed ? `Expand ${f.name}` : `Collapse ${f.name}`}
-                      aria-expanded={!isCollapsed}
-                      onClick={() => toggle(f.id)}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                    >
-                      <ChevronRight
-                        size={13}
-                        className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                      />
-                    </button>
-                  ) : (
-                    <span className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onSelect({ folder: f.id })}
-                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
-                  >
-                    <FolderIcon size={15} className="shrink-0 text-zinc-400" />
-                    <span className="flex-1 truncate">{f.name}</span>
-                    <span className="text-xs text-zinc-400">{folderCount(f.id)}</span>
-                  </button>
-                </div>
-              )}
-              <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover/row:opacity-100">
-                <button
-                  type="button"
-                  aria-label={`Rename ${f.name}`}
-                  onClick={() => {
-                    setEditingId(f.id);
-                    setEditName(f.name);
-                  }}
-                  className="rounded p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete ${f.name}`}
-                  onClick={() => onDelete(f)}
-                  className="rounded p-1 text-zinc-400 hover:text-red-500"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </li>
-          );
-        })}
+        {folders.filter(isVisible).map((f) => (
+          <FolderRow
+            key={f.id}
+            f={f}
+            expandable={hasChildren.has(f.id)}
+            collapsed={collapsed.has(f.id)}
+            selected={isFolderBucket(bucket, f.id)}
+            count={folderCount(f.id)}
+            editing={editingId === f.id}
+            editName={editName}
+            onEditNameChange={setEditName}
+            onSubmitRename={() => submitRename(f)}
+            onCancelRename={() => setEditingId(null)}
+            onToggle={() => toggle(f.id)}
+            onSelect={() => onSelect({ folder: f.id })}
+            onStartRename={() => {
+              setEditingId(f.id);
+              setEditName(f.name);
+            }}
+            onDelete={() => onDelete(f)}
+          />
+        ))}
 
         {creating && (
           <li>
@@ -265,5 +213,170 @@ export default function FolderTree({
         )}
       </ul>
     </aside>
+  );
+}
+
+/** A top-level bucket ("All"/"Unfiled") that is also a drop target. */
+function BucketRow({
+  dropId,
+  dropData,
+  active,
+  onClick,
+  children,
+}: {
+  dropId: string;
+  dropData: DropData;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId, data: dropData });
+  return (
+    <li>
+      <button
+        ref={setNodeRef}
+        type="button"
+        onClick={onClick}
+        className={`${bucketRow(active)} ${
+          isOver ? "ring-1 ring-inset ring-sky-500/60" : ""
+        }`}
+      >
+        {children}
+      </button>
+    </li>
+  );
+}
+
+/**
+ * One folder row: a drop target (its container) wrapping a chevron toggle and the
+ * draggable folder-name button, with hover rename/delete actions. While editing,
+ * the name is replaced by an inline input.
+ */
+function FolderRow({
+  f,
+  expandable,
+  collapsed,
+  selected,
+  count,
+  editing,
+  editName,
+  onEditNameChange,
+  onSubmitRename,
+  onCancelRename,
+  onToggle,
+  onSelect,
+  onStartRename,
+  onDelete,
+}: {
+  f: FlatFolder;
+  expandable: boolean;
+  collapsed: boolean;
+  selected: boolean;
+  count: number;
+  editing: boolean;
+  editName: string;
+  onEditNameChange: (v: string) => void;
+  onSubmitRename: () => void;
+  onCancelRename: () => void;
+  onToggle: () => void;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onDelete: () => void;
+}) {
+  // Indent by depth; the chevron column (1rem) keeps folder icons aligned whether
+  // or not a row is expandable.
+  const indent = `${0.75 + f.depth * 0.85}rem`;
+  const dragData: DragData = { kind: "folder", id: f.id, name: f.name };
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-drop:${f.id}`,
+    data: { kind: "folder", id: f.id } satisfies DropData,
+  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: `folder-drag:${f.id}`, data: dragData });
+
+  if (editing) {
+    return (
+      <li className="relative">
+        <input
+          autoFocus
+          value={editName}
+          onChange={(e) => onEditNameChange(e.target.value)}
+          onBlur={onSubmitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSubmitRename();
+            if (e.key === "Escape") onCancelRename();
+          }}
+          style={{ paddingLeft: `calc(${indent} + 1rem)` }}
+          className="w-full bg-transparent py-1.5 pr-2 text-sm outline-none ring-1 ring-sky-500/40"
+        />
+      </li>
+    );
+  }
+
+  return (
+    <li className="group/row relative">
+      <div
+        ref={setDropRef}
+        className={`flex w-full items-center pr-14 text-sm ${
+          isDragging ? "opacity-40" : ""
+        } ${
+          selected
+            ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
+            : "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+        } ${isOver ? "ring-1 ring-inset ring-sky-500/60" : ""}`}
+        style={{ paddingLeft: indent }}
+      >
+        {expandable ? (
+          <button
+            type="button"
+            aria-label={collapsed ? `Expand ${f.name}` : `Collapse ${f.name}`}
+            aria-expanded={!collapsed}
+            onClick={onToggle}
+            className="flex h-4 w-4 shrink-0 items-center justify-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+          >
+            <ChevronRight
+              size={13}
+              className={`transition-transform ${collapsed ? "" : "rotate-90"}`}
+            />
+          </button>
+        ) : (
+          <span className="h-4 w-4 shrink-0" aria-hidden />
+        )}
+        <button
+          ref={setDragRef}
+          type="button"
+          onClick={onSelect}
+          {...attributes}
+          {...listeners}
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
+        >
+          <FolderIcon size={15} className="shrink-0 text-zinc-400" />
+          <span className="flex-1 truncate">{f.name}</span>
+          <span className="text-xs text-zinc-400">{count}</span>
+        </button>
+      </div>
+      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover/row:opacity-100">
+        <button
+          type="button"
+          aria-label={`Rename ${f.name}`}
+          onClick={onStartRename}
+          className="rounded p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete ${f.name}`}
+          onClick={onDelete}
+          className="rounded p-1 text-zinc-400 hover:text-red-500"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </li>
   );
 }

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { Folder as FolderIcon, Plus, Workflow } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
 import {
@@ -13,7 +22,14 @@ import {
   renameFolder,
   unassignIntegration,
 } from "@/app/model/orchestrator";
-import { flatten, type Bucket, type FlatFolder } from "./model";
+import {
+  flatten,
+  isDescendant,
+  type Bucket,
+  type DragData,
+  type DropData,
+  type FlatFolder,
+} from "./model";
 import { EMPTY, loadData, type Data } from "./managerData";
 import FolderTree from "./FolderTree";
 import IntegrationList from "./IntegrationList";
@@ -47,6 +63,12 @@ export default function IntegrationsManager({
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+
+  // A small activation distance keeps a plain click (select) distinct from a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   const refresh = useCallback(
     () =>
@@ -131,6 +153,38 @@ export default function IntegrationsManager({
     run(() => deleteIntegration(id));
   };
 
+  const onDragStart = (e: DragStartEvent) =>
+    setActiveDrag((e.active.data.current as DragData | undefined) ?? null);
+
+  // Resolve a drop into a folder mutation. Integrations file/unfile; folders
+  // reparent (blocked from landing on themselves or a descendant). No-op moves and
+  // unsupported source/target pairs are ignored.
+  const onDragEnd = (e: DragEndEvent) => {
+    setActiveDrag(null);
+    const a = e.active.data.current as DragData | undefined;
+    const o = e.over?.data.current as DropData | undefined;
+    if (!a || !o) return;
+
+    if (a.kind === "integration") {
+      const current = membership.get(a.id) ?? null;
+      if (o.kind === "folder" && o.id !== current) {
+        run(() => assignIntegration(o.id, a.id));
+      } else if (o.kind === "unfiled" && current) {
+        run(() => unassignIntegration(current, a.id));
+      }
+      return; // dropping on "All" (root) is a no-op for integrations
+    }
+
+    // Folder reparent: "folder" nests under it, "root" lifts to the top level;
+    // "unfiled" is not a folder target.
+    const target = o.kind === "folder" ? o.id : o.kind === "root" ? null : undefined;
+    if (target === undefined) return;
+    if (o.kind === "folder" && isDescendant(flat, o.id, a.id)) return;
+    const f = flat.find((x) => x.id === a.id);
+    if (!f || (f.parentId ?? null) === target) return;
+    run(() => renameFolder(a.id, f.name, target));
+  };
+
   // Avoid flashing the "unavailable" message before the probe resolves.
   if (!ready) return null;
 
@@ -180,43 +234,63 @@ export default function IntegrationsManager({
           <SecretsManager />
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
-        <FolderTree
-          folders={flat}
-          bucket={bucket}
-          total={integrations.length}
-          unfiledCount={unfiledCount}
-          folderCount={folderCount}
-          nesting={createParent !== null}
-          onSelect={setBucket}
-          onCreate={createFolderHere}
-          onRename={renameFolderTo}
-          onDelete={removeFolder}
-        />
-
-        <IntegrationList
-          integrations={shown}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-        />
-
-        <div className="min-w-0 flex-1">
-          {selected ? (
-            <IntegrationDetail
-              integration={selected}
+        <DndContext
+          sensors={sensors}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setActiveDrag(null)}
+        >
+          <div className="flex min-h-0 flex-1">
+            <FolderTree
               folders={flat}
-              folderId={selectedFolderId}
-              busy={busy}
-              onMove={moveSelected}
-              onDelete={removeSelected}
+              bucket={bucket}
+              total={integrations.length}
+              unfiledCount={unfiledCount}
+              folderCount={folderCount}
+              nesting={createParent !== null}
+              onSelect={setBucket}
+              onCreate={createFolderHere}
+              onRename={renameFolderTo}
+              onDelete={removeFolder}
             />
-          ) : (
-            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">
-              Select an integration to see its details.
+
+            <IntegrationList
+              integrations={shown}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+
+            <div className="min-w-0 flex-1">
+              {selected ? (
+                <IntegrationDetail
+                  integration={selected}
+                  folders={flat}
+                  folderId={selectedFolderId}
+                  busy={busy}
+                  onMove={moveSelected}
+                  onDelete={removeSelected}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">
+                  Select an integration to see its details.
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        </div>
+          </div>
+
+          <DragOverlay>
+            {activeDrag ? (
+              <div className="flex items-center gap-2 rounded-md border border-black/10 bg-white px-3 py-1.5 text-sm shadow-lg dark:border-white/15 dark:bg-zinc-900">
+                {activeDrag.kind === "folder" ? (
+                  <FolderIcon size={15} className="text-zinc-400" />
+                ) : (
+                  <Workflow size={15} className="text-zinc-400" />
+                )}
+                <span className="max-w-48 truncate">{activeDrag.name}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
     </div>
   );

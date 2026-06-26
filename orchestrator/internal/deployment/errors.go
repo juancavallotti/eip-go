@@ -42,4 +42,8 @@ var (
 	// ErrSnapshotMismatch is returned when the selected snapshot belongs to a
 	// different integration than the one being deployed.
 	ErrSnapshotMismatch = errors.New("version tag does not belong to this integration")
+	// ErrRolloutTopologyChange is returned when a rollout's target tag changes the
+	// integration's HTTP source (networked vs not), which a rolling update cannot
+	// express; the caller should undeploy and redeploy instead.
+	ErrRolloutTopologyChange = errors.New("version tag changes the HTTP source; undeploy and redeploy instead")
 )

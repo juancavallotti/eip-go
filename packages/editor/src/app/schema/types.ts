@@ -25,7 +25,21 @@ export type FieldType =
   | "tool-list"
   // A bare block chain (not wrapped in a sub-flow), serialized directly as a
   // list of blocks under its field name — e.g. handle-errors' process/error.
-  | "block-list";
+  | "block-list"
+  // A nested group of fields serialized as an object under its field name — e.g.
+  // the http-client connector's `auth`. Its sub-fields are declared in `fields`,
+  // and each may use `showIf` to appear only for a given sibling value.
+  | "object";
+
+/**
+ * Condition that gates a field's visibility on a sibling field's value within the
+ * same object group. Used so, e.g., the OAuth2 settings only show when the auth
+ * `type` is "oauth2".
+ */
+export interface ShowIf {
+  field: string;
+  equals: string;
+}
 
 /**
  * Describes that a (string) field holds a *reference* to another named entity in
@@ -49,6 +63,10 @@ export interface FieldSpec {
   description?: string;
   /** When set, the field references a named connection/flow (rendered as a dropdown). */
   ref?: ReferenceSpec;
+  /** Sub-fields for an `object` field; ignored for other types. */
+  fields?: FieldSpec[];
+  /** Gates this field's visibility on a sibling's value within an `object` group. */
+  showIf?: ShowIf;
 }
 
 /** Whether a block is a plain processor or a control-flow composite. */

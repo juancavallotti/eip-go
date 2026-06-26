@@ -108,6 +108,14 @@ func (noopRuntimeServices) KV() KV { return noopKV{} }
 
 func (noopRuntimeServices) Close() error { return nil }
 
+// NoopLeaderElection returns a leader election that grants leadership
+// unconditionally — the single-process semantics the standalone module wants,
+// where there is nothing to coordinate. It is also the fallback the no-op services
+// expose.
+//
+//nolint:ireturn // returns the LeaderElection interface intentionally
+func NoopLeaderElection() LeaderElection { return noopLeaderElection{} }
+
 // noopLeaderElection grants leadership unconditionally, matching single-process
 // behavior where there is nothing to elect.
 type noopLeaderElection struct{}

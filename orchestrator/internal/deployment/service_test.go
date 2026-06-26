@@ -24,6 +24,7 @@ type fakeRepo struct {
 	listErr           error
 	statusCalls       int
 	updateSettingsErr error
+	updateMetadataErr error
 	deleted           bool
 	deleteErr         error
 	// takenSlugs maps an already-claimed slug to its owning integration id, so
@@ -72,6 +73,11 @@ func (f *fakeRepo) UpdateSettings(_ context.Context, _ string, settings json.Raw
 	return f.updateSettingsErr
 }
 
+func (f *fakeRepo) UpdateMetadata(_ context.Context, _ string, metadata json.RawMessage) error {
+	f.gotMetadata = metadata
+	return f.updateMetadataErr
+}
+
 func (f *fakeRepo) Delete(_ context.Context, _ string) error {
 	f.deleted = true
 	return f.deleteErr
@@ -104,6 +110,8 @@ func (f *fakeSnapshots) Get(_ context.Context, id string) (snapshot.Snapshot, er
 type fakeKube struct {
 	applied         bool
 	applyErr        error
+	rolledOut       bool
+	rolloutErr      error
 	gotSpec         kube.Spec
 	status          string
 	statusErr       error
@@ -125,6 +133,12 @@ func (f *fakeKube) Apply(_ context.Context, spec kube.Spec) error {
 	f.applied = true
 	f.gotSpec = spec
 	return f.applyErr
+}
+
+func (f *fakeKube) Rollout(_ context.Context, spec kube.Spec) error {
+	f.rolledOut = true
+	f.gotSpec = spec
+	return f.rolloutErr
 }
 
 func (f *fakeKube) Status(_ context.Context, _ string) (kube.Status, error) {
@@ -813,5 +827,66 @@ func TestDeployMapsMissingSnapshot(t *testing.T) {
 
 	if _, err := svc.Deploy(context.Background(), "int-1", Settings{SnapshotID: "gone"}); !errors.Is(err, ErrSnapshotNotFound) {
 		t.Errorf("got %v, want ErrSnapshotNotFound", err)
+	}
+}
+
+// TestRolloutShipsNewDefinitionAndRecordsTag verifies a rollout ships the new
+// snapshot's definition via kube.Rollout, preserves the address/scale, and records
+// the new tag in metadata.
+func TestRolloutShipsNewDefinitionAndRecordsTag(t *testing.T) {
+	repo := &fakeRepo{getRet: Deployment{
+		ID:            "dep-1",
+		IntegrationID: "int-1",
+		Settings:      json.RawMessage(`{"replicas":2}`),
+		Metadata:      json.RawMessage(`{"name":"Orders","slug":"orders","internalUrl":"http://octo-int-orders:9090","tag":"v1.0","snapshotId":"snap-0"}`),
+	}}
+	snaps := &fakeSnapshots{ret: snapshot.Snapshot{ID: "snap-2", IntegrationID: "int-1", Tag: "v2.0", Definition: exposableDef}}
+	kc := &fakeKube{status: kube.StatusRunning}
+	svc := NewService(repo, &fakeIntegrations{}, kc, WithSnapshots(snaps))
+
+	if _, err := svc.Rollout(context.Background(), "dep-1", "snap-2"); err != nil {
+		t.Fatalf("Rollout: %v", err)
+	}
+	if !kc.rolledOut {
+		t.Error("expected kube.Rollout to be called")
+	}
+	if kc.gotSpec.Definition != exposableDef {
+		t.Errorf("spec definition = %q, want the new snapshot's", kc.gotSpec.Definition)
+	}
+	if kc.gotSpec.Slug != "orders" || kc.gotSpec.Replicas != 2 {
+		t.Errorf("rollout changed address/scale: slug=%q replicas=%d", kc.gotSpec.Slug, kc.gotSpec.Replicas)
+	}
+	meta := ParseMetadata(repo.gotMetadata)
+	if meta.Tag != "v2.0" || meta.SnapshotID != "snap-2" {
+		t.Errorf("metadata tag/snapshot = %q/%q, want v2.0/snap-2", meta.Tag, meta.SnapshotID)
+	}
+	if meta.Slug != "orders" {
+		t.Errorf("metadata slug lost: %q", meta.Slug)
+	}
+}
+
+func TestRolloutRejectsTopologyChange(t *testing.T) {
+	// Existing deployment is networked (has a slug); the new tag drops the HTTP
+	// source, which would remove the Service — reject it.
+	repo := &fakeRepo{getRet: Deployment{
+		ID: "dep-1", IntegrationID: "int-1",
+		Settings: json.RawMessage(`{}`),
+		Metadata: json.RawMessage(`{"slug":"orders"}`),
+	}}
+	snaps := &fakeSnapshots{ret: snapshot.Snapshot{ID: "snap-2", IntegrationID: "int-1", Definition: "service:\n  name: plain\n"}}
+	svc := NewService(repo, &fakeIntegrations{}, &fakeKube{}, WithSnapshots(snaps))
+
+	if _, err := svc.Rollout(context.Background(), "dep-1", "snap-2"); !errors.Is(err, ErrRolloutTopologyChange) {
+		t.Errorf("got %v, want ErrRolloutTopologyChange", err)
+	}
+}
+
+func TestRolloutRejectsSnapshotFromAnotherIntegration(t *testing.T) {
+	repo := &fakeRepo{getRet: Deployment{ID: "dep-1", IntegrationID: "int-1", Metadata: json.RawMessage(`{"slug":"orders"}`)}}
+	snaps := &fakeSnapshots{ret: snapshot.Snapshot{ID: "snap-2", IntegrationID: "other", Definition: exposableDef}}
+	svc := NewService(repo, &fakeIntegrations{}, &fakeKube{}, WithSnapshots(snaps))
+
+	if _, err := svc.Rollout(context.Background(), "dep-1", "snap-2"); !errors.Is(err, ErrSnapshotMismatch) {
+		t.Errorf("got %v, want ErrSnapshotMismatch", err)
 	}
 }

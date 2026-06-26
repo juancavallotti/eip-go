@@ -41,6 +41,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /integrations/{id}/deployments/options", h.deployOptions)
 	mux.HandleFunc("GET /deployments/{id}", h.get)
 	mux.HandleFunc("PATCH /deployments/{id}", h.scale)
+	mux.HandleFunc("POST /deployments/{id}/rollout", h.rollout)
 	mux.HandleFunc("DELETE /deployments/{id}", h.undeploy)
 	if h.hub != nil {
 		mux.HandleFunc("GET /integrations/{id}/deployments/events", h.events)
@@ -293,6 +294,29 @@ func (h *Handler) scale(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, toResponse(d))
 }
 
+// rolloutRequest is the body of a rollout request: the version tag (snapshot id)
+// to upgrade the live deployment to.
+type rolloutRequest struct {
+	SnapshotID string `json:"snapshotId"`
+}
+
+func (h *Handler) rollout(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	var req rolloutRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	d, err := h.svc.Rollout(ctx, r.PathValue("id"), req.SnapshotID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toResponse(d))
+}
+
 func (h *Handler) undeploy(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
@@ -334,6 +358,8 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusBadRequest, "the selected version tag was not found")
 	case errors.Is(err, ErrSnapshotMismatch):
 		httpx.WriteError(w, http.StatusBadRequest, "the selected version tag does not belong to this integration")
+	case errors.Is(err, ErrRolloutTopologyChange):
+		httpx.WriteError(w, http.StatusBadRequest, "that version changes the HTTP source; undeploy and redeploy instead")
 	default:
 		slog.Error("deployment handler", "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")

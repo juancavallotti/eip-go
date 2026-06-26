@@ -82,7 +82,9 @@ func (c *httpStore) Get(ctx context.Context, namespace, key string) (core.Entry,
 	}
 }
 
-func (c *httpStore) Set(ctx context.Context, namespace, key string, value []byte, expectedVersion int64) (int64, error) {
+func (c *httpStore) Set(
+	ctx context.Context, namespace, key string, value []byte, expectedVersion int64,
+) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.endpoint(namespace, key), bytes.NewReader(value))
 	if err != nil {
 		return 0, err

@@ -117,7 +117,9 @@ func (s secretStore) Get(ctx context.Context, namespace, key string) (Entry, boo
 	return s.kv.Get(ctx, secretNamespace(namespace), key)
 }
 
-func (s secretStore) Set(ctx context.Context, namespace, key string, value []byte, expectedVersion int64) (int64, error) {
+func (s secretStore) Set(
+	ctx context.Context, namespace, key string, value []byte, expectedVersion int64,
+) (int64, error) {
 	return s.kv.Set(ctx, secretNamespace(namespace), key, value, expectedVersion)
 }
 

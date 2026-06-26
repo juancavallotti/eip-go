@@ -26,8 +26,8 @@ import (
 	"github.com/juancavallotti/octo/core"
 	"github.com/juancavallotti/octo/core/runtime"
 	"github.com/juancavallotti/octo/services"
-	_ "github.com/juancavallotti/octo/services/k8s"        // registers the "k8s" runtime services provider
-	_ "github.com/juancavallotti/octo/services/standalone" // registers the "standalone" runtime services provider (default)
+	_ "github.com/juancavallotti/octo/services/k8s"        // registers the "k8s" services provider
+	_ "github.com/juancavallotti/octo/services/standalone" // registers the "standalone" services provider (default)
 	"github.com/juancavallotti/octo/types"
 )
 
@@ -212,7 +212,9 @@ func runWithReload(ctx context.Context, configPath string, svc core.RuntimeServi
 
 // runGeneration runs one service generation and returns whether the caller should
 // reload (rebuild from config) or stop.
-func runGeneration(ctx context.Context, config types.Config, changed <-chan struct{}, svc core.RuntimeServices) (bool, error) {
+func runGeneration(
+	ctx context.Context, config types.Config, changed <-chan struct{}, svc core.RuntimeServices,
+) (bool, error) {
 	slog.Info("starting runtime", "version", Version, "connectors", len(config.Connectors), "flows", len(config.Flows))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

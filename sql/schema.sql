@@ -104,3 +104,8 @@ CREATE TABLE IF NOT EXISTS integration_folder_members (
 
 CREATE INDEX IF NOT EXISTS idx_integration_folder_members_folder
     ON integration_folder_members (folder_id);
+
+-- Manual ordering of integrations within a folder. New members are appended
+-- (assigned MAX(position)+1); the middle column orders by (position, name).
+ALTER TABLE integration_folder_members
+    ADD COLUMN IF NOT EXISTS position int NOT NULL DEFAULT 0;

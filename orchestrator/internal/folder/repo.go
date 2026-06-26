@@ -123,9 +123,10 @@ func (r *Repo) Delete(ctx context.Context, id string) error {
 // folder or integration surfaces as ErrNotFound.
 func (r *Repo) AddIntegration(ctx context.Context, folderID, integrationID string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO integration_folder_members (integration_id, folder_id)
-		 VALUES ($1, $2)
-		 ON CONFLICT (integration_id) DO UPDATE SET folder_id = EXCLUDED.folder_id`,
+		`INSERT INTO integration_folder_members (integration_id, folder_id, position)
+		 VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM integration_folder_members WHERE folder_id = $2), 0))
+		 ON CONFLICT (integration_id) DO UPDATE
+		   SET folder_id = EXCLUDED.folder_id, position = EXCLUDED.position`,
 		integrationID, folderID,
 	)
 	if err != nil {
@@ -133,6 +134,23 @@ func (r *Repo) AddIntegration(ctx context.Context, folderID, integrationID strin
 			return ErrNotFound
 		}
 		return fmt.Errorf("folder repo: add integration: %w", err)
+	}
+	return nil
+}
+
+// ReorderIntegrations sets the stored order of integrations within folderID to the
+// given sequence (position = 1-based index). Ids not belonging to the folder are
+// ignored; ids omitted keep their prior position (the caller sends the full list).
+func (r *Repo) ReorderIntegrations(ctx context.Context, folderID string, integrationIDs []string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE integration_folder_members AS m
+		 SET position = o.ord
+		 FROM unnest($2::uuid[]) WITH ORDINALITY AS o(integration_id, ord)
+		 WHERE m.folder_id = $1 AND m.integration_id = o.integration_id`,
+		folderID, integrationIDs,
+	)
+	if err != nil {
+		return fmt.Errorf("folder repo: reorder integrations: %w", err)
 	}
 	return nil
 }
@@ -161,7 +179,7 @@ func (r *Repo) ListIntegrations(ctx context.Context, folderID string) ([]integra
 		 FROM integrations i
 		 JOIN integration_folder_members m ON m.integration_id = i.id
 		 WHERE m.folder_id = $1
-		 ORDER BY i.name`,
+		 ORDER BY m.position, i.name`,
 		folderID,
 	)
 	if err != nil {

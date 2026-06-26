@@ -269,6 +269,17 @@ export function unassignIntegration(
   );
 }
 
+/** Persist the manual order of a folder's integrations (full list, in order). */
+export function reorderFolderIntegrations(
+  folderId: string,
+  integrationIds: string[],
+): Promise<void> {
+  return request<void>(
+    `/api/folders/${encodeURIComponent(folderId)}/integration-order`,
+    { ...jsonBody({ integrationIds }), method: "PUT" },
+  );
+}
+
 /** Collect every folder id in the tree, depth-first. */
 function folderIds(folders: Folder[]): string[] {
   return folders.flatMap((f) => [f.id, ...folderIds(f.children ?? [])]);

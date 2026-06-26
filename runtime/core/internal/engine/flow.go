@@ -23,6 +23,7 @@ const (
 	blockKindIf           = "if"
 	blockKindSwitch       = "switch"
 	blockKindForeach      = "foreach"
+	blockKindCacheScope   = "cache-scope"
 	blockKindAIRouter     = "ai-router"
 	blockKindAIAgent      = "ai-agent"
 	blockKindAIRetry      = "ai-retry"
@@ -192,6 +193,8 @@ func (b *builder) processor(
 		return b.switchBlock(cfg)
 	case blockKindForeach:
 		return b.foreachBlock(cfg)
+	case blockKindCacheScope:
+		return b.cacheScope(cfg)
 	case blockKindAIRouter:
 		return b.aiRouter(cfg)
 	case blockKindAIAgent:

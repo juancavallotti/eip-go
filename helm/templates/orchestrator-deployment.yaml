@@ -43,6 +43,15 @@ spec:
               value: {{ include "octo.orchestrator.url" . | quote }}
             - name: RUNTIME_SERVICE_ACCOUNT
               value: {{ include "octo.runtime.serviceAccountName" . | quote }}
+            {{- if .Values.kv.encryptionKey }}
+            # AES-256 key for encrypting KV secret namespaces at rest. Absent =>
+            # secret writes rejected, plain KV still works.
+            - name: KV_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "octo.kv.secretName" . }}
+                  key: kv-encryption-key
+            {{- end }}
             {{- if .Values.orchestrator.baseDomain }}
             - name: BASE_DOMAIN
               value: {{ .Values.orchestrator.baseDomain | quote }}

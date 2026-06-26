@@ -1,6 +1,11 @@
 "use client";
 
-import { useDraggable } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Workflow } from "lucide-react";
 import type { Integration } from "@/app/model/orchestrator";
 import type { DragData } from "./model";
@@ -10,12 +15,15 @@ interface Props {
   integrations: Integration[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** True when the current bucket is a folder, so cards can be reordered. */
+  reorderable: boolean;
 }
 
 export default function IntegrationList({
   integrations,
   selectedId,
   onSelect,
+  reorderable,
 }: Props) {
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-black/10 dark:border-white/10">
@@ -23,14 +31,20 @@ export default function IntegrationList({
         <p className="px-4 py-4 text-sm text-zinc-400">No integrations here.</p>
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-          {integrations.map((i) => (
-            <IntegrationCard
-              key={i.id}
-              integration={i}
-              selected={selectedId === i.id}
-              onSelect={onSelect}
-            />
-          ))}
+          <SortableContext
+            items={integrations.map((i) => `integration:${i.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            {integrations.map((i) => (
+              <IntegrationCard
+                key={i.id}
+                integration={i}
+                selected={selectedId === i.id}
+                onSelect={onSelect}
+                reorderable={reorderable}
+              />
+            ))}
+          </SortableContext>
         </ul>
       )}
     </div>
@@ -38,29 +52,41 @@ export default function IntegrationList({
 }
 
 /**
- * One draggable integration row. Dragging it onto a folder (or "Unfiled") in the
- * tree files/unfiles it; a plain click still selects it (a small activation
- * distance on the pointer sensor keeps clicks and drags distinct).
+ * One integration row. It is always a drag source (drag it onto a folder/Unfiled
+ * in the tree to file/unfile it) and, inside a folder bucket, sorts among its peers
+ * to reorder them. A plain click still selects it (a small pointer activation
+ * distance keeps clicks and drags distinct).
  */
 function IntegrationCard({
   integration: i,
   selected,
   onSelect,
+  reorderable,
 }: {
   integration: Integration;
   selected: boolean;
   onSelect: (id: string) => void;
+  reorderable: boolean;
 }) {
   const data: DragData = { kind: "integration", id: i.id, name: i.name };
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `integration:${i.id}`,
-    data,
-  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `integration:${i.id}`, data });
+
+  // While reordering inside a folder the card animates into place; when moving to
+  // a folder the transform would drag the original away, so suppress it then.
+  const style = reorderable
+    ? { transform: CSS.Transform.toString(transform), transition }
+    : undefined;
 
   return (
-    <li>
+    <li ref={setNodeRef} style={style}>
       <button
-        ref={setNodeRef}
         type="button"
         onClick={() => onSelect(i.id)}
         {...attributes}

@@ -14,12 +14,14 @@ import {
 import { Folder as FolderIcon, Plus, Workflow } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
+import { arrayMove } from "@dnd-kit/sortable";
 import {
   assignIntegration,
   createFolder,
   deleteFolder,
   deleteIntegration,
   renameFolder,
+  reorderFolderIntegrations,
   unassignIntegration,
 } from "@/app/model/orchestrator";
 import {
@@ -97,15 +99,25 @@ export default function IntegrationsManager({
     [refresh],
   );
 
-  const { folders, integrations, membership } = data;
+  const { folders, integrations, membership, order } = data;
   const flat = useMemo(() => flatten(folders), [folders]);
 
   const shown = useMemo(() => {
     if (bucket === "all") return integrations;
     if (bucket === "unfiled")
       return integrations.filter((i) => !membership.has(i.id));
-    return integrations.filter((i) => membership.get(i.id) === bucket.folder);
-  }, [bucket, integrations, membership]);
+    const inFolder = integrations.filter(
+      (i) => membership.get(i.id) === bucket.folder,
+    );
+    // Honor the folder's stored order; ids missing from it (e.g. just assigned)
+    // sort to the end by their natural list position.
+    const pos = new Map((order.get(bucket.folder) ?? []).map((id, i) => [id, i]));
+    return [...inFolder].sort(
+      (a, b) =>
+        (pos.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (pos.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [bucket, integrations, membership, order]);
 
   const unfiledCount = useMemo(
     () => integrations.filter((i) => !membership.has(i.id)).length,
@@ -156,16 +168,36 @@ export default function IntegrationsManager({
   const onDragStart = (e: DragStartEvent) =>
     setActiveDrag((e.active.data.current as DragData | undefined) ?? null);
 
-  // Resolve a drop into a folder mutation. Integrations file/unfile; folders
-  // reparent (blocked from landing on themselves or a descendant). No-op moves and
-  // unsupported source/target pairs are ignored.
+  // Persist a new order for the folder currently shown, optimistically reflecting
+  // it so the list doesn't snap back before the refresh lands.
+  const reorderShown = (activeId: string, overId: string) => {
+    if (typeof bucket !== "object") return;
+    const folderId = bucket.folder;
+    const ids = shown.map((i) => i.id);
+    const from = ids.indexOf(activeId);
+    const to = ids.indexOf(overId);
+    if (from === -1 || to === -1 || from === to) return;
+    const next = arrayMove(ids, from, to);
+    setData((d) => ({ ...d, order: new Map(d.order).set(folderId, next) }));
+    run(() => reorderFolderIntegrations(folderId, next));
+  };
+
+  // Resolve a drop. Integrations file/unfile (onto a folder/Unfiled) or reorder
+  // (onto a peer inside a folder); folders reparent (blocked from landing on
+  // themselves or a descendant). No-op moves and unsupported pairs are ignored.
   const onDragEnd = (e: DragEndEvent) => {
     setActiveDrag(null);
     const a = e.active.data.current as DragData | undefined;
-    const o = e.over?.data.current as DropData | undefined;
+    // `over` is a drop zone (DropData) or, for the sortable list, a peer card (DragData).
+    const o = e.over?.data.current as DropData | DragData | undefined;
     if (!a || !o) return;
 
     if (a.kind === "integration") {
+      // Dropped on a peer card: reorder within the current folder.
+      if (o.kind === "integration") {
+        if (o.id !== a.id) reorderShown(a.id, o.id);
+        return;
+      }
       const current = membership.get(a.id) ?? null;
       if (o.kind === "folder" && o.id !== current) {
         run(() => assignIntegration(o.id, a.id));
@@ -258,6 +290,7 @@ export default function IntegrationsManager({
               integrations={shown}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              reorderable={typeof bucket === "object"}
             />
 
             <div className="min-w-0 flex-1">

@@ -24,6 +24,7 @@ type repository interface {
 	AddIntegration(ctx context.Context, folderID, integrationID string) error
 	RemoveIntegration(ctx context.Context, folderID, integrationID string) error
 	ListIntegrations(ctx context.Context, folderID string) ([]integration.Integration, error)
+	ReorderIntegrations(ctx context.Context, folderID string, integrationIDs []string) error
 }
 
 // Service holds folder business logic: name validation, cycle-safe moves and
@@ -95,6 +96,15 @@ func (s *Service) RemoveIntegration(ctx context.Context, folderID, integrationID
 // ListIntegrations returns the integrations that belong to a folder.
 func (s *Service) ListIntegrations(ctx context.Context, folderID string) ([]integration.Integration, error) {
 	return s.repo.ListIntegrations(ctx, folderID)
+}
+
+// ReorderIntegrations persists the manual order of a folder's integrations. An
+// empty list is a no-op.
+func (s *Service) ReorderIntegrations(ctx context.Context, folderID string, integrationIDs []string) error {
+	if len(integrationIDs) == 0 {
+		return nil
+	}
+	return s.repo.ReorderIntegrations(ctx, folderID, integrationIDs)
 }
 
 // checkMove rejects reparenting id under newParentID when that would create a

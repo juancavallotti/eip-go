@@ -49,6 +49,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "octo.fullname" . }}-auth
 {{- end }}
 
+{{- define "octo.kv.secretName" -}}
+{{ include "octo.fullname" . }}-kv
+{{- end }}
+
 {{/*
   ServiceAccount the deployed runtime pods run as. It grants the coordination.k8s.io
   leases RBAC the runtime's k8s services module needs for leader election.

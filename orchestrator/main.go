@@ -7,8 +7,10 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,6 +24,7 @@ import (
 	httpx "github.com/juancavallotti/octo/orchestrator/internal/http"
 	"github.com/juancavallotti/octo/orchestrator/internal/integration"
 	"github.com/juancavallotti/octo/orchestrator/internal/kube"
+	"github.com/juancavallotti/octo/orchestrator/internal/kv"
 	"github.com/juancavallotti/octo/orchestrator/internal/secret"
 )
 
@@ -73,13 +76,16 @@ func run() error {
 		slog.Info("connected to database pool")
 	}
 
-	srv := newServer(ctx, database, kubeConfig{
+	srv, err := newServer(ctx, database, kubeConfig{
 		namespace:         envOr("KUBE_NAMESPACE", defaultNamespace),
 		runtimeImage:      envOr("RUNTIME_IMAGE", defaultRuntimeImage),
 		baseDomain:        os.Getenv("BASE_DOMAIN"),
 		clusterIssuer:     envOr("CLUSTER_ISSUER", defaultClusterIssuer),
 		wildcardTLSSecret: os.Getenv("WILDCARD_TLS_SECRET"),
 	})
+	if err != nil {
+		return err
+	}
 	httpServer := httpx.NewServer(":"+port, srv)
 
 	errCh := make(chan error, 1)
@@ -117,7 +123,7 @@ type kubeConfig struct {
 // kube configures deployment management, which is enabled only when both a
 // database and in-cluster Kubernetes access are present. ctx bounds the lifetime
 // of background work started here (the deployment status informers).
-func newServer(ctx context.Context, database *db.DB, kc kubeConfig) http.Handler {
+func newServer(ctx context.Context, database *db.DB, kc kubeConfig) (http.Handler, error) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -161,6 +167,19 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) http.Handler
 			"endpoints", "POST/GET /folders, GET/PUT/DELETE /folders/{id}, "+
 				"GET /folders/{id}/integrations, PUT/DELETE /folders/{id}/integrations/{integrationId}")
 
+		// Deployment-scoped KV store the runtime's k8s services module calls. Values
+		// in a secret namespace are encrypted with KV_ENCRYPTION_KEY; without the key,
+		// secrets are rejected but plain KV still works.
+		cipher, cipherErr := newKVCipher(os.Getenv("KV_ENCRYPTION_KEY"))
+		if cipherErr != nil {
+			return nil, cipherErr
+		}
+		kvSvc := kv.NewService(kv.NewRepo(database.Pool()), cipher)
+		kv.NewHandler(kvSvc).Register(mux)
+		slog.Info("kv routes registered",
+			"encryption", cipher != nil,
+			"endpoints", "GET/PUT/DELETE /deployments/{id}/kv/{namespace}/{key}")
+
 		// Deployment management needs both the database and in-cluster Kubernetes
 		// access. Outside a cluster (e.g. local `go run`) kube.New fails and the
 		// routes stay disabled, mirroring how the DB-less case disables the rest.
@@ -168,7 +187,8 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) http.Handler
 			slog.Warn("kubernetes access unavailable; deployment routes disabled", "error", err)
 		} else {
 			deploymentRepo := deployment.NewRepo(database.Pool())
-			deploymentSvc := deployment.NewService(deploymentRepo, integrationSvc, kubeClient)
+			deploymentSvc := deployment.NewService(deploymentRepo, integrationSvc, kubeClient,
+				deployment.WithStoreCleaner(kvSvc))
 			// Watch the cluster and push status changes to SSE subscribers; the
 			// informers also back the status read path, so list/stream reads hit a
 			// local cache rather than the API server.
@@ -193,7 +213,22 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) http.Handler
 		slog.Warn("DATABASE_URL not set; integration, folder and deployment routes disabled")
 	}
 
-	return mux
+	return mux, nil
+}
+
+// newKVCipher builds the secret-namespace encryption cipher from a base64-encoded
+// key. An empty key disables encryption (secret-namespace writes are then rejected);
+// a malformed key or an invalid key length is a startup error.
+func newKVCipher(b64 string) (*kv.Cipher, error) {
+	if b64 == "" {
+		slog.Warn("KV_ENCRYPTION_KEY not set; KV secret-namespace writes will be rejected")
+		return nil, nil //nolint:nilnil // nil cipher means encryption disabled, not an error
+	}
+	key, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("decode KV_ENCRYPTION_KEY: %w", err)
+	}
+	return kv.NewCipher(key)
 }
 
 func envOr(key, fallback string) string {

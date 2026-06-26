@@ -37,6 +37,17 @@ type LeaderElection interface {
 	Acquire(ctx context.Context, key string) (Leadership, error)
 }
 
+// Preset KV namespaces. Keys never cross namespaces, so these partition the store
+// by owner. More may be added over time.
+const (
+	// NamespaceSystem holds internal runtime and connector state that
+	// user-configured blocks must not read or tamper with.
+	NamespaceSystem = "system"
+	// NamespaceUser holds state owned by user-configured blocks (e.g. a cache or a
+	// store block).
+	NamespaceUser = "user"
+)
+
 // Entry is a versioned KV value. Version is monotonic per key: a freshly created
 // object has version 1, and each successful write increments it. A reader passes
 // the version it last saw to the next write to detect concurrent updates.
@@ -45,25 +56,30 @@ type Entry struct {
 	Version int64
 }
 
-// KV is a small key/value store available to connectors and blocks. In the k8s
-// module it is backed by the orchestrator API and scoped to the deployment; in the
-// standalone module it is an in-process map.
+// KV is a deployment-scoped key/value store available to connectors and blocks.
+// Every operation takes a namespace: keys are isolated per namespace, so state an
+// internal component writes under its own namespace is invisible to a key read or
+// written under another. A component using the store is expected to confine itself
+// to a namespace it owns (e.g. a user-facing cache block writes under a "user"
+// namespace), keeping internal state out of reach. In the k8s module the store is
+// backed by the orchestrator API and scoped to the deployment; in the standalone
+// module it is an in-process map.
 //
 // Writes use optimistic concurrency: expectedVersion 0 creates the key (and fails
 // if it already exists), while a positive expectedVersion must equal the stored
 // version. A mismatch returns ErrVersionConflict. Successful writes return the new
 // version.
 type KV interface {
-	// Get returns the entry for key. ok is false when the key is absent.
-	Get(ctx context.Context, key string) (entry Entry, ok bool, err error)
+	// Get returns the entry for key in namespace. ok is false when the key is absent.
+	Get(ctx context.Context, namespace, key string) (entry Entry, ok bool, err error)
 	// Set stores value as-is (no encryption) and returns the new version.
-	Set(ctx context.Context, key string, value []byte, expectedVersion int64) (newVersion int64, err error)
+	Set(ctx context.Context, namespace, key string, value []byte, expectedVersion int64) (newVersion int64, err error)
 	// SetSecret stores value encrypted at rest (where the backend supports it) and
 	// returns the new version. Get transparently returns the decrypted value.
-	SetSecret(ctx context.Context, key string, value []byte, expectedVersion int64) (newVersion int64, err error)
-	// Delete removes key. expectedVersion 0 deletes unconditionally; a positive
-	// value must match the stored version or Delete returns ErrVersionConflict.
-	Delete(ctx context.Context, key string, expectedVersion int64) error
+	SetSecret(ctx context.Context, namespace, key string, value []byte, expectedVersion int64) (newVersion int64, err error)
+	// Delete removes key in namespace. expectedVersion 0 deletes unconditionally; a
+	// positive value must match the stored version or Delete returns ErrVersionConflict.
+	Delete(ctx context.Context, namespace, key string, expectedVersion int64) error
 }
 
 // RuntimeServices is the set of generally-available services wired into the runtime
@@ -110,15 +126,19 @@ func (alwaysLeader) Close() error   { return nil }
 // noopKV has no storage: reads miss and writes fail loudly.
 type noopKV struct{}
 
-func (noopKV) Get(context.Context, string) (Entry, bool, error) { return Entry{}, false, nil }
+func (noopKV) Get(context.Context, string, string) (Entry, bool, error) {
+	return Entry{}, false, nil
+}
 
-func (noopKV) Set(context.Context, string, []byte, int64) (int64, error) { return 0, errNoKV }
-
-func (noopKV) SetSecret(context.Context, string, []byte, int64) (int64, error) {
+func (noopKV) Set(context.Context, string, string, []byte, int64) (int64, error) {
 	return 0, errNoKV
 }
 
-func (noopKV) Delete(context.Context, string, int64) error { return errNoKV }
+func (noopKV) SetSecret(context.Context, string, string, []byte, int64) (int64, error) {
+	return 0, errNoKV
+}
+
+func (noopKV) Delete(context.Context, string, string, int64) error { return errNoKV }
 
 // noopServices is the shared fallback instance returned when the context carries no
 // services.

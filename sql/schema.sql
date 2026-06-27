@@ -129,3 +129,40 @@ CREATE TABLE IF NOT EXISTS integration_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_integration_snapshots_integration
     ON integration_snapshots (integration_id);
+
+-- users records each authenticated principal. Identity comes from the OIDC
+-- provider; on first sign-in the platform bootstraps a row keyed by the stable
+-- `subject` (the OIDC `sub`) and keeps email/name in sync on subsequent logins.
+-- The generated `id` is the durable handle other tables (api_keys) reference, so
+-- it survives IdP email changes. The local-dev (no-SSO) session uses a sentinel
+-- subject so `task dev` still resolves to a real user row.
+CREATE TABLE IF NOT EXISTS users (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    subject       varchar UNIQUE NOT NULL,
+    email         varchar NOT NULL,
+    name          varchar NOT NULL DEFAULT '',
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    last_login_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- api_keys are per-user bearer tokens used to authenticate machine clients (the
+-- platform MCP endpoint). The plaintext token is shown to the user exactly once at
+-- creation; only its SHA-256 hash is stored, so a database leak exposes no usable
+-- keys. `prefix`/`last4` are non-secret fragments kept for display. Deletion is a
+-- soft revoke (`revoked_at`) so an audit trail survives; expiry is enforced by the
+-- application against `expires_at`.
+CREATE TABLE IF NOT EXISTS api_keys (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name         varchar NOT NULL,
+    key_hash     varchar NOT NULL,
+    prefix       varchar NOT NULL,
+    last4        varchar NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz NOT NULL,
+    last_used_at timestamptz,
+    revoked_at   timestamptz
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id);

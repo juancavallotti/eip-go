@@ -54,6 +54,13 @@ function call<T>(
   return requestJson<T>(method, `${base}${path}`, body);
 }
 
+// --- Health ---------------------------------------------------------------
+
+/** Probe the orchestrator's health check (used by the availability action). */
+export function checkHealth(): Promise<ActionResult<unknown>> {
+  return call<unknown>("GET", "/healthz");
+}
+
 // --- Integrations ---------------------------------------------------------
 
 export function listIntegrations(): Promise<ActionResult<Integration[]>> {

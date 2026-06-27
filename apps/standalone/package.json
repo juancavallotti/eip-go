@@ -14,6 +14,7 @@
   "dependencies": {
     "@octo/editor": "workspace:*",
     "@octo/http": "workspace:*",
+    "@octo/mcp": "workspace:*",
     "@octo/run-host": "workspace:*",
     "lucide-react": "1.21.0",
     "next": "16.2.9",

@@ -25,10 +25,13 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/standalone/package.json ./apps/standalone/
 COPY packages/editor/package.json ./packages/editor/
+COPY packages/http/package.json ./packages/http/
+COPY packages/mcp/package.json ./packages/mcp/
 COPY packages/run-host/package.json ./packages/run-host/
 RUN pnpm install --frozen-lockfile
-# Shared base tsconfig + workspace source (the app consumes @octo/editor and
-# @octo/run-host as TS source via transpilePackages), then build.
+# Shared base tsconfig + workspace source (the app consumes @octo/editor,
+# @octo/http, @octo/mcp and @octo/run-host as TS source via transpilePackages),
+# then build.
 COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/standalone/ ./apps/standalone/

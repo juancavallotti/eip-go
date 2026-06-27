@@ -23,6 +23,7 @@ import type {
   IntegrationInput,
   Snapshot,
 } from "@/app/model/orchestrator";
+import type { ClusterSecret } from "@/app/model/secrets";
 
 export type { ActionResult } from "@octo/http";
 
@@ -227,4 +228,27 @@ export function scaleDeployment(
 
 export function deleteDeployment(id: string): Promise<ActionResult<void>> {
   return call<void>("DELETE", `/deployments/${enc(id)}`);
+}
+
+// --- Secrets --------------------------------------------------------------
+
+export function listSecrets(): Promise<ActionResult<ClusterSecret[]>> {
+  return call<ClusterSecret[]>("GET", "/secrets");
+}
+
+export function setSecret(
+  name: string,
+  value: string,
+): Promise<ActionResult<ClusterSecret>> {
+  return call<ClusterSecret>("PUT", `/secrets/${enc(name)}`, { value });
+}
+
+export function deleteSecret(
+  name: string,
+  force: boolean,
+): Promise<ActionResult<void>> {
+  return call<void>(
+    "DELETE",
+    `/secrets/${enc(name)}${force ? "?force=true" : ""}`,
+  );
 }

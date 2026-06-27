@@ -5,6 +5,8 @@
  * orchestrator's `{ error }` envelope.
  */
 
+import type { ActionResult } from "@/app/actions/_client";
+
 /** Perform a JSON request against a BFF route, unwrapping the `{ error }` envelope. */
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -24,4 +26,15 @@ export function jsonBody(data: unknown): RequestInit {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   };
+}
+
+/**
+ * Turn a server action's {@link ActionResult} back into a value-or-throw, so model
+ * functions that call actions keep the same contract as the `request`-based ones
+ * (callers' existing try/catch still works). Server actions can't throw readable
+ * errors across the boundary in production, hence the result-then-unwrap split.
+ */
+export function unwrap<T>(result: ActionResult<T>): T {
+  if (!result.ok) throw new Error(result.error);
+  return result.data;
 }

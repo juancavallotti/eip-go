@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
     "./styles/editor.css": "./styles/editor.css"
   },
   "scripts": {

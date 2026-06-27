@@ -33,8 +33,7 @@ function stubFetch(res: {
   return fn;
 }
 
-// Integration/folder actions call the orchestrator directly at ORCHESTRATOR_URL;
-// secrets still go through the BFF `/api/secrets` routes (not yet migrated).
+// All actions call the orchestrator directly at ORCHESTRATOR_URL.
 const ORCH = "http://orchestrator.test";
 
 beforeAll(() => {
@@ -95,13 +94,13 @@ describe("orchestrator client", () => {
     await expect(listFolders()).rejects.toThrow("bad name");
   });
 
-  // --- Secrets (still via the BFF /api/secrets routes) ---------------------
+  // --- Secrets --------------------------------------------------------------
 
-  it("lists secrets from the BFF route", async () => {
+  it("lists secrets from the orchestrator", async () => {
     const fetchFn = stubFetch({ body: [{ name: "API_KEY" }] });
     const out = await listSecrets();
     expect(out).toEqual([{ name: "API_KEY" }]);
-    expect(fetchFn).toHaveBeenCalledWith("/api/secrets", undefined);
+    expect(fetchFn).toHaveBeenCalledWith(`${ORCH}/secrets`, { method: "GET" });
   });
 
   it("sets a secret via PUT with a value body and encoded name", async () => {
@@ -109,7 +108,7 @@ describe("orchestrator client", () => {
     await setSecret("API_KEY", "shh");
     const [url, init] = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(url).toBe("/api/secrets/API_KEY");
+    expect(url).toBe(`${ORCH}/secrets/API_KEY`);
     expect(init).toMatchObject({
       method: "PUT",
       body: JSON.stringify({ value: "shh" }),
@@ -120,7 +119,7 @@ describe("orchestrator client", () => {
     const fetchFn = stubFetch({ status: 204 });
     await deleteSecret("API_KEY", true);
     expect(fetchFn).toHaveBeenCalledWith(
-      "/api/secrets/API_KEY?force=true",
+      `${ORCH}/secrets/API_KEY?force=true`,
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -129,7 +128,7 @@ describe("orchestrator client", () => {
     const fetchFn = stubFetch({ status: 204 });
     await deleteSecret("API_KEY");
     expect(fetchFn).toHaveBeenCalledWith(
-      "/api/secrets/API_KEY",
+      `${ORCH}/secrets/API_KEY`,
       expect.objectContaining({ method: "DELETE" }),
     );
   });

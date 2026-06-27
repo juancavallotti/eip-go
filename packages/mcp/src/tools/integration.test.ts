@@ -105,6 +105,37 @@ describe("integration tools", () => {
     expect(store.rows.get(created.id)?.definition).toBe("service:\n  name: New");
   });
 
+  it("validates a draft definition without saving, returning descriptive errors", async () => {
+    const store = fakeStore();
+    const cfg: OctoMcpConfig = {
+      store,
+      runtimeSchema: {},
+      validate: (def) =>
+        def.includes("flows")
+          ? { valid: true, errors: [] }
+          : { valid: false, errors: ['Flow "x": source is incomplete.'] },
+    };
+    const client = await connect(cfg);
+
+    const bad = (await client.callTool({
+      name: "validate_definition",
+      arguments: { definition: "service:\n  name: x" },
+    })) as CallToolResult;
+    expect(parse(bad)).toEqual({
+      valid: false,
+      errors: ['Flow "x": source is incomplete.'],
+    });
+
+    const good = (await client.callTool({
+      name: "validate_definition",
+      arguments: { definition: "service:\n  name: x\nflows: []" },
+    })) as CallToolResult;
+    expect(parse(good)).toEqual({ valid: true, errors: [] });
+
+    // Pure check: nothing was written to the store.
+    expect(store.rows.size).toBe(0);
+  });
+
   it("updates an integration's definition and name", async () => {
     const store = fakeStore([{ id: "a", name: "Old", definition: "v1" }]);
     const client = await connect(baseConfig(store));

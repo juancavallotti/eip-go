@@ -38,6 +38,23 @@ export function registerIntegrationTools(
   );
 
   server.registerTool(
+    "validate_definition",
+    {
+      title: "Validate a definition",
+      description:
+        "Validate a draft definition (raw runtime YAML) against the runtime schema WITHOUT saving it, returning descriptive errors. Use this while authoring to check a draft before create_integration/update_integration. Best-effort: a clean result still isn't a guarantee the runtime will load it (see get_run_logs after a run).",
+      inputSchema: {
+        definition: z
+          .string()
+          .min(1)
+          .describe("The runtime YAML to validate (service, connectors, flows)."),
+      },
+    },
+    ({ definition }) =>
+      guard(async () => jsonResult(config.validate(definition))),
+  );
+
+  server.registerTool(
     "create_integration",
     {
       title: "Create integration",

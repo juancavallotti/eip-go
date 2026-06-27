@@ -64,8 +64,8 @@ ${objective}Follow this loop:
 
 1. Read the "${RUNTIME_SCHEMA_URI}" resource to learn the exact block/connector types and their settings — do not guess type names or fields.
 2. Read the \`integration-examples\` prompt for two complete, runnable definitions.
-3. Draft the definition, then call \`create_integration\` (new) or \`update_integration\` (existing).
-4. Call \`can_start_integration\` — a best-effort pre-flight. Fix what it reports under \`errors\`, but treat it as advisory: the runtime is the final judge, so a definition it flags may still run (and a clean one may still fail at load).
+3. Draft the definition and call \`validate_definition\` to check it against the runtime schema BEFORE saving; fix the descriptive \`errors\` it returns and re-validate until clean. Then call \`create_integration\` (new) or \`update_integration\` (existing).
+4. Call \`can_start_integration\` — a best-effort pre-flight on the saved integration. Fix what it reports under \`errors\`, but treat it (and \`validate_definition\`) as advisory: the runtime is the final judge, so a definition it flags may still run (and a clean one may still fail at load).
 5. Call \`run_integration\`. If the integration declares an HTTP_PORT (a networked \`http\` connector), the result includes a \`testUrl\` you can curl to exercise its endpoints; otherwise it runs internally (e.g. cron-driven). Read \`get_run_logs\` to see the runtime's own load errors.
 6. Call \`get_run_logs\` to observe behavior, iterate with \`update_integration\` + \`run_integration\`, and \`stop_integration\` when done.
 

@@ -49,7 +49,7 @@
         <span class="badge">YAML flows</span>
         <span class="badge">CEL expressions</span>
         <span class="badge">hot reload</span>
-        <span class="badge">v<!-- x-release-please-start-version -->0.1.4<!-- x-release-please-end-version --></span>
+        <span class="badge">v<!-- x-release-please-start-version -->0.1.8<!-- x-release-please-end-version --></span>
       </div>
       <h1>The integration platform,<br /><span class="grad">reimagined for what comes next.</span></h1>
       <p class="lead">
@@ -397,8 +397,18 @@ flowchart TB
     <div class="grid cols-2">
       <a class="card" href="connectors.html" style="text-decoration:none">
         <div class="ic">🔌</div>
-        <h3>Connectors</h3>
-        <p>Every connector — cron, http, http-client, database, logger, and the LLM providers — the blocks they provide, and their settings.</p>
+        <h3>Connectors &amp; blocks</h3>
+        <p>Every connector — cron, http, http-client (with OAuth2), database, logger, the LLM providers — plus the built-in state &amp; cache blocks and their settings.</p>
+      </a>
+      <a class="card" href="state.html" style="text-decoration:none">
+        <div class="ic">🗃️</div>
+        <h3>State &amp; clustering</h3>
+        <p>The key–value store, encrypted secret store, leader election, and distributed cron — and how the <code>object-*</code> and cache blocks persist state across replicas.</p>
+      </a>
+      <a class="card" href="mcp.html" style="text-decoration:none">
+        <div class="ic">🤖</div>
+        <h3>Authoring with AI (MCP)</h3>
+        <p>The MCP server, its tools and resources, the <code>/mcp</code> endpoint, and per-user API keys — let an AI assistant draft, validate, and run integrations.</p>
       </a>
       <a class="card" href="cel.html" style="text-decoration:none">
         <div class="ic">🔤</div>
@@ -457,46 +467,46 @@ flowchart TB
     <div class="section-head">
       <span class="eyebrow">Recently shipped</span>
       <h2>What's new.</h2>
-      <p>The latest releases brought AI blocks, single sign-on for the editor, first-class error handling, and a friendlier developer console. Here's the tour.</p>
+      <p>The 0.1.7–0.1.8 wave made integrations <strong>stateful</strong>, gave them <strong>versioned deployments</strong>, and opened the door to <strong>authoring with AI assistants</strong> over MCP. Here's the tour.</p>
     </div>
 
     <div class="grid cols-2">
       <div class="card">
-        <div class="ic">🤖</div>
-        <h3>AI blocks &amp; LLM connectors</h3>
+        <div class="ic">🗃️</div>
+        <h3>Stateful flows &amp; runtime services</h3>
         <p>
-          Connect Anthropic, OpenAI, or Gemini, then drop in
-          <a href="#samples">AI blocks</a>: <code>ai-router</code> (an LLM picks a route),
-          <code>ai-agent</code> (calls your sub-flows as tools), <code>ai-mapping</code>
-          (reshapes a payload to a schema), and <code>ai-retry</code> (self-healing recovery).
+          Flows get a key–value <a href="state.html">store</a>, an encrypted secret store, and leader
+          election. New built-in blocks build on it: <code>object-read</code> / <code>object-write</code> /
+          <code>object-delete</code> for state and <code>cache-scope</code> / <code>invalidate-cache</code>
+          for memoized sub-flows. <code>cron</code> now fires <em>once</em> across replicas.
+        </p>
+      </div>
+      <div class="card">
+        <div class="ic">🏷️</div>
+        <h3>Versioned deployments &amp; rollout</h3>
+        <p>
+          Tag a <a href="deployment.html#versioning">version</a> to freeze an integration's definition,
+          deploy that tag, then roll a running deployment from one tag to another in place — id, address,
+          scale and env bindings preserved. You can't delete a tag that's still deployed.
+        </p>
+      </div>
+      <div class="card">
+        <div class="ic">🤖</div>
+        <h3>Author with AI assistants (MCP)</h3>
+        <p>
+          An <a href="mcp.html">MCP server</a> at <code>/mcp</code> lets a model read the runtime
+          schema, study worked examples, <code>validate</code> a draft, create the integration, run it
+          in a dev runner, and read the logs — gated by per-user API keys you manage from your account.
         </p>
       </div>
       <div class="card">
         <div class="ic">🔐</div>
-        <h3>Single sign-on for the editor</h3>
+        <h3>OAuth2, folders &amp; editor polish</h3>
         <p>
-          The visual editor now supports OIDC SSO (Auth.js). Backend routes are role-gated from an
-          id-token claim, sessions are stateless JWTs, and credentials moved out of Secret Manager.
-          SSO is opt-in — local <code>task dev</code> runs stay unauthenticated.
-        </p>
-      </div>
-      <div class="card">
-        <div class="ic">🧯</div>
-        <h3>First-class error handling</h3>
-        <p>
-          Wrap steps in a <code>handle-errors</code> block for inline recovery, or give a flow a
-          sibling <code>error:</code> chain. The recovery path sees
-          <code>vars.error.{message, flow, block}</code>, and <code>vars.httpStatus</code> sets the
-          response code. See the <a href="#samples">error-handling</a> sample.
-        </p>
-      </div>
-      <div class="card">
-        <div class="ic">🖥️</div>
-        <h3>A friendlier dev console</h3>
-        <p>
-          The editor's bottom panel is now tabbed — <strong>Logs</strong> alongside a
-          <strong>Dev .env</strong> editor for local secrets and variables — and a run's test URL is
-          surfaced right in the log panel so you can hit your endpoint in one click.
+          The http-client connector speaks <a href="connectors.html#http-client">OAuth 2.0
+          client-credentials</a> with a token cache in the secret store. The editor adds a collapsible
+          folder tree (drag to reparent, reorder), live-reload of the open file on external writes, and
+          a copy button for the running test URL.
         </p>
       </div>
     </div>
@@ -520,15 +530,15 @@ flowchart TB
     <div class="section-head">
       <span class="eyebrow">The vision</span>
       <h2>An AI-native iPaaS, running on Kubernetes — today.</h2>
-      <p>The cloud-native ESB, the AI blocks, and the Kubernetes-native platform are all shipping now. Focus turns next to clustering, stateful primitives, and a richer integration lifecycle.</p>
+      <p>The cloud-native ESB, the AI blocks, the Kubernetes-native platform — and now clustering, stateful primitives, versioned deployments, and MCP authoring — are all shipping. Focus turns next to operability and scale.</p>
     </div>
 
     <figure class="diagram" style="margin-bottom:28px">
       <div class="mermaid">
 flowchart LR
-  A["<b>Shipping now</b><br/>cloud-native ESB · AI blocks<br/>Kubernetes-native platform"]:::now
-  A --> B["<b>Next</b><br/>clustering · KV state<br/>integration versioning · MCP"]:::next
-  B --> C["<b>Later</b><br/>autoscaling · operator &amp; CRDs<br/>GitOps · deeper agents"]:::later
+  A["<b>Shipping now</b><br/>cloud-native ESB · AI blocks · platform<br/>clustering · KV state · versioning · MCP"]:::now
+  A --> B["<b>Next</b><br/>health &amp; metrics endpoints<br/>autoscaling · GitOps"]:::next
+  B --> C["<b>Later</b><br/>operator &amp; CRDs<br/>deeper agents · more connectors"]:::later
   classDef now fill:#0f2a20,stroke:#36d399,color:#e6edf3;
   classDef next fill:#11212e,stroke:#4aa8ff,color:#e6edf3;
   classDef later fill:#1a142e,stroke:#b692ff,color:#e6edf3;
@@ -538,35 +548,33 @@ flowchart LR
     <div class="roadmap">
       <div class="phase now">
         <span class="tag">● Now — shipping</span>
-        <h3>ESB · AI · Platform</h3>
+        <h3>ESB · AI · State · Platform</h3>
         <ul>
           <li>YAML flows, recursive composition &amp; the EIP blocks (switch · if · foreach · fork · handle-errors)</li>
-          <li>cron · http · http-client · database · logger connectors; hot reload &amp; CLI invoke</li>
+          <li>cron · http · http-client (OAuth2) · database · logger connectors; hot reload &amp; CLI invoke</li>
           <li>AI blocks: Anthropic / OpenAI / Gemini + ai-router · ai-agent · ai-mapping · ai-retry</li>
-          <li>Visual editor + orchestrator that deploy integrations as Kubernetes pods</li>
-          <li>OIDC SSO, public ingress &amp; automatic TLS</li>
+          <li>Runtime services: KV store, encrypted secrets, leader election &amp; distributed cron</li>
+          <li>Version tags, frozen-snapshot deploys &amp; in-place rollout; MCP authoring with API keys</li>
+          <li>Visual editor + orchestrator on Kubernetes; OIDC SSO, public ingress &amp; automatic TLS</li>
         </ul>
       </div>
       <div class="phase next">
         <span class="tag">→ Next — in progress</span>
-        <h3>Clustering &amp; state</h3>
+        <h3>Operability</h3>
         <ul>
-          <li>Cluster leader election</li>
-          <li>Integration- &amp; cluster-level key–value storage</li>
-          <li>Integration versioning</li>
-          <li>Promote / rollback between deployments</li>
-          <li>Building integrations with MCP</li>
+          <li>Health, readiness &amp; metrics endpoints</li>
+          <li>Autoscaling on backpressure</li>
+          <li>GitOps-friendly deployments</li>
+          <li>Richer deployment history &amp; rollback</li>
         </ul>
       </div>
       <div class="phase later">
         <span class="tag">◇ Later</span>
         <h3>Scale &amp; ecosystem</h3>
         <ul>
-          <li>Autoscaling on backpressure</li>
           <li>An operator and flow CRDs</li>
-          <li>GitOps-friendly deployments</li>
-          <li>Health, readiness &amp; metrics endpoints</li>
-          <li>Deeper agentic composition &amp; more connectors</li>
+          <li>Deeper agentic composition</li>
+          <li>More connectors</li>
         </ul>
       </div>
     </div>
@@ -1269,6 +1277,59 @@ flows:
         payload: '{"firedAt": string(now), "kind": "tick"}'
     process:
       - ref: heartbeat-log
+</script>
+
+  <script type="text/plain" data-sample-meta="runtime-services"
+    data-title="runtime-services" data-blurb="Stateful flows: read a counter from the runtime store, bump it, write it back, and memoize a sub-flow's result with cache-scope until its TTL lapses. Also shows OAuth2 client-credentials on the http-client connector."
+    data-run="task run:sample -- runtime-services.yaml"
+    data-pills="object-read|object-write|cache-scope|invalidate-cache|oauth2"></script>
+  <script type="text/plain" data-sample-src="runtime-services">service:
+  name: runtime-services
+
+connectors:
+  - name: out
+    type: logger
+    settings: { format: json, level: info }
+  - name: ticker
+    type: cron
+
+flows:
+  # Every 5s: read a run counter from the store, bump it, write it back, then
+  # build a "report" inside a cache scope (computed once, then served cached).
+  - name: report
+    source:
+      connector: ticker
+      type: cron
+      settings:
+        schedule: "@every 5s"
+    process:
+      - type: object-read
+        settings: { key: '"counter"', as: counter }
+      - type: set-variable
+        settings: { name: counter, value: "has(vars.counter) ? vars.counter + 1.0 : 1.0" }
+      - type: object-write
+        settings: { key: '"counter"', value: vars.counter }
+      - type: cache-scope
+        key: '"report"'
+        ttl: 1m
+        body:
+          process:
+            - type: log
+              settings: { logger: out, message: '"cache MISS — generating report"' }
+            - type: set-payload
+              settings: { value: '{"report": "generated", "event": eventID}' }
+      - type: log
+        settings:
+          logger: out
+          message: '"report run #" + string(vars.counter) + " -> " + string(body.report)'
+
+  # Invoke to evict the cached report so the next tick recomputes.
+  - name: reset
+    process:
+      - type: invalidate-cache
+        settings: { key: '"report"' }
+      - type: set-payload
+        settings: { value: '{"reset": true}' }
 </script>
 </div>
 

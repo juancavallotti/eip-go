@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/juancavallotti/octo/orchestrator/internal/apikey"
 	"github.com/juancavallotti/octo/orchestrator/internal/db"
 	"github.com/juancavallotti/octo/orchestrator/internal/deployment"
 	"github.com/juancavallotti/octo/orchestrator/internal/folder"
@@ -27,6 +28,7 @@ import (
 	"github.com/juancavallotti/octo/orchestrator/internal/kv"
 	"github.com/juancavallotti/octo/orchestrator/internal/secret"
 	"github.com/juancavallotti/octo/orchestrator/internal/snapshot"
+	"github.com/juancavallotti/octo/orchestrator/internal/user"
 )
 
 const (
@@ -197,6 +199,18 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) (http.Handle
 		snapshot.NewHandler(snapshotSvc).Register(mux)
 		slog.Info("snapshot routes registered",
 			"endpoints", "POST/GET /integrations/{id}/snapshots, DELETE /snapshots/{id}")
+
+		// Users and their API keys need only the database (identity comes from the
+		// platform's OIDC layer, which bootstraps a user on first sign-in). Registered
+		// outside the kube gate so authentication works wherever the DB is reachable.
+		user.NewHandler(user.NewService(user.NewRepo(database.Pool()))).Register(mux)
+		slog.Info("user routes registered",
+			"endpoints", "POST /users/bootstrap, GET /users/{id}")
+
+		apikey.NewHandler(apikey.NewService(apikey.NewRepo(database.Pool()))).Register(mux)
+		slog.Info("apikey routes registered",
+			"endpoints", "POST/GET /users/{userId}/apikeys, "+
+				"DELETE /users/{userId}/apikeys/{id}, POST /apikeys/verify")
 
 		// Deployment-scoped KV store the runtime's k8s services module calls. Values
 		// in a secret namespace are encrypted with KV_ENCRYPTION_KEY; without the key,

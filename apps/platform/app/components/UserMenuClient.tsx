@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { KeyRound, LogOut } from "lucide-react";
 
 /** Initials fallback for when the IdP returns no picture. */
 function initials(name: string | null, email: string | null): string {
@@ -96,6 +97,15 @@ export default function UserMenuClient({
               </span>
             )}
           </div>
+          <Link
+            href="/platform/account"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-black/5 dark:text-zinc-200 dark:hover:bg-white/10"
+          >
+            <KeyRound className="h-4 w-4" />
+            API keys
+          </Link>
           <form action={signOutAction}>
             <button
               type="submit"

@@ -17,6 +17,10 @@ function isPublic(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname.startsWith("/api/auth") ||
+    // The MCP endpoint authenticates itself with a per-user API key (bearer
+    // token), so it must bypass the OIDC session gate — see app/mcp/route.ts.
+    pathname === "/mcp" ||
+    pathname.startsWith("/mcp/") ||
     pathname === "/octo-logo.png" ||
     pathname === "/icon.png"
   );

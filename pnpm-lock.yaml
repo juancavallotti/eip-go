@@ -104,6 +104,9 @@ importers:
       '@octo/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@octo/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@octo/run-host':
         specifier: workspace:*
         version: link:../../packages/run-host

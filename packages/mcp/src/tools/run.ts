@@ -63,10 +63,10 @@ export function registerRunTools(
         if (!runHost.status(ns).available) {
           return errorResult("Runner not available (OCTO_BIN_PATH unset).");
         }
-        const { valid, errors } = config.validate(rec.definition);
-        if (!valid) {
-          return errorResult(`integration is not valid: ${errors.join("; ")}`);
-        }
+        // We don't gate the run on `can_start_integration`'s validation: that
+        // check is a best-effort pre-flight that can flag valid runtime YAML
+        // (e.g. the processors/ref pattern). The runtime is the real judge —
+        // its load errors stream to `get_run_logs`.
         let parsedEnv: Record<string, string> | undefined;
         if (env !== undefined) {
           const sane = parseEnv(env);

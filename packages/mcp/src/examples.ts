@@ -25,15 +25,6 @@ connectors:
   - name: ticker
     type: cron
 
-# Named processor definitions; flow blocks reference these by \`ref\`.
-processors:
-  - name: greeter
-    type: log
-    settings:
-      level: info
-      # CEL expression rendered to the log line (sees body/vars/eventID).
-      message: '"hello world! the date is " + body.date'
-
 flows:
   - name: greet
     source:
@@ -43,7 +34,14 @@ flows:
         schedule: "0,30 * * * * *"      # second 0 and 30 of every minute
         payload: '{"date": string(now)}'
     process:
-      - ref: greeter
+      # An inline log block. (You can also hoist blocks into a top-level
+      # \`processors:\` list and reference them with \`- ref: <name>\`.)
+      - type: log
+        name: greeter
+        settings:
+          level: info
+          # CEL expression rendered to the log line (sees body/vars/eventID).
+          message: '"hello world! the date is " + body.date'
 `,
 };
 

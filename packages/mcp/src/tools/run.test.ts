@@ -121,7 +121,7 @@ describe("run tools", () => {
     expect(out.testUrl).toBe(`http://localhost:3000/editor/runs/${out.namespace}/`);
   });
 
-  it("run blocks an invalid definition", async () => {
+  it("run proceeds even when validation reports issues (runtime is the judge)", async () => {
     const { host } = stubRunHost();
     const client = await connect(
       config({ validate: () => ({ valid: false, errors: ["bad"] }) }),
@@ -131,8 +131,8 @@ describe("run tools", () => {
       name: "run_integration",
       arguments: { id: "a" },
     })) as CallToolResult;
-    expect(res.isError).toBe(true);
-    expect(text(res)).toContain("bad");
+    expect(res.isError).toBeFalsy();
+    expect(parse(res).running).toBe(true);
   });
 
   it("run errors when no runner is available", async () => {

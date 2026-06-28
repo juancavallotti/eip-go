@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.2.0](https://github.com/juancavallotti/octo/compare/v0.1.8...v0.2.0) (2026-06-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* RuntimeServices gained a Queues() method; every implementer must provide it.
+
+### Features
+
+* **connectors:** add platform queue source and queue-dispatch block ([fc68bab](https://github.com/juancavallotti/octo/commit/fc68bab2d3dc7a27d7758363055788a32f945181))
+* **core:** add queue runtime-service interfaces + standalone implementation ([d079738](https://github.com/juancavallotti/octo/commit/d0797389db74b8b2c403cc35bbbbc299c4ee34d3))
+* **devspace:** run NATS in the local dev cluster ([4d8e631](https://github.com/juancavallotti/octo/commit/4d8e6319b90b303d66ee47ae28d4d8ca6e248344))
+* **editor:** add Platform Queue source and queue-dispatch block to schema ([7cf6baa](https://github.com/juancavallotti/octo/commit/7cf6baa2cb18fc0220b9b066d7300ebcd78e41bf))
+* expose queues on RuntimeServices and inject NATS_URL into runtime pods ([6eb6d68](https://github.com/juancavallotti/octo/commit/6eb6d68a7398640f4c7b60ac96b3dea567b6a7a1))
+* **helm:** add NATS broker as a StatefulSet ([0b07725](https://github.com/juancavallotti/octo/commit/0b07725d8d45564cc925eaad09adebc0097d5f87))
+* platform queue blocks (source + queue-dispatch) ([2601c69](https://github.com/juancavallotti/octo/commit/2601c69d0b1942945ddf099914224632e41a3af0))
+* queues as a runtime service (request-reply + point-to-point) ([7d9a4f6](https://github.com/juancavallotti/octo/commit/7d9a4f646cdcc6f2e8665f6b867034b541cbc7ad))
+* **services:** add NATS-backed queues for the k8s module ([3563a23](https://github.com/juancavallotti/octo/commit/3563a23bf993963f345c88d6e04c5a8003c0f653))
+
+
+### Bug Fixes
+
+* **terraform:** avoid sensitive for_each in kv encryption block ([f409e5e](https://github.com/juancavallotti/octo/commit/f409e5e09beb20deceb9af335e4f8b79cf9cd184))
+* **terraform:** avoid sensitive for_each in kv encryption block ([b4a1884](https://github.com/juancavallotti/octo/commit/b4a1884311ca65948fb56fd577672c96c2336864))
+
+
+### Refactoring
+
+* **helm:** organize templates into per-service folders ([2ef290c](https://github.com/juancavallotti/octo/commit/2ef290c3f9b59d2d00f836f89aeeb14c0953abf2))
+
+
+### Documentation
+
+* document the platform queue source and queue-dispatch block ([42d080e](https://github.com/juancavallotti/octo/commit/42d080e09e235b5917d2fb9c73debdcd45b851ca))
+* **samples:** add queue-loadbalance example for the platform queue blocks ([44d4964](https://github.com/juancavallotti/octo/commit/44d496456601f1b63ac225c90543f86ed55122a5))
+* **site:** add State & clustering and MCP authoring guides ([b2b7275](https://github.com/juancavallotti/octo/commit/b2b72751b634a9e7693861cde5e53c54fe2e16c2))
+* **site:** document state/cache blocks, OAuth2, version tags & global now ([f996609](https://github.com/juancavallotti/octo/commit/f99660944f0302bb91b459d5e727e879c766cf1a))
+* **site:** document the 0.1.7–0.1.8 features (state, versioning, MCP) ([aa4ca66](https://github.com/juancavallotti/octo/commit/aa4ca66eb674284c24f1a1b4346264b6cdc9734c))
+* **site:** refresh landing page for the 0.1.7–0.1.8 wave ([47d7f23](https://github.com/juancavallotti/octo/commit/47d7f237e192db964e0824b4bc78e312b166f466))
+
 ## [0.1.8](https://github.com/juancavallotti/octo/compare/v0.1.7...v0.1.8) (2026-06-27)
 
 

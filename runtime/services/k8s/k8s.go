@@ -26,12 +26,14 @@ const Module = "k8s"
 // and POD_NAMESPACE come from the downward API; the rest identify the deployment
 // and the orchestrator KV endpoint.
 const (
-	envPodName       = "POD_NAME"
-	envPodNamespace  = "POD_NAMESPACE"
-	envDeploymentID  = "OCTO_DEPLOYMENT_ID"
-	envOrchestrator  = "ORCHESTRATOR_URL"
-	envOrchestrToken = "ORCHESTRATOR_TOKEN" // optional bearer token for the KV API
-	envNATSURL       = "NATS_URL"           // NATS broker URL backing the queues
+	envPodName        = "POD_NAME"
+	envPodNamespace   = "POD_NAMESPACE"
+	envDeploymentID   = "OCTO_DEPLOYMENT_ID"
+	envDeploymentName = "OCTO_DEPLOYMENT_NAME"    // optional display name, stamped onto shipped logs
+	envDeploymentVer  = "OCTO_DEPLOYMENT_VERSION" // optional tag/version, stamped onto shipped logs
+	envOrchestrator   = "ORCHESTRATOR_URL"
+	envOrchestrToken  = "ORCHESTRATOR_TOKEN" // optional bearer token for the KV API
+	envNATSURL        = "NATS_URL"           // NATS broker URL backing the queues
 )
 
 func init() {
@@ -92,7 +94,7 @@ func New(_ context.Context) (core.RuntimeServices, error) {
 		kv:      newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
 		q:       newNATSQueues(conn, deploymentID),
 		conn:    conn,
-		logSink: newLogSink(conn, deploymentID),
+		logSink: newLogSink(conn, deploymentID, os.Getenv(envDeploymentName), os.Getenv(envDeploymentVer)),
 	}, nil
 }
 

@@ -180,7 +180,7 @@ func TestRuntimeServicesEnvInjected(t *testing.T) {
 		NATSURL:         "nats://octo-nats.octo-dev:4222",
 	}
 	ctx := context.Background()
-	spec := Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 1, Env: map[string]string{"LOG_LEVEL": "debug"}}
+	spec := Spec{ID: "d1", IntegrationID: "int-1", Name: "checkout", Version: "v3", Definition: "x: 1", Replicas: 1, Env: map[string]string{"LOG_LEVEL": "debug"}}
 	if err := c.Apply(ctx, spec); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -209,6 +209,12 @@ func TestRuntimeServicesEnvInjected(t *testing.T) {
 	}
 	if byName[envNATSURL].Value != "nats://octo-nats.octo-dev:4222" {
 		t.Errorf("%s = %q, want the NATS URL", envNATSURL, byName[envNATSURL].Value)
+	}
+	if byName[envDeploymentName].Value != "checkout" {
+		t.Errorf("%s = %q, want checkout", envDeploymentName, byName[envDeploymentName].Value)
+	}
+	if byName[envDeploymentVer].Value != "v3" {
+		t.Errorf("%s = %q, want v3", envDeploymentVer, byName[envDeploymentVer].Value)
 	}
 	for _, name := range []string{envPodName, envPodNamespace} {
 		ref := byName[name].ValueFrom
@@ -240,8 +246,9 @@ func TestRuntimeServicesEnvOmitsNATSWhenUnset(t *testing.T) {
 	}
 	dep, _ := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, resourceName("d1"), metav1.GetOptions{})
 	for _, e := range dep.Spec.Template.Spec.Containers[0].Env {
-		if e.Name == envNATSURL {
-			t.Fatalf("%s should be omitted when unset, got %q", envNATSURL, e.Value)
+		switch e.Name {
+		case envNATSURL, envDeploymentName, envDeploymentVer:
+			t.Fatalf("%s should be omitted when unset, got %q", e.Name, e.Value)
 		}
 	}
 }

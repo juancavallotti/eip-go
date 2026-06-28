@@ -24,7 +24,7 @@ func TestLogSinkPublishesRecords(t *testing.T) {
 		t.Fatalf("flush: %v", err)
 	}
 
-	logger := slog.New(newLogSink(pub, "dep-123"))
+	logger := slog.New(newLogSink(pub, "dep-123", "checkout", "v2"))
 	logger.Error("boom", "code", 42)
 
 	select {
@@ -35,6 +35,12 @@ func TestLogSinkPublishesRecords(t *testing.T) {
 		}
 		if rec["deploymentId"] != "dep-123" {
 			t.Errorf("deploymentId = %v, want dep-123", rec["deploymentId"])
+		}
+		if rec["appName"] != "checkout" {
+			t.Errorf("appName = %v, want checkout", rec["appName"])
+		}
+		if rec["appVersion"] != "v2" {
+			t.Errorf("appVersion = %v, want v2", rec["appVersion"])
 		}
 		if rec["msg"] != "boom" {
 			t.Errorf("msg = %v, want boom", rec["msg"])
@@ -65,7 +71,7 @@ func TestLogSinkShipsDebug(t *testing.T) {
 		t.Fatalf("flush: %v", err)
 	}
 
-	logger := slog.New(newLogSink(pub, "dep-x"))
+	logger := slog.New(newLogSink(pub, "dep-x", "", ""))
 	logger.Debug("trace-me")
 
 	select {

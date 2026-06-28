@@ -231,6 +231,8 @@ func (s *Service) Deploy(ctx context.Context, integrationID string, settings Set
 	spec := kube.Spec{
 		ID:            dep.ID,
 		IntegrationID: integrationID,
+		Name:          it.Name,
+		Version:       snapTag,
 		Definition:    definition,
 		Replicas:      int32(replicas),
 		Slug:          slug,
@@ -561,6 +563,8 @@ func (s *Service) Rollout(ctx context.Context, id, snapshotID string) (Deploymen
 	spec := kube.Spec{
 		ID:            dep.ID,
 		IntegrationID: dep.IntegrationID,
+		Name:          meta.Name,
+		Version:       snap.Tag,
 		Definition:    snap.Definition,
 		Replicas:      int32(replicas),
 		Slug:          meta.Slug,

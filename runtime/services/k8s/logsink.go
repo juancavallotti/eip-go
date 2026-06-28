@@ -18,18 +18,25 @@ var _ core.LogShipper = (*Services)(nil)
 const LogSubject = "internal.logs"
 
 // newLogSink builds an slog.Handler that ships every record to LogSubject as one
-// JSON line per record, tagged with deploymentID. It is a plain JSON handler over
-// a NATS-publishing writer, so slog handles level/attr/group formatting and we get
-// the deployment tag for free as a base attribute.
+// JSON line per record, tagged with the deployment id and (when set) its display
+// name and version. It is a plain JSON handler over a NATS-publishing writer, so
+// slog handles level/attr/group formatting and the deployment identity rides along
+// as base attributes the aggregator denormalizes into columns. name and version
+// are empty for an unnamed/untagged deployment; they are still emitted so the
+// aggregator's parse is uniform.
 //
 // The sink imposes the lowest threshold (debug) so it never filters more than the
 // destination it is teed with: the console/file handler keeps applying its own
 // level, while the central store captures full fidelity.
 //
 //nolint:ireturn // returns the slog.Handler interface intentionally
-func newLogSink(conn *nats.Conn, deploymentID string) slog.Handler {
+func newLogSink(conn *nats.Conn, deploymentID, name, version string) slog.Handler {
 	h := slog.NewJSONHandler(natsLogWriter{conn: conn}, &slog.HandlerOptions{Level: slog.LevelDebug})
-	return h.WithAttrs([]slog.Attr{slog.String("deploymentId", deploymentID)})
+	return h.WithAttrs([]slog.Attr{
+		slog.String("deploymentId", deploymentID),
+		slog.String("appName", name),
+		slog.String("appVersion", version),
+	})
 }
 
 // natsLogWriter publishes each Write (one slog JSON record) to LogSubject. Shipping

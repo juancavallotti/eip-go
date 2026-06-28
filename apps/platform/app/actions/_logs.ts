@@ -1,0 +1,87 @@
+/**
+ * The log-aggregator client — the middle layer between the logs server action and
+ * the `fetch` abstraction (`@octo/http`):
+ *
+ *     serverAction (auth) → this client (getLogs()) → requestJson() → fetch
+ *
+ * Like the NATS client, the platform talks to the log service directly: it owns
+ * the logs table and exposes its own in-cluster query API, so there is no reason
+ * to hop through the orchestrator. The server-only `LOGS_URL` and the
+ * snake_case→camelCase shaping are internal; callers see only {@link LogPage}.
+ */
+
+import { requestJson, type ActionResult } from "@octo/http";
+import type { LogEntry, LogFilters, LogPage } from "@/app/model/logs";
+
+/** One stored log row as the service emits it (snake_case). */
+interface RawLog {
+  id: string;
+  deployment_id: string;
+  app_name: string;
+  app_version: string;
+  ts: string;
+  level: string;
+  message: string;
+  attrs: Record<string, unknown> | null;
+  received_at: string;
+}
+
+/** One page as the service emits it. */
+interface RawPage {
+  items: RawLog[];
+  next_before?: string;
+}
+
+/** The query base URL with any trailing slash trimmed, or "" when unset. */
+function baseUrl(): string {
+  return (process.env.LOGS_URL ?? "").replace(/\/+$/, "");
+}
+
+/** Build the `/logs` query string from the filters, omitting empty axes. */
+function queryString(f: LogFilters): string {
+  const params = new URLSearchParams();
+  if (f.deploymentId) params.set("deploymentId", f.deploymentId);
+  for (const level of f.levels ?? []) params.append("level", level);
+  if (f.from) params.set("from", f.from);
+  if (f.to) params.set("to", f.to);
+  if (f.q) params.set("q", f.q);
+  if (f.before) params.set("before", f.before);
+  if (f.limit != null) params.set("limit", String(f.limit));
+  return params.toString();
+}
+
+function toEntry(r: RawLog): LogEntry {
+  return {
+    id: r.id,
+    deploymentId: r.deployment_id,
+    appName: r.app_name,
+    appVersion: r.app_version,
+    ts: r.ts,
+    level: r.level,
+    message: r.message,
+    attrs: r.attrs ?? {},
+    receivedAt: r.received_at,
+  };
+}
+
+/**
+ * Fetch one page of stored log events matching the filters. Returns an error
+ * result when the log service is unconfigured (`LOGS_URL` unset) or unreachable.
+ */
+export async function getLogs(f: LogFilters): Promise<ActionResult<LogPage>> {
+  const base = baseUrl();
+  if (!base) {
+    return { ok: false, error: "log query not configured (LOGS_URL unset)" };
+  }
+  const qs = queryString(f);
+  const url = qs ? `${base}/logs?${qs}` : `${base}/logs`;
+  const res = await requestJson<RawPage>("GET", url);
+  if (!res.ok) return res;
+  return {
+    ok: true,
+    data: {
+      items: res.data.items.map(toEntry),
+      nextBefore: res.data.next_before ?? null,
+    },
+  };
+}

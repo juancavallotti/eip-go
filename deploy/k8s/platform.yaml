@@ -38,6 +38,10 @@ spec:
             # /platform/queues view polls /varz + /connz from here directly.
             - name: NATS_MONITOR_URL
               value: http://nats:8222
+            # Log-aggregator query API (deploy/k8s/logs.yaml, port 8091). The
+            # /platform/logs view reads stored log events from here directly.
+            - name: LOGS_URL
+              value: http://logs:8091
             # Canonical base URL Auth.js builds sign-in redirects / OAuth callbacks
             # against. Without it, trustHost infers the host from request headers,
             # which behind the k3d loadbalancer/NodePort is 0.0.0.0:3000 — sending

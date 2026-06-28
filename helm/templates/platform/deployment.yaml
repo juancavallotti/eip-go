@@ -40,6 +40,10 @@ spec:
             - name: NATS_MONITOR_URL
               value: {{ include "octo.nats.monitorUrl" . | quote }}
             {{- end }}
+            # Log-aggregator query API; the /platform/logs view reads stored log
+            # events from here directly.
+            - name: LOGS_URL
+              value: {{ include "octo.logs.url" . | quote }}
             {{- if .Values.auth.oidc.enabled }}
             # OIDC SSO (Auth.js). The presence of AUTH_EETR_ISSUER + AUTH_SECRET
             # turns auth on in the editor. Issuer and client id are non-secret plain

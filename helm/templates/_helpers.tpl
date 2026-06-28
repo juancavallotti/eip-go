@@ -41,6 +41,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "octo.fullname" . }}-orchestrator
 {{- end }}
 
+{{- define "octo.nats.serviceName" -}}
+{{ include "octo.fullname" . }}-nats
+{{- end }}
+
+{{- define "octo.nats.headlessServiceName" -}}
+{{ include "octo.fullname" . }}-nats-headless
+{{- end }}
+
 {{- define "octo.platform.serviceName" -}}
 {{ include "octo.fullname" . }}-platform
 {{- end }}
@@ -67,6 +75,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 */}}
 {{- define "octo.orchestrator.url" -}}
 {{- printf "http://%s.%s:%d" (include "octo.orchestrator.serviceName" .) .Release.Namespace (int .Values.orchestrator.service.port) -}}
+{{- end }}
+
+{{/*
+  In-cluster URL of the NATS broker. Injected into components as NATS_URL so they
+  can publish/subscribe for cross-node pub-sub (see the pub-sub migration tracked
+  in the issue tracker).
+*/}}
+{{- define "octo.nats.url" -}}
+{{- printf "nats://%s.%s:%d" (include "octo.nats.serviceName" .) .Release.Namespace (int .Values.nats.service.port) -}}
 {{- end }}
 
 {{/*

@@ -1,14 +1,66 @@
 package logger
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/juancavallotti/octo/core"
 	"github.com/juancavallotti/octo/types"
 )
+
+// shipperServices is a RuntimeServices that also ships logs to a captured handler,
+// used to verify the connector tees its output through the central sink.
+type shipperServices struct {
+	core.RuntimeServices
+	sink slog.Handler
+}
+
+func (s shipperServices) LogSink() slog.Handler { return s.sink }
+
+// TestLoggerTeesToLogSink checks that when the runtime services in context ship
+// logs, the connector's logger writes both to its own output and to the sink.
+func TestLoggerTeesToLogSink(t *testing.T) {
+	var shipped bytes.Buffer
+	ctx := core.ContextWithRuntimeServices(context.Background(), shipperServices{
+		RuntimeServices: core.NoopRuntimeServices(),
+		sink:            slog.NewJSONHandler(&shipped, nil),
+	})
+
+	c := &Connector{}
+	cfg := types.ConnectorConfig{Name: "audit", Type: "logger", Settings: types.Settings{"format": "json"}}
+	if err := c.Start(ctx, cfg); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	logger, err := c.Logger()
+	if err != nil {
+		t.Fatalf("Logger: %v", err)
+	}
+	logger.Info("teed", "n", 1)
+
+	if got := shipped.String(); !strings.Contains(got, `"msg":"teed"`) {
+		t.Errorf("sink did not receive the record: %q", got)
+	}
+}
+
+// TestLoggerNoSinkWhenServicesDoNotShip confirms a non-shipping module leaves the
+// connector logger unchanged (no panic, no central sink wired).
+func TestLoggerNoSinkWhenServicesDoNotShip(t *testing.T) {
+	c := &Connector{}
+	cfg := types.ConnectorConfig{Name: "audit", Type: "logger", Settings: types.Settings{}}
+	// NoopRuntimeServices does not implement LogShipper.
+	ctx := core.ContextWithRuntimeServices(context.Background(), core.NoopRuntimeServices())
+	if err := c.Start(ctx, cfg); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := c.Logger(); err != nil {
+		t.Fatalf("Logger: %v", err)
+	}
+}
 
 func TestLoggerWritesToFileAndClosesIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")

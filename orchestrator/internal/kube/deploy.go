@@ -35,6 +35,8 @@ const (
 	// POD_NAME/POD_NAMESPACE sourced from the downward API).
 	envServicesModule = "RUNTIME_SERVICES_MODULE"
 	envDeploymentID   = "OCTO_DEPLOYMENT_ID"
+	envDeploymentName = "OCTO_DEPLOYMENT_NAME"
+	envDeploymentVer  = "OCTO_DEPLOYMENT_VERSION"
 	envOrchestrator   = "ORCHESTRATOR_URL"
 	envNATSURL        = "NATS_URL"
 	envPodName        = "POD_NAME"
@@ -45,6 +47,8 @@ const (
 type Spec struct {
 	ID            string            // deployment uuid; drives resource names and labels
 	IntegrationID string            // owning integration uuid (label + internal Service selector)
+	Name          string            // deployment display name, stamped onto shipped logs
+	Version       string            // deployment tag/version, stamped onto shipped logs ("" = untagged)
 	Definition    string            // runtime-loadable integration YAML
 	Replicas      int32             // desired replica count; <1 is treated as 1
 	Slug          string            // unique slug naming this deployment's internal Service ("" = none)
@@ -372,6 +376,14 @@ func (c *Client) runtimeServicesEnv(spec Spec) []corev1.EnvVar {
 	}
 	if c.runtimeServices.NATSURL != "" {
 		env = append(env, corev1.EnvVar{Name: envNATSURL, Value: c.runtimeServices.NATSURL})
+	}
+	// Deployment identity stamped onto shipped logs. Emitted only when set, so an
+	// untagged or unnamed deployment injects nothing rather than an empty var.
+	if spec.Name != "" {
+		env = append(env, corev1.EnvVar{Name: envDeploymentName, Value: spec.Name})
+	}
+	if spec.Version != "" {
+		env = append(env, corev1.EnvVar{Name: envDeploymentVer, Value: spec.Version})
 	}
 	return env
 }

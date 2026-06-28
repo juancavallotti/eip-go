@@ -56,7 +56,7 @@ task infra:apply
 ## Publish images + chart
 
 - **Automated:** push a version tag (release-please publishes `vX.Y.Z`) — the Cloud
-  Build trigger builds all four images and the chart, pushes them to Artifact Registry,
+  Build trigger builds all five images and the chart, pushes them to Artifact Registry,
   and (with `_DEPLOY=true`, the default when `cloudbuild_auto_deploy` is on) rolls the
   cluster.
 - **Manual:** from the repo root, with `IMAGE_BASE` = `<region>-docker.pkg.dev/<project>/octo`:

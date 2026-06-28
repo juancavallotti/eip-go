@@ -49,6 +49,26 @@ func main() {
 	}
 }
 
+// teeDefaultLoggerToSink re-installs the process default logger so it also writes
+// to svc's central log sink, when the active runtime-services module ships logs
+// (the k8s module). The standalone module ships nothing, so the default logger is
+// left as the stderr handler installed in main. Called once after the services are
+// built; the stderr base keeps applying LOG_LEVEL while the sink captures records
+// for the central aggregator.
+func teeDefaultLoggerToSink(svc core.RuntimeServices) {
+	shipper, ok := svc.(core.LogShipper)
+	if !ok {
+		return
+	}
+	sink := shipper.LogSink()
+	if sink == nil {
+		return
+	}
+	level, _ := core.ParseLevel(os.Getenv("LOG_LEVEL"))
+	base := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	slog.SetDefault(slog.New(core.TeeHandler(base, sink)))
+}
+
 // run dispatches to a subcommand. The default (no subcommand, or a leading flag)
 // is "run", so `cli -config x.yaml` keeps working.
 // usage is the top-level help page, printed for `octo`, `octo --help`, and a
@@ -136,6 +156,7 @@ func runCommand(args []string) error {
 		return fmt.Errorf("init runtime services: %w", err)
 	}
 	defer func() { _ = svc.Close() }()
+	teeDefaultLoggerToSink(svc)
 	slog.Info("runtime services ready", "module", services.Module())
 
 	if *watch {
@@ -294,6 +315,7 @@ func invokeCommand(args []string) error {
 		return fmt.Errorf("init runtime services: %w", err)
 	}
 	defer func() { _ = svc.Close() }()
+	teeDefaultLoggerToSink(svc)
 
 	result, err := invokeFlow(ctx, config, *flowName, body, *timeout, svc)
 	if err != nil {

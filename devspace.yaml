@@ -23,6 +23,7 @@ deployments:
         - deploy/k8s/orchestrator-rbac.yaml
         - deploy/k8s/runtime-rbac.yaml
         - deploy/k8s/orchestrator.yaml
+        - deploy/k8s/logs.yaml
 
 # `devspace dev` mode (task cluster:watch): swaps the editor/orchestrator pods for
 # their dev images, live-syncs source for hot reload, and tails all three pods'
@@ -63,6 +64,22 @@ dev:
         excludePaths:
           - .git/
           - orchestrator
+        # Restart the container after each upload so `go run` recompiles.
+        onUpload:
+          restartContainer: true
+    logs: {}
+  logs:
+    labelSelector:
+      app: logs
+    namespace: octo-dev
+    devImage: octo-logs-dev:dev
+    command: ["go", "run", "."]
+    workingDir: /src
+    sync:
+      - path: ./logs:/src
+        excludePaths:
+          - .git/
+          - logs
         # Restart the container after each upload so `go run` recompiles.
         onUpload:
           restartContainer: true

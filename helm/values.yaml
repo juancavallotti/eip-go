@@ -30,6 +30,15 @@ orchestrator:
   baseDomain: ""
   clusterIssuer: ""
 
+# Log-aggregator service: consumes the NATS internal.logs subject (competing
+# consumer) and persists events to Postgres; serves the read query API the
+# platform's /logs view calls. Replicas scale safely (NATS queue group).
+logs:
+  repository: octo-logs
+  replicas: 1
+  service:
+    port: 8091
+
 # Generic runtime image the orchestrator deploys per integration. Passed to the
 # orchestrator as RUNTIME_IMAGE; pre-pulled into containerd at provision so
 # integration pods (imagePullPolicy IfNotPresent) never hit the registry later.

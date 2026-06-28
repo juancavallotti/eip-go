@@ -17,6 +17,9 @@ includes:
   orchestrator:
     taskfile: ./orchestrator/Taskfile.yml
     dir: ./orchestrator
+  logs:
+    taskfile: ./logs/Taskfile.yml
+    dir: ./logs
 
 # Global env reaches every task, including those in included taskfiles (task-level
 # env does not propagate to called tasks). The platform app reads these server-side
@@ -42,22 +45,25 @@ tasks:
     cmds:
       - task: runtime:fmt
       - task: orchestrator:fmt
+      - task: logs:fmt
 
   test:
-    desc: Run tests across all modules (runtime + platform + standalone + orchestrator)
+    desc: Run tests across all modules (runtime + platform + standalone + orchestrator + logs)
     cmds:
       - task: runtime:test
       - task: platform:test
       - task: standalone:test
       - task: orchestrator:test
+      - task: logs:test
 
   build:
-    desc: Build all modules (CLI binary + platform + standalone + orchestrator)
+    desc: Build all modules (CLI binary + platform + standalone + orchestrator + logs)
     cmds:
       - task: runtime:build
       - task: platform:build
       - task: standalone:build
       - task: orchestrator:build
+      - task: logs:build
 
   dev:
     desc: Build the runner, then run the standalone editor (local files + RUN enabled)
@@ -141,25 +147,27 @@ tasks:
         echo "✓ docker, k3d, devspace present"
 
   cluster:images:
-    desc: Build the platform/orchestrator/schema/runtime images and load them into the k3d 'octo' cluster
+    desc: Build the platform/orchestrator/logs/schema/runtime images and load them into the k3d 'octo' cluster
     cmds:
       # Platform build context is the repo ROOT so its Dockerfile can reach both
       # runtime/ (to build octo) and the pnpm workspace (apps/platform).
       - docker build -t octo-platform:dev -f apps/platform/Dockerfile .
       - docker build -t octo-orchestrator:dev -f orchestrator/Dockerfile ./orchestrator
+      - docker build -t octo-logs:dev -f logs/Dockerfile ./logs
       - docker build -t octo-schema:dev -f sql/Dockerfile ./sql
       # Generic runtime image the orchestrator deploys per integration (build
       # context is the runtime workspace).
       - docker build -t octo-runtime:dev -f runtime/Dockerfile ./runtime
       # Load the images straight into the cluster's containerd (no registry needed).
-      - k3d image import octo-platform:dev octo-orchestrator:dev octo-schema:dev octo-runtime:dev -c octo
+      - k3d image import octo-platform:dev octo-orchestrator:dev octo-logs:dev octo-schema:dev octo-runtime:dev -c octo
 
   cluster:images:dev:
     desc: Build + load the dev (hot-reload) images into the k3d 'octo' cluster
     cmds:
       - docker build -t octo-platform-dev:dev -f apps/platform/Dockerfile.dev .
       - docker build -t octo-orchestrator-dev:dev -f orchestrator/Dockerfile.dev ./orchestrator
-      - k3d image import octo-platform-dev:dev octo-orchestrator-dev:dev -c octo
+      - docker build -t octo-logs-dev:dev -f logs/Dockerfile.dev ./logs
+      - k3d image import octo-platform-dev:dev octo-orchestrator-dev:dev octo-logs-dev:dev -c octo
 
   cluster:dev:
     desc: Bring up the cluster, then run DevSpace dev mode (hot reload + tailed logs)
@@ -228,11 +236,11 @@ tasks:
 
   # --- Publishing to Artifact Registry (for the GCP/k3s deployment) ---
   # IMAGE_BASE is the repository path output by deploy/terraform/infra (image_base),
-  # e.g. us-central1-docker.pkg.dev/PROJECT/octo. The four images live under it
+  # e.g. us-central1-docker.pkg.dev/PROJECT/octo. The five images live under it
   # (IMAGE_BASE/octo-platform:TAG ...) and the OCI chart under IMAGE_BASE/octo.
 
   images:push:
-    desc: 'Build the four octo images and push them to Artifact Registry (set IMAGE_BASE and TAG; run `gcloud auth configure-docker <region>-docker.pkg.dev` first)'
+    desc: 'Build the five octo images and push them to Artifact Registry (set IMAGE_BASE and TAG; run `gcloud auth configure-docker <region>-docker.pkg.dev` first)'
     requires:
       vars: [IMAGE_BASE, TAG]
     cmds:
@@ -240,10 +248,12 @@ tasks:
       # root so its Dockerfile reaches both runtime/ and the pnpm workspace.
       - docker build -t {{.IMAGE_BASE}}/octo-platform:{{.TAG}} -f apps/platform/Dockerfile .
       - docker build -t {{.IMAGE_BASE}}/octo-orchestrator:{{.TAG}} -f orchestrator/Dockerfile ./orchestrator
+      - docker build -t {{.IMAGE_BASE}}/octo-logs:{{.TAG}} -f logs/Dockerfile ./logs
       - docker build -t {{.IMAGE_BASE}}/octo-schema:{{.TAG}} -f sql/Dockerfile ./sql
       - docker build -t {{.IMAGE_BASE}}/octo-runtime:{{.TAG}} -f runtime/Dockerfile ./runtime
       - docker push {{.IMAGE_BASE}}/octo-platform:{{.TAG}}
       - docker push {{.IMAGE_BASE}}/octo-orchestrator:{{.TAG}}
+      - docker push {{.IMAGE_BASE}}/octo-logs:{{.TAG}}
       - docker push {{.IMAGE_BASE}}/octo-schema:{{.TAG}}
       - docker push {{.IMAGE_BASE}}/octo-runtime:{{.TAG}}
 

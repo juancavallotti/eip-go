@@ -26,12 +26,14 @@ const Module = "k8s"
 // and POD_NAMESPACE come from the downward API; the rest identify the deployment
 // and the orchestrator KV endpoint.
 const (
-	envPodName       = "POD_NAME"
-	envPodNamespace  = "POD_NAMESPACE"
-	envDeploymentID  = "OCTO_DEPLOYMENT_ID"
-	envOrchestrator  = "ORCHESTRATOR_URL"
-	envOrchestrToken = "ORCHESTRATOR_TOKEN" // optional bearer token for the KV API
-	envNATSURL       = "NATS_URL"           // NATS broker URL backing the queues
+	envPodName        = "POD_NAME"
+	envPodNamespace   = "POD_NAMESPACE"
+	envDeploymentID   = "OCTO_DEPLOYMENT_ID"
+	envDeploymentName = "OCTO_DEPLOYMENT_NAME"    // optional display name, stamped onto shipped logs
+	envDeploymentVer  = "OCTO_DEPLOYMENT_VERSION" // optional tag/version, stamped onto shipped logs
+	envOrchestrator   = "ORCHESTRATOR_URL"
+	envOrchestrToken  = "ORCHESTRATOR_TOKEN" // optional bearer token for the KV API
+	envNATSURL        = "NATS_URL"           // NATS broker URL backing the queues
 )
 
 func init() {
@@ -40,10 +42,11 @@ func init() {
 
 // Services is the Kubernetes runtime-services provider.
 type Services struct {
-	le   *leaderElection
-	kv   *httpStore
-	q    *natsQueues
-	conn *nats.Conn
+	le      *leaderElection
+	kv      *httpStore
+	q       *natsQueues
+	conn    *nats.Conn
+	logSink slog.Handler
 }
 
 // New builds the k8s provider from the in-cluster config and the orchestrator-
@@ -87,10 +90,11 @@ func New(_ context.Context) (core.RuntimeServices, error) {
 		"orchestrator", orchestrator, "nats", natsURL)
 
 	return &Services{
-		le:   newLeaderElection(cs.CoordinationV1(), namespace, identity, deploymentID),
-		kv:   newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
-		q:    newNATSQueues(conn, deploymentID),
-		conn: conn,
+		le:      newLeaderElection(cs.CoordinationV1(), namespace, identity, deploymentID),
+		kv:      newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
+		q:       newNATSQueues(conn, deploymentID),
+		conn:    conn,
+		logSink: newLogSink(conn, deploymentID, os.Getenv(envDeploymentName), os.Getenv(envDeploymentVer)),
 	}, nil
 }
 
@@ -113,6 +117,12 @@ func (s *Services) Secrets() core.SecretStore { return core.NewSecretStore(s.kv)
 //
 //nolint:ireturn // satisfies core.RuntimeServices
 func (s *Services) Queues() core.Queues { return s.q }
+
+// LogSink returns the handler that ships log records to the shared internal.logs
+// subject, satisfying core.LogShipper so the runtime tees its loggers through it.
+//
+//nolint:ireturn // satisfies core.LogShipper
+func (s *Services) LogSink() slog.Handler { return s.logSink }
 
 // Close releases the store client's idle connections and the NATS connection.
 // Leader-election campaigns are bound to the context passed to Acquire and stop

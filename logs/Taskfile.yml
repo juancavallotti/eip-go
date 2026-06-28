@@ -1,0 +1,40 @@
+version: '3'
+
+# Tasks for the log-aggregator module. Included from the root Taskfile under the
+# `logs:` namespace, with the working directory set to logs/, so all paths here
+# are relative to it.
+
+vars:
+  GO: go
+
+tasks:
+  fmt:
+    desc: Format the logs module
+    cmds:
+      - '{{.GO}} fmt ./...'
+
+  build:
+    desc: Build the logs binary
+    cmds:
+      - mkdir -p ../bin
+      - '{{.GO}} build -trimpath -o ../bin/logs .'
+
+  test:
+    desc: Run the logs tests
+    cmds:
+      - '{{.GO}} test ./...'
+
+  lint:
+    desc: Run golangci-lint over the logs module
+    cmds:
+      - golangci-lint run ./...
+
+  tidy:
+    desc: Tidy the logs module
+    cmds:
+      - '{{.GO}} mod tidy'
+
+  run:
+    desc: Run the log aggregator locally (set DATABASE_URL/NATS_URL/PORT as needed)
+    cmds:
+      - '{{.GO}} run . {{.CLI_ARGS}}'

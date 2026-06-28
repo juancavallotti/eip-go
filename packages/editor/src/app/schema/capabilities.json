@@ -664,9 +664,76 @@
           "description": "CEL expression evaluated to the object key."
         }
       ]
+    },
+    {
+      "type": "queue-dispatch",
+      "label": "Queue Dispatch",
+      "category": "processor",
+      "icon": "ArrowUpFromLine",
+      "description": "Send the message to a platform queue subject to load balance work across replicas. By default it waits for one consumer's reply and folds it back in (request); one-way fires and forgets (publish).",
+      "fields": [
+        {
+          "name": "subject",
+          "label": "Subject",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the queue subject to send to; enables per-message routing/sharding."
+        },
+        {
+          "name": "oneWay",
+          "label": "One-way",
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Fire-and-forget (publish) if true; otherwise wait for one consumer's reply and fold its body and variables back in (request)."
+        },
+        {
+          "name": "timeout",
+          "label": "Timeout",
+          "type": "string",
+          "required": false,
+          "description": "How long to wait for a reply in request mode (e.g. 30s); defaults to the queue service timeout."
+        }
+      ]
     }
   ],
   "connectors": [
+    {
+      "type": "queue",
+      "label": "Platform Queue",
+      "icon": "ArrowDownToLine",
+      "settings": [],
+      "sources": [
+        {
+          "type": "queue",
+          "label": "Platform Queue subscription",
+          "icon": "ArrowDownToLine",
+          "fields": [
+            {
+              "name": "subject",
+              "label": "Subject",
+              "type": "string",
+              "required": true,
+              "description": "Queue subject to subscribe to. Every replica subscribed to the same subject competes for messages, so each message is handled once across the cluster."
+            },
+            {
+              "name": "listeners",
+              "label": "Listeners",
+              "type": "number",
+              "required": false,
+              "description": "Number of concurrent handler goroutines; defaults to the queue service default."
+            },
+            {
+              "name": "timeout",
+              "label": "Timeout",
+              "type": "string",
+              "required": false,
+              "description": "How long a handler waits for its flow to finish (e.g. 30s); defaults to the queue service timeout."
+            }
+          ]
+        }
+      ]
+    },
     {
       "type": "cron",
       "label": "Cron",

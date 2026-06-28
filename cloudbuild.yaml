@@ -1,4 +1,4 @@
-# Cloud Build pipeline: build the four octo images and the OCI Helm chart, push
+# Cloud Build pipeline: build the five octo images and the OCI Helm chart, push
 # everything to Artifact Registry, then (optionally) roll the cluster by applying the
 # Terraform release root. Provisioned and triggered by deploy/terraform/infra
 # (enable_cloudbuild=true); the trigger supplies _IMAGE_BASE/_REGION, maps _TAG to the
@@ -34,6 +34,9 @@ steps:
   - id: build-orchestrator
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_IMAGE_BASE}/octo-orchestrator:${_TAG}", "-t", "${_IMAGE_BASE}/octo-orchestrator:latest", "-f", "orchestrator/Dockerfile", "./orchestrator"]
+  - id: build-logs
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE_BASE}/octo-logs:${_TAG}", "-t", "${_IMAGE_BASE}/octo-logs:latest", "-f", "logs/Dockerfile", "./logs"]
   - id: build-schema
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_IMAGE_BASE}/octo-schema:${_TAG}", "-t", "${_IMAGE_BASE}/octo-schema:latest", "-f", "sql/Dockerfile", "./sql"]
@@ -46,12 +49,12 @@ steps:
   - id: push-images
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
-    waitFor: ["build-platform", "build-orchestrator", "build-schema", "build-runtime"]
+    waitFor: ["build-platform", "build-orchestrator", "build-logs", "build-schema", "build-runtime"]
     args:
       - -c
       - |
         set -e
-        for img in octo-platform octo-orchestrator octo-schema octo-runtime; do
+        for img in octo-platform octo-orchestrator octo-logs octo-schema octo-runtime; do
           for t in "${_TAG}" latest; do
             docker push "${_IMAGE_BASE}/$img:$t"
           done

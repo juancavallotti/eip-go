@@ -236,11 +236,11 @@ tasks:
 
   # --- Publishing to Artifact Registry (for the GCP/k3s deployment) ---
   # IMAGE_BASE is the repository path output by deploy/terraform/infra (image_base),
-  # e.g. us-central1-docker.pkg.dev/PROJECT/octo. The four images live under it
+  # e.g. us-central1-docker.pkg.dev/PROJECT/octo. The five images live under it
   # (IMAGE_BASE/octo-platform:TAG ...) and the OCI chart under IMAGE_BASE/octo.
 
   images:push:
-    desc: 'Build the four octo images and push them to Artifact Registry (set IMAGE_BASE and TAG; run `gcloud auth configure-docker <region>-docker.pkg.dev` first)'
+    desc: 'Build the five octo images and push them to Artifact Registry (set IMAGE_BASE and TAG; run `gcloud auth configure-docker <region>-docker.pkg.dev` first)'
     requires:
       vars: [IMAGE_BASE, TAG]
     cmds:

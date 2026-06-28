@@ -45,6 +45,7 @@ troubleshooting). For local development on k3d instead, see
 |---|---|---|---|
 | Platform (Next.js + bundled runtime) | `octo-platform` | 3000 | Ingress → your domain |
 | Orchestrator (deploys integrations via the k8s API) | `octo-orchestrator` | 8090 | ClusterIP (internal; the platform proxies it) |
+| Log aggregator (consumes internal.logs → Postgres, serves the logs query API) | `octo-logs` | 8091 | ClusterIP (internal; the platform proxies it) |
 | Postgres | stock `postgres:16-alpine` | 5432 | ClusterIP (headless) |
 | Schema applier (Helm hook job) | `octo-schema` | – | runs once per install/upgrade |
 | Integration runtime (one pod set per deployment) | `octo-runtime` | 8080 | ClusterIP, optional Ingress |
@@ -133,7 +134,7 @@ chart must be published before (or as part of) a deploy.
 
 **Automated (recommended):** push a version tag — release-please publishes
 `vX.Y.Z`. The Cloud Build trigger runs [cloudbuild.yaml](../cloudbuild.yaml),
-building all four images and the chart and pushing them to Artifact Registry,
+building all five images and the chart and pushing them to Artifact Registry,
 tagged with both the git tag and `latest`.
 
 **Manual:** with `IMAGE_BASE` from `terraform output image_base`:

@@ -83,6 +83,9 @@ func (f fakeServices) KV() core.KV { return f.kv }
 //nolint:ireturn // satisfies the RuntimeServices interface
 func (f fakeServices) Secrets() core.SecretStore { return core.NewSecretStore(f.kv) }
 
+//nolint:ireturn // satisfies the RuntimeServices interface
+func (f fakeServices) Queues() core.Queues { return core.NoopQueues() }
+
 func (f fakeServices) Close() error { return nil }
 
 // oauth2Settings builds an http-client settings map configured for the

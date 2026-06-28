@@ -141,6 +141,7 @@ func runtimeServicesConfig() kube.RuntimeServices {
 		Module:          envOr("RUNTIME_SERVICES_MODULE", "k8s"),
 		OrchestratorURL: orchestratorURL,
 		ServiceAccount:  os.Getenv("RUNTIME_SERVICE_ACCOUNT"),
+		NATSURL:         os.Getenv("NATS_URL"),
 	}
 }
 

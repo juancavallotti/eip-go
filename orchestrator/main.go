@@ -226,6 +226,13 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) (http.Handle
 			"encryption", cipher != nil,
 			"endpoints", "GET/PUT/DELETE /deployments/{id}/kv/{namespace}/{key}")
 
+		// The user-facing object browser the platform UI calls: a JSON facade over
+		// the same store, fixed to the "user" namespace, adding the listing the raw
+		// KV routes lack.
+		kv.NewObjectHandler(kvSvc).Register(mux)
+		slog.Info("object routes registered",
+			"endpoints", "GET /deployments/{id}/objects, GET/PUT/DELETE /deployments/{id}/objects/{key}")
+
 		// Deployment management needs both the database and in-cluster Kubernetes
 		// access. Outside a cluster (e.g. local `go run`) kube.New fails and the
 		// routes stay disabled, mirroring how the DB-less case disables the rest.

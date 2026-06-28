@@ -4,11 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// Entry is a single object's metadata in a namespace listing. The value itself is
+// fetched separately via Get; List returns only its byte length (Size) so a browser
+// can show the keys without reading every value.
+type Entry struct {
+	Key       string    `json:"key"`
+	Version   int64     `json:"version"`
+	Size      int       `json:"size"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
 
 // pgUniqueViolation is the SQLSTATE Postgres raises when an INSERT collides with
 // the primary key — here, a concurrent create of the same key.
@@ -129,6 +140,33 @@ func (r *Repo) Delete(ctx context.Context, deploymentID, namespace, key string, 
 		}
 	}
 	return nil
+}
+
+// List returns metadata for every key in a namespace, ordered by key. Values are
+// not read back; Size is the stored byte length.
+func (r *Repo) List(ctx context.Context, deploymentID, namespace string) ([]Entry, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT key, version, octet_length(value), updated_at FROM kv_store
+		 WHERE deployment_id = $1 AND namespace = $2 ORDER BY key`,
+		deploymentID, namespace,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("kv repo: list: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []Entry
+	for rows.Next() {
+		var e Entry
+		if err := rows.Scan(&e.Key, &e.Version, &e.Size, &e.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("kv repo: list scan: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("kv repo: list rows: %w", err)
+	}
+	return entries, nil
 }
 
 // DeleteByDeployment removes every key for a deployment, for best-effort cleanup

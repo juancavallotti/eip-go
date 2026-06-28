@@ -35,26 +35,23 @@ import {
   type FlatFolder,
 } from "./model";
 import { EMPTY, loadData, type Data } from "./managerData";
+import ManagementNav from "@/app/components/ManagementNav";
 import FolderTree from "./FolderTree";
 import IntegrationList from "./IntegrationList";
 import IntegrationDetail from "./IntegrationDetail";
-import SecretsManager from "./SecretsManager";
-import ViewTabs, { type ManagementView } from "./ViewTabs";
 
 /**
- * The `/integrations` management view: a folder tree (with full CRUD) on the
+ * The `/integrations` management route: a folder tree (with full CRUD) on the
  * left, the selected bucket's integrations in the middle, and operating details
  * for the selected integration on the right. All mutations go through the BFF
  * client and refresh the view. Folder membership is single-folder, derived by
- * querying each folder's members.
+ * querying each folder's members. Sibling sections (secrets, queues) are their own
+ * routes, reached via the shared ManagementNav in the header.
  */
 export default function IntegrationsManager({
-  initialView = "integrations",
   initialSelectedId = null,
   userMenu,
 }: {
-  /** Which top-level view to open on (e.g. "secrets" from the dashboard shortcut). */
-  initialView?: ManagementView;
   /** Integration to preselect on open (e.g. a dashboard tile's "Manage"). */
   initialSelectedId?: string | null;
   /** Server-rendered account tile, shown in the shared header. */
@@ -63,9 +60,10 @@ export default function IntegrationsManager({
   const confirm = useConfirm();
   const { available, ready } = useOrchestrator();
   const [data, setData] = useState<Data>(EMPTY);
-  const [view, setView] = useState<ManagementView>(initialView);
   const [bucket, setBucket] = useState<Bucket>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialSelectedId,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
@@ -76,8 +74,7 @@ export default function IntegrationsManager({
   );
 
   const refresh = useCallback(
-    () =>
-      loadData().then(setData, (e) => setError((e as Error).message)),
+    () => loadData().then(setData, (e) => setError((e as Error).message)),
     [],
   );
 
@@ -114,7 +111,9 @@ export default function IntegrationsManager({
     );
     // Honor the folder's stored order; ids missing from it (e.g. just assigned)
     // sort to the end by their natural list position.
-    const pos = new Map((order.get(bucket.folder) ?? []).map((id, i) => [id, i]));
+    const pos = new Map(
+      (order.get(bucket.folder) ?? []).map((id, i) => [id, i]),
+    );
     return [...inFolder].sort(
       (a, b) =>
         (pos.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
@@ -257,7 +256,9 @@ export default function IntegrationsManager({
   if (!available) {
     return (
       <div className="flex h-full flex-col">
-        <AppHeader userMenu={userMenu} />
+        <AppHeader userMenu={userMenu}>
+          <ManagementNav />
+        </AppHeader>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-sm text-zinc-500">
             Integration management is unavailable. Set{" "}
@@ -266,7 +267,10 @@ export default function IntegrationsManager({
             </code>{" "}
             to enable it.
           </p>
-          <Link href="/platform" className="text-sm text-sky-600 hover:underline">
+          <Link
+            href="/platform"
+            className="text-sm text-sky-600 hover:underline"
+          >
             Back to dashboard
           </Link>
         </div>
@@ -277,16 +281,14 @@ export default function IntegrationsManager({
   return (
     <div className="flex h-full flex-col">
       <AppHeader userMenu={userMenu}>
-        <ViewTabs view={view} onChange={setView} />
-        {view === "integrations" && (
-          <Link
-            href="/platform/new"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
-          >
-            <Plus size={15} />
-            New integration
-          </Link>
-        )}
+        <ManagementNav />
+        <Link
+          href="/platform/new"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
+        >
+          <Plus size={15} />
+          New integration
+        </Link>
       </AppHeader>
 
       {error && (
@@ -295,72 +297,66 @@ export default function IntegrationsManager({
         </p>
       )}
 
-      {view === "secrets" ? (
-        <div className="min-h-0 flex-1">
-          <SecretsManager />
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onDragCancel={() => setActiveDrag(null)}
-        >
-          <div className="flex min-h-0 flex-1">
-            <FolderTree
-              folders={flat}
-              bucket={bucket}
-              total={integrations.length}
-              unfiledCount={unfiledCount}
-              folderCount={folderCount}
-              nesting={createParent !== null}
-              onSelect={setBucket}
-              onCreate={createFolderHere}
-              onRename={renameFolderTo}
-              onDelete={removeFolder}
-            />
+      <DndContext
+        sensors={sensors}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveDrag(null)}
+      >
+        <div className="flex min-h-0 flex-1">
+          <FolderTree
+            folders={flat}
+            bucket={bucket}
+            total={integrations.length}
+            unfiledCount={unfiledCount}
+            folderCount={folderCount}
+            nesting={createParent !== null}
+            onSelect={setBucket}
+            onCreate={createFolderHere}
+            onRename={renameFolderTo}
+            onDelete={removeFolder}
+          />
 
-            <IntegrationList
-              integrations={shown}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              reorderable={typeof bucket === "object"}
-            />
+          <IntegrationList
+            integrations={shown}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            reorderable={typeof bucket === "object"}
+          />
 
-            <div className="min-w-0 flex-1">
-              {selected ? (
-                <IntegrationDetail
-                  integration={selected}
-                  folders={flat}
-                  folderId={selectedFolderId}
-                  busy={busy}
-                  onDelete={removeSelected}
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">
-                  Select an integration to see its details.
-                </div>
-              )}
-            </div>
+          <div className="min-w-0 flex-1">
+            {selected ? (
+              <IntegrationDetail
+                integration={selected}
+                folders={flat}
+                folderId={selectedFolderId}
+                busy={busy}
+                onDelete={removeSelected}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">
+                Select an integration to see its details.
+              </div>
+            )}
           </div>
+        </div>
 
-          {/* No drop animation: a successful move/reorder lands the item in its new
+        {/* No drop animation: a successful move/reorder lands the item in its new
               place via the refresh, so animating the overlay back to its origin
               would read as a (misleading) snap-back. */}
-          <DragOverlay dropAnimation={null}>
-            {activeDrag ? (
-              <div className="flex items-center gap-2 rounded-md border border-black/10 bg-white px-3 py-1.5 text-sm shadow-lg dark:border-white/15 dark:bg-zinc-900">
-                {activeDrag.kind === "folder" ? (
-                  <FolderIcon size={15} className="text-zinc-400" />
-                ) : (
-                  <Workflow size={15} className="text-zinc-400" />
-                )}
-                <span className="max-w-48 truncate">{activeDrag.name}</span>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
+        <DragOverlay dropAnimation={null}>
+          {activeDrag ? (
+            <div className="flex items-center gap-2 rounded-md border border-black/10 bg-white px-3 py-1.5 text-sm shadow-lg dark:border-white/15 dark:bg-zinc-900">
+              {activeDrag.kind === "folder" ? (
+                <FolderIcon size={15} className="text-zinc-400" />
+              ) : (
+                <Workflow size={15} className="text-zinc-400" />
+              )}
+              <span className="max-w-48 truncate">{activeDrag.name}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }

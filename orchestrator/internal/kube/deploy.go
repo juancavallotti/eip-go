@@ -36,6 +36,7 @@ const (
 	envServicesModule = "RUNTIME_SERVICES_MODULE"
 	envDeploymentID   = "OCTO_DEPLOYMENT_ID"
 	envOrchestrator   = "ORCHESTRATOR_URL"
+	envNATSURL        = "NATS_URL"
 	envPodName        = "POD_NAME"
 	envPodNamespace   = "POD_NAMESPACE"
 )
@@ -353,20 +354,26 @@ func (c *Client) podEnv(spec Spec) []corev1.EnvVar {
 }
 
 // runtimeServicesEnv builds the env the runtime's k8s services module reads:
-// the selected backend, the deployment id and orchestrator KV URL, plus POD_NAME/
-// POD_NAMESPACE from the downward API. It is empty unless a module is configured,
-// so deployments stay unchanged until the runtime-services env is wired in.
+// the selected backend, the deployment id and orchestrator KV URL, the NATS broker
+// URL backing the queues, plus POD_NAME/POD_NAMESPACE from the downward API. It is
+// empty unless a module is configured, so deployments stay unchanged until the
+// runtime-services env is wired in. NATS_URL is emitted only when set, so a deploy
+// without a broker injects nothing for it.
 func (c *Client) runtimeServicesEnv(spec Spec) []corev1.EnvVar {
 	if c.runtimeServices.Module == "" {
 		return nil
 	}
-	return []corev1.EnvVar{
+	env := []corev1.EnvVar{
 		{Name: envServicesModule, Value: c.runtimeServices.Module},
 		{Name: envDeploymentID, Value: spec.ID},
 		{Name: envOrchestrator, Value: c.runtimeServices.OrchestratorURL},
 		{Name: envPodName, ValueFrom: fieldRef("metadata.name")},
 		{Name: envPodNamespace, ValueFrom: fieldRef("metadata.namespace")},
 	}
+	if c.runtimeServices.NATSURL != "" {
+		env = append(env, corev1.EnvVar{Name: envNATSURL, Value: c.runtimeServices.NATSURL})
+	}
+	return env
 }
 
 // fieldRef is a downward-API env source reading a pod field (e.g. metadata.name).

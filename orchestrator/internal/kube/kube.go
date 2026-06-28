@@ -37,6 +37,7 @@ type RuntimeServices struct {
 	Module          string // RUNTIME_SERVICES_MODULE for runtime pods ("" = no injection)
 	OrchestratorURL string // in-cluster URL of the orchestrator KV API
 	ServiceAccount  string // pod serviceAccountName granting leases RBAC ("" = default SA)
+	NATSURL         string // in-cluster URL of the NATS broker backing the queues ("" = omit)
 }
 
 // Client wraps a Kubernetes clientset scoped to one namespace and runtime image.

@@ -24,9 +24,10 @@ WORKDIR /src
 # replace-free workspace build resolves its siblings.
 COPY . .
 WORKDIR /src/cli
+# -s -w strip the symbol table and DWARF debug info for a leaner binary.
 RUN CGO_ENABLED=0 go build \
     -tags "${GOTAGS}" \
-    -ldflags "-X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -ldflags "-s -w -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /out/octo .
 
 # --- Stage 2: minimal runtime image -------------------------------------------

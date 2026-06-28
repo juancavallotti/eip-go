@@ -71,6 +71,23 @@ postgres:
     port: 5432
   resources: {}
 
+# NATS message broker for cross-process pub-sub. Core NATS only (no JetStream):
+# ephemeral fan-out, so no volume — but still a StatefulSet (+ headless service)
+# for the stable per-pod identity cluster routes need when scaling out, per the
+# official NATS chart. Its in-cluster URL is injected into the orchestrator as
+# NATS_URL. Set enabled=false to omit it entirely. Uses the public nats image
+# (pulled on demand by k3s).
+nats:
+  enabled: true
+  image:
+    repository: nats
+    tag: "2.10-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 4222
+    monitorPort: 8222
+  resources: {}
+
 # OIDC single sign-on for the editor (Auth.js). Disabled by default so local and
 # bare deploys stay open; enable on the platform. When enabled the chart creates
 # an auth Secret and the editor mounts these as env vars (AUTH_EETR_*, AUTH_SECRET).

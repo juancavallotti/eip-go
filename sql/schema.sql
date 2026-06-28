@@ -166,3 +166,30 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id);
+
+-- logs stores log events shipped by deployed runtimes over the internal.logs NATS
+-- subject and persisted by the log-aggregator service. `deployment_id` attributes
+-- each event to the deployment that emitted it (no foreign key — logs are kept for
+-- forensics and may outlive the deployment, like kv_store cleanup is best-effort).
+-- `app_name` and `app_version` denormalize the deployment's display name and tag as
+-- they were on the emitting pod (stamped by the runtime), so listing/filtering logs
+-- never has to join back to the deployment tables and a log keeps the exact version
+-- that produced it even across a rollout. `ts` is the record's own timestamp;
+-- `received_at` is when the aggregator stored it. `attrs` holds the remaining
+-- structured slog fields as JSON. The leading (deployment_id, ts DESC) index serves
+-- the common "tail one app's logs" query; the (ts DESC) index serves cross-
+-- deployment time scans and retention pruning.
+CREATE TABLE IF NOT EXISTS logs (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    deployment_id uuid        NOT NULL,
+    app_name      varchar     NOT NULL DEFAULT '',
+    app_version   varchar     NOT NULL DEFAULT '',
+    ts            timestamptz NOT NULL,
+    level         varchar     NOT NULL,
+    message       text        NOT NULL,
+    attrs         jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    received_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_logs_deployment_ts ON logs (deployment_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs (ts DESC);

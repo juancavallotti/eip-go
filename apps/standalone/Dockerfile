@@ -13,8 +13,9 @@ RUN apk add --no-cache git
 WORKDIR /src
 COPY runtime/ ./runtime/
 WORKDIR /src/runtime/cli
+# -s -w strip the symbol table and DWARF debug info for a leaner binary.
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -ldflags "-s -w -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /out/octo .
 
 # --- Stage 2: build the Next.js standalone app (standalone output) ------------

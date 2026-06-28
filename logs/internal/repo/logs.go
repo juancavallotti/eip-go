@@ -61,6 +61,8 @@ type LogRow struct {
 // Before is the keyset-pagination cursor: results are strictly older than it.
 type Filter struct {
 	DeploymentID string
+	AppName      string
+	AppVersion   string
 	Levels       []string
 	From         *time.Time
 	To           *time.Time
@@ -85,6 +87,12 @@ func (r *Repo) Query(ctx context.Context, f Filter) ([]LogRow, error) {
 	}
 	if f.DeploymentID != "" {
 		add("deployment_id = $%d::uuid", f.DeploymentID)
+	}
+	if f.AppName != "" {
+		add("app_name = $%d", f.AppName)
+	}
+	if f.AppVersion != "" {
+		add("app_version = $%d", f.AppVersion)
 	}
 	if len(f.Levels) > 0 {
 		add("level = ANY($%d)", f.Levels)

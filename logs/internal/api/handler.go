@@ -82,6 +82,8 @@ func parseFilter(r *http.Request) (repo.Filter, error) {
 	query := r.URL.Query()
 	f := repo.Filter{
 		DeploymentID: query.Get("deploymentId"),
+		AppName:      query.Get("appName"),
+		AppVersion:   query.Get("appVersion"),
 		Levels:       query["level"],
 		Search:       query.Get("q"),
 		Limit:        defaultLimit,

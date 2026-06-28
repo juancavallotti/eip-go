@@ -34,7 +34,7 @@ func do(t *testing.T, q Querier, target string) *httptest.ResponseRecorder {
 
 func TestListParsesFiltersIntoQuery(t *testing.T) {
 	q := &fakeQuerier{}
-	rec := do(t, q, "/logs?deploymentId=dep-1&level=ERROR&level=WARN&q=boom&from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z&limit=50")
+	rec := do(t, q, "/logs?deploymentId=dep-1&appName=checkout&appVersion=v2&level=ERROR&level=WARN&q=boom&from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z&limit=50")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body)
 	}
@@ -42,6 +42,9 @@ func TestListParsesFiltersIntoQuery(t *testing.T) {
 	f := q.gotFilter
 	if f.DeploymentID != "dep-1" {
 		t.Errorf("deploymentId = %q, want dep-1", f.DeploymentID)
+	}
+	if f.AppName != "checkout" || f.AppVersion != "v2" {
+		t.Errorf("app filter = %q/%q, want checkout/v2", f.AppName, f.AppVersion)
 	}
 	if len(f.Levels) != 2 || f.Levels[0] != "ERROR" || f.Levels[1] != "WARN" {
 		t.Errorf("levels = %v, want [ERROR WARN]", f.Levels)

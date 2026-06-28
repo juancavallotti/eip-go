@@ -9,6 +9,7 @@ import {
   Network,
   Plus,
   RefreshCw,
+  ScrollText,
 } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
@@ -119,6 +120,12 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
               icon={Network}
               title="Queues"
               subtitle="Monitor the platform broker"
+            />
+            <ShortcutTile
+              href="/platform/logs"
+              icon={ScrollText}
+              title="Logs"
+              subtitle="Browse and tail deployment logs"
             />
             <ShortcutTile
               href="https://juancavallotti.github.io/octo/"

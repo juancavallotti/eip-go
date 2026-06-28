@@ -53,6 +53,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "octo.fullname" . }}-platform
 {{- end }}
 
+{{- define "octo.logs.serviceName" -}}
+{{ include "octo.fullname" . }}-logs
+{{- end }}
+
 {{- define "octo.auth.secretName" -}}
 {{ include "octo.fullname" . }}-auth
 {{- end }}
@@ -84,6 +88,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 */}}
 {{- define "octo.nats.url" -}}
 {{- printf "nats://%s.%s:%d" (include "octo.nats.serviceName" .) .Release.Namespace (int .Values.nats.service.port) -}}
+{{- end }}
+
+{{/*
+  In-cluster URL of the log-aggregator's query API, injected into the platform as
+  LOGS_URL so its /logs view can read stored log events.
+*/}}
+{{- define "octo.logs.url" -}}
+{{- printf "http://%s.%s:%d" (include "octo.logs.serviceName" .) .Release.Namespace (int .Values.logs.service.port) -}}
 {{- end }}
 
 {{/*

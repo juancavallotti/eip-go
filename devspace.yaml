@@ -23,6 +23,7 @@ deployments:
         - deploy/k8s/orchestrator-rbac.yaml
         - deploy/k8s/runtime-rbac.yaml
         - deploy/k8s/orchestrator.yaml
+        - deploy/k8s/logs.yaml
 
 # `devspace dev` mode (task cluster:watch): swaps the editor/orchestrator pods for
 # their dev images, live-syncs source for hot reload, and tails all three pods'

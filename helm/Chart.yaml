@@ -1,9 +1,9 @@
 apiVersion: v2
 name: octo
 description: >-
-  octo enterprise-integration platform — Postgres (StatefulSet), the
-  orchestrator API, and the editor UI, with a Traefik Ingress + cert-manager TLS
-  for the editor.
+  octo enterprise-integration platform — Postgres (StatefulSet), a NATS broker,
+  the orchestrator API, and the editor UI, with a Traefik Ingress + cert-manager
+  TLS for the editor.
 type: application
-version: 0.1.8
+version: 0.1.9
 appVersion: 0.1.1

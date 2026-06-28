@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/juancavallotti/octo/logs/internal/api"
 	"github.com/juancavallotti/octo/logs/internal/db"
 	"github.com/juancavallotti/octo/logs/internal/ingest"
 	"github.com/juancavallotti/octo/logs/internal/repo"
@@ -122,14 +123,19 @@ func run() error {
 	}
 }
 
-// newServer wires the HTTP routes. database may be nil when DATABASE_URL is unset;
-// the query API added later guards on it.
-func newServer(_ *db.DB) http.Handler {
+// newServer wires the HTTP routes. The log query API is registered only when a
+// database is configured; /healthz always serves so liveness probes pass even
+// before Postgres is reachable.
+func newServer(database *db.DB) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
+	if database != nil {
+		api.NewHandler(repo.NewRepo(database.Pool())).Register(mux)
+		slog.Info("log query API registered", "endpoint", "GET /logs")
+	}
 	return mux
 }
 

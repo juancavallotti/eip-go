@@ -236,6 +236,120 @@ flows:
 };
 
 /** Error recovery: inline handle-errors and a flow-level error chain. Networked. */
+const QUEUE_LOADBALANCE: Example = {
+  slug: "queue-loadbalance",
+  title: "queue-loadbalance — platform queue source + queue-dispatch (load balancing)",
+  summary:
+    "An HTTP-triggered flow hands work to worker flows through platform queue subjects: one-way (fire-and-forget audit) and request (enrich-work, whose reply folds back). Each worker is a `queue` source on the subject; scale replicas to load balance (competing consumers, each message handled once). Declares HTTP_PORT, so run_integration returns a test URL: POST <testUrl>orders/42.",
+  blocks: ["http (source)", "queue (source)", "queue-dispatch", "if", "set-variable", "set-payload", "log"],
+  definition: `service:
+  name: queue-loadbalance
+
+# queue-dispatch is the cross-replica analogue of flow-ref: request waits for one
+# competing consumer's reply and folds it back; oneWay publishes fire-and-forget.
+# Each worker flow is a \`queue\` source on the matching subject.
+env:
+  - name: HTTP_HOST
+    default: 0.0.0.0
+  - name: HTTP_PORT
+    default: "8080"
+  - name: HTTP_BASE_PATH
+    default: /api/v1
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      host: \${HTTP_HOST}
+      port: \${HTTP_PORT}
+      basePath: \${HTTP_BASE_PATH}
+      requestTimeout: 5s
+  - name: debug
+    type: logger
+    settings:
+      format: json
+      level: debug
+  # No queue connector is declared: it has no global config, so a queue source (or
+  # the queue-dispatch block) resolves it implicitly — the runtime starts a default
+  # instance on demand. The queue is a core runtime service.
+
+flows:
+  - name: orders-api
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /orders/{id}
+        correlationIdHeader: X-Request-Id
+        headers: [X-Tenant]
+        timeout: 5s
+    process:
+      # One-way: fire-and-forget audit, the caller does not wait. Subject is CEL.
+      - type: queue-dispatch
+        name: audit-async
+        settings:
+          subject: '"audit-work"'
+          oneWay: true
+      # Request (default): wait for one worker reply; body + variables fold back.
+      - type: queue-dispatch
+        name: enrich-sync
+        settings:
+          subject: '"enrich-work"'
+      - type: log
+        settings:
+          message: '"responded to order " + vars.id + " priority=" + vars.priority'
+
+  # Competing consumer on enrich-work; its final message is returned as the reply.
+  - name: order-enricher
+    source:
+      type: queue
+      settings:
+        subject: enrich-work
+        listeners: 8
+    process:
+      - type: set-payload
+        name: normalize-order
+        settings:
+          value: >
+            {
+              "orderId":   vars.id,
+              "tenant":    vars["X-Tenant"],
+              "item":      body.item,
+              "amount":    body.amount,
+              "requestId": correlationID
+            }
+      - type: if
+        name: priority-check
+        condition: 'body.amount >= 1000.0'
+        then:
+          process:
+            - type: set-variable
+              settings: { name: priority, value: '"high"' }
+        else:
+          process:
+            - type: set-variable
+              settings: { name: priority, value: '"normal"' }
+      - type: set-payload
+        name: wrap-response
+        settings:
+          value: '{"order": body, "priority": vars.priority, "status": "accepted"}'
+
+  # Competing consumer on audit-work; invoked one-way, so its result is discarded.
+  - name: order-auditor
+    source:
+      type: queue
+      settings:
+        subject: audit-work
+    process:
+      - type: log
+        name: audit-log
+        settings:
+          logger: debug
+          level: info
+          message: '"AUDIT order " + vars.id + " req=" + correlationID'
+`,
+};
+
 const ERROR_HANDLING: Example = {
   slug: "error-handling",
   title: "error-handling — handle-errors, rest, flow-level error path",
@@ -362,6 +476,7 @@ export const EXAMPLES: Example[] = [
   HELLO_WORLD,
   BUILTINS,
   HTTP_ORDERS,
+  QUEUE_LOADBALANCE,
   ERROR_HANDLING,
   AI_ROUTER,
 ];

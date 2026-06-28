@@ -14,6 +14,7 @@ import (
 
 	"github.com/juancavallotti/octo/core"
 	"github.com/juancavallotti/octo/services"
+	"github.com/nats-io/nats.go"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -30,6 +31,7 @@ const (
 	envDeploymentID  = "OCTO_DEPLOYMENT_ID"
 	envOrchestrator  = "ORCHESTRATOR_URL"
 	envOrchestrToken = "ORCHESTRATOR_TOKEN" // optional bearer token for the KV API
+	envNATSURL       = "NATS_URL"           // NATS broker URL backing the queues
 )
 
 func init() {
@@ -38,8 +40,10 @@ func init() {
 
 // Services is the Kubernetes runtime-services provider.
 type Services struct {
-	le *leaderElection
-	kv *httpStore
+	le   *leaderElection
+	kv   *httpStore
+	q    *natsQueues
+	conn *nats.Conn
 }
 
 // New builds the k8s provider from the in-cluster config and the orchestrator-
@@ -53,11 +57,13 @@ func New(_ context.Context) (core.RuntimeServices, error) {
 	namespace := os.Getenv(envPodNamespace)
 	deploymentID := os.Getenv(envDeploymentID)
 	orchestrator := os.Getenv(envOrchestrator)
+	natsURL := os.Getenv(envNATSURL)
 	if err := requireEnv(map[string]string{
 		envPodName:      identity,
 		envPodNamespace: namespace,
 		envDeploymentID: deploymentID,
 		envOrchestrator: orchestrator,
+		envNATSURL:      natsURL,
 	}); err != nil {
 		return nil, err
 	}
@@ -71,12 +77,20 @@ func New(_ context.Context) (core.RuntimeServices, error) {
 		return nil, fmt.Errorf("k8s: clientset: %w", err)
 	}
 
+	conn, err := nats.Connect(natsURL, nats.Name("octo-runtime "+deploymentID))
+	if err != nil {
+		return nil, fmt.Errorf("k8s: connect nats %q: %w", natsURL, err)
+	}
+
 	slog.Info("k8s runtime services initialized",
-		"identity", identity, "namespace", namespace, "deployment", deploymentID, "orchestrator", orchestrator)
+		"identity", identity, "namespace", namespace, "deployment", deploymentID,
+		"orchestrator", orchestrator, "nats", natsURL)
 
 	return &Services{
-		le: newLeaderElection(cs.CoordinationV1(), namespace, identity, deploymentID),
-		kv: newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
+		le:   newLeaderElection(cs.CoordinationV1(), namespace, identity, deploymentID),
+		kv:   newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
+		q:    newNATSQueues(conn, deploymentID),
+		conn: conn,
 	}, nil
 }
 
@@ -95,10 +109,17 @@ func (s *Services) KV() core.KV { return s.kv }
 //nolint:ireturn // satisfies core.RuntimeServices
 func (s *Services) Secrets() core.SecretStore { return core.NewSecretStore(s.kv) }
 
-// Close releases the store client's idle connections. Leader-election campaigns are
-// bound to the context passed to Acquire and stop when the runtime stops.
+// Queues returns the NATS-backed message queues.
+//
+//nolint:ireturn // satisfies core.RuntimeServices
+func (s *Services) Queues() core.Queues { return s.q }
+
+// Close releases the store client's idle connections and the NATS connection.
+// Leader-election campaigns are bound to the context passed to Acquire and stop
+// when the runtime stops.
 func (s *Services) Close() error {
 	s.kv.close()
+	s.conn.Close()
 	return nil
 }
 

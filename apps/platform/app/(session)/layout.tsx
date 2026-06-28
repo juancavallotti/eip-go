@@ -2,6 +2,15 @@ import { redirect } from "next/navigation";
 import { auth, authEnabled } from "@/auth";
 
 /**
+ * Render every signed-in route per request. The account tile (UserMenu) reads the
+ * session via `auth()`, so a statically prerendered page would bake in the
+ * signed-out placeholder — the cause of the blank account circle on routes that
+ * touch no other dynamic API (the dashboard, `/platform/new`). Forcing it here, at
+ * the shared session boundary, covers them all rather than per page.
+ */
+export const dynamic = "force-dynamic";
+
+/**
  * Layout for the signed-in platform (dashboard, editor, file manager). The proxy
  * middleware already gates these routes, but we re-check here as defense in depth
  * and to guarantee a session exists for the server-rendered account tile — a

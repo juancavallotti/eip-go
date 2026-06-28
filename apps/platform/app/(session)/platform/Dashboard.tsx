@@ -6,6 +6,7 @@ import {
   FolderTree,
   KeyRound,
   LayoutGrid,
+  Network,
   Plus,
   RefreshCw,
 } from "lucide-react";
@@ -93,7 +94,7 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
           </p>
 
           {/* Shortcuts */}
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <ShortcutTile
               href="/platform/new"
               icon={Plus}
@@ -108,10 +109,16 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
               subtitle="Browse, organize, deploy"
             />
             <ShortcutTile
-              href="/platform/integrations?view=secrets"
+              href="/platform/secrets"
               icon={KeyRound}
               title="Secrets"
               subtitle="Manage deploy-time secrets"
+            />
+            <ShortcutTile
+              href="/platform/queues"
+              icon={Network}
+              title="Queues"
+              subtitle="Monitor the platform broker"
             />
             <ShortcutTile
               href="https://juancavallotti.github.io/octo/"

@@ -87,6 +87,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+  The NATS monitoring HTTP base URL (port 8222), which the platform polls for
+  queue stats (/varz, /connz). Same service as octo.nats.url, http scheme + the
+  monitor port.
+*/}}
+{{- define "octo.nats.monitorUrl" -}}
+{{- printf "http://%s.%s:%d" (include "octo.nats.serviceName" .) .Release.Namespace (int .Values.nats.service.monitorPort) -}}
+{{- end }}
+
+{{/*
   Build a fully-qualified image reference. Call with a dict carrying the chart
   root and the component repository, e.g.:
     include "octo.image" (dict "root" $ "repo" .Values.platform.repository)

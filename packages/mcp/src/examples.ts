@@ -240,7 +240,7 @@ const QUEUE_LOADBALANCE: Example = {
   slug: "queue-loadbalance",
   title: "queue-loadbalance — platform queue source + queue-dispatch (load balancing)",
   summary:
-    "An HTTP-triggered flow hands work to worker flows through platform queue subjects: one-way (fire-and-forget audit) and request (enrich-work, whose reply folds back). Each worker is a `queue` source on the subject; scale replicas to load balance (competing consumers, each message handled once). Declares HTTP_PORT, so run_integration returns a test URL: POST <testUrl>orders/42.",
+    "An HTTP-triggered flow hands work to worker flows through platform queue subjects: the default fire-and-forget publish (audit) and an awaitReply request (enrich-work, whose reply folds back). Each worker is a `queue` source on the subject; scale replicas to load balance (competing consumers, each message handled once). Declares HTTP_PORT, so run_integration returns a test URL: POST <testUrl>orders/42.",
   blocks: ["http (source)", "queue (source)", "queue-dispatch", "if", "set-variable", "set-payload", "log"],
   definition: `service:
   name: queue-loadbalance
@@ -284,17 +284,17 @@ flows:
         headers: [X-Tenant]
         timeout: 5s
     process:
-      # One-way: fire-and-forget audit, the caller does not wait. Subject is CEL.
+      # Default: fire-and-forget publish, the caller does not wait. Subject is CEL.
       - type: queue-dispatch
         name: audit-async
         settings:
           subject: '"audit-work"'
-          oneWay: true
-      # Request (default): wait for one worker reply; body + variables fold back.
+      # awaitReply: wait for one worker reply; body + variables fold back.
       - type: queue-dispatch
         name: enrich-sync
         settings:
           subject: '"enrich-work"'
+          awaitReply: true
       - type: log
         settings:
           message: '"responded to order " + vars.id + " priority=" + vars.priority'

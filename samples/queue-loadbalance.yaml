@@ -60,21 +60,21 @@ flows:
         headers: [X-Tenant]
         timeout: 5s
     process:
-      # --- ONE-WAY dispatch: fire-and-forget audit. We do not wait for a worker;
-      #     the request keeps moving immediately. ---
+      # --- Default dispatch: fire-and-forget audit. queue-dispatch publishes and
+      #     does not wait for a worker; the request keeps moving immediately. ---
       - type: queue-dispatch
         name: audit-async
         settings:
           subject: '"audit-work"'      # subject is a CEL expression
-          oneWay: true
 
       # --- REQUEST dispatch: hand normalization to a worker on "enrich-work" and
-      #     wait for its reply. Whichever replica is free handles it; the reply's
-      #     body + variables are folded back into this message. ---
+      #     wait for its reply. awaitReply opts into request/reply; whichever replica
+      #     is free handles it and its body + variables are folded back in. ---
       - type: queue-dispatch
         name: enrich-sync
         settings:
-          subject: '"enrich-work"'     # oneWay defaults to false -> wait for reply
+          subject: '"enrich-work"'
+          awaitReply: true             # wait for the worker's reply and fold it back
 
       - type: log
         settings:

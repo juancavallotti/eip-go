@@ -432,21 +432,22 @@ cluster**: route work onto a subject and run as many worker replicas as you need
 how integration load balancing happens is up to you. Delivery is at-most-once (a
 message published with no live consumer is dropped).
 
-Two blocks expose this to flows, mirroring the `flow-ref` idiom — "requiring a
-response, or dispatching" — across replicas instead of in-process:
+Two blocks expose this to flows — the same "dispatching, or requiring a response"
+idiom as `flow-ref`, but across replicas instead of in-process:
 
 - **`queue-dispatch`** (a processor block) sends the current message to a subject.
-  By default it does a **request**: it waits for one competing consumer's reply and
-  folds the reply's `body` and `variables` back into the message (the cross-replica
-  analogue of a two-way `flow-ref`). With `oneWay: true` it **publishes**
-  fire-and-forget and returns the message unchanged. The outgoing message is cloned
-  and **rekeyed** so the sub-invocation correlates independently of this flow.
+  By default it **publishes** fire-and-forget and returns the message unchanged —
+  dispatching for load balancing is the common case. With `awaitReply: true` it
+  instead does a **request**: it waits for one competing consumer's reply and folds
+  the reply's `body` and `variables` back into the message (the cross-replica
+  analogue of a two-way `flow-ref`). The outgoing message is cloned and **rekeyed**
+  so the sub-invocation correlates independently of this flow.
 
-  | setting   | meaning                                                          | default |
-  | --------- | --------------------------------------------------------------- | ------- |
-  | `subject` | CEL expression for the subject to send to (required)             | —       |
-  | `oneWay`  | publish fire-and-forget if `true`; otherwise request-and-wait    | `false` |
-  | `timeout` | how long a request waits for a reply (e.g. `30s`)                | queue service default |
+  | setting      | meaning                                                       | default |
+  | ------------ | ------------------------------------------------------------- | ------- |
+  | `subject`    | CEL expression for the subject to send to (required)          | —       |
+  | `awaitReply` | wait for a reply and fold it back if `true`; otherwise publish fire-and-forget | `false` |
+  | `timeout`    | how long a request waits for a reply (e.g. `30s`)             | queue service default |
 
 - The **`queue` source** subscribes to a subject and runs each delivered message
   through its flow. For a message that came from a request it returns the flow's
@@ -470,8 +471,8 @@ flows:
   - name: orders-api
     source: { connector: api, type: http, settings: { path: /orders/{id} } }
     process:
-      - { type: queue-dispatch, settings: { subject: '"audit-work"', oneWay: true } }  # publish
-      - { type: queue-dispatch, settings: { subject: '"enrich-work"' } }               # request; reply folds back
+      - { type: queue-dispatch, settings: { subject: '"audit-work"' } }                    # publish (default)
+      - { type: queue-dispatch, settings: { subject: '"enrich-work"', awaitReply: true } }  # request; reply folds back
 
   - name: order-enricher                 # competing consumer; scale replicas to load balance
     source:

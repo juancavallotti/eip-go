@@ -45,7 +45,7 @@ type Connector struct {
 }
 
 // Start parses the settings, opens the output, and builds the slog logger.
-func (c *Connector) Start(_ context.Context, config types.ConnectorConfig) error {
+func (c *Connector) Start(ctx context.Context, config types.ConnectorConfig) error {
 	var set connectorSettings
 	if err := config.Settings.Decode(&set); err != nil {
 		return err
@@ -71,9 +71,24 @@ func (c *Connector) Start(_ context.Context, config types.ConnectorConfig) error
 		return err
 	}
 
-	c.logger = slog.New(handler)
+	c.logger = slog.New(withLogSink(ctx, handler))
 	c.file = file
 	return nil
+}
+
+// withLogSink tees base through the runtime's central log sink when the active
+// services module ships logs (the k8s module), so a log block's output reaches the
+// aggregator in addition to this connector's own output. The standalone module
+// ships nothing, so base is returned unchanged.
+//
+//nolint:ireturn // returns the slog.Handler interface intentionally
+func withLogSink(ctx context.Context, base slog.Handler) slog.Handler {
+	if shipper, ok := core.RuntimeServicesFromContext(ctx).(core.LogShipper); ok {
+		if sink := shipper.LogSink(); sink != nil {
+			return core.TeeHandler(base, sink)
+		}
+	}
+	return base
 }
 
 // Stop closes the output file if the connector opened one.

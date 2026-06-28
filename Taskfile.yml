@@ -166,7 +166,8 @@ tasks:
     cmds:
       - docker build -t octo-platform-dev:dev -f apps/platform/Dockerfile.dev .
       - docker build -t octo-orchestrator-dev:dev -f orchestrator/Dockerfile.dev ./orchestrator
-      - k3d image import octo-platform-dev:dev octo-orchestrator-dev:dev -c octo
+      - docker build -t octo-logs-dev:dev -f logs/Dockerfile.dev ./logs
+      - k3d image import octo-platform-dev:dev octo-orchestrator-dev:dev octo-logs-dev:dev -c octo
 
   cluster:dev:
     desc: Bring up the cluster, then run DevSpace dev mode (hot reload + tailed logs)

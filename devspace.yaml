@@ -68,6 +68,22 @@ dev:
         onUpload:
           restartContainer: true
     logs: {}
+  logs:
+    labelSelector:
+      app: logs
+    namespace: octo-dev
+    devImage: octo-logs-dev:dev
+    command: ["go", "run", "."]
+    workingDir: /src
+    sync:
+      - path: ./logs:/src
+        excludePaths:
+          - .git/
+          - logs
+        # Restart the container after each upload so `go run` recompiles.
+        onUpload:
+          restartContainer: true
+    logs: {}
   # Postgres is not hot-reloaded; this entry only forwards its logs to the terminal.
   postgres:
     labelSelector:

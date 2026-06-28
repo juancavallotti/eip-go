@@ -41,6 +41,8 @@ function baseUrl(): string {
 function queryString(f: LogFilters): string {
   const params = new URLSearchParams();
   if (f.deploymentId) params.set("deploymentId", f.deploymentId);
+  if (f.appName) params.set("appName", f.appName);
+  if (f.appVersion) params.set("appVersion", f.appVersion);
   for (const level of f.levels ?? []) params.append("level", level);
   if (f.from) params.set("from", f.from);
   if (f.to) params.set("to", f.to);

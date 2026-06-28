@@ -15,11 +15,19 @@ export interface AppOption {
 /** The filter values the controls edit. A subset of the model's LogFilters that
  * the user drives directly; paging (before/limit) is owned by the monitor. */
 export interface FilterValues {
-  deploymentId: string;
+  appName: string;
+  appVersion: string;
   levels: string[];
   from: string;
   to: string;
   q: string;
+}
+
+/** Distinct, sorted, non-empty values of one app field across the seen apps. */
+function distinct(apps: AppOption[], pick: (a: AppOption) => string): string[] {
+  return [...new Set(apps.map(pick).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 const inputClass =
@@ -51,6 +59,9 @@ export default function LogsFilters({
     onChange({ ...value, levels });
   };
 
+  const appNames = distinct(apps, (a) => a.appName);
+  const appVersions = distinct(apps, (a) => a.appVersion);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <input
@@ -61,20 +72,35 @@ export default function LogsFilters({
         className={`${inputClass} min-w-[12rem] flex-1`}
       />
 
-      <select
-        value={value.deploymentId}
-        onChange={(e) => onChange({ ...value, deploymentId: e.target.value })}
-        className={inputClass}
-        aria-label="Filter by app"
-      >
-        <option value="">All apps</option>
-        {apps.map((a) => (
-          <option key={a.deploymentId} value={a.deploymentId}>
-            {a.appName || a.deploymentId}
-            {a.appVersion ? ` (${a.appVersion})` : ""}
-          </option>
+      <input
+        type="text"
+        list="log-app-names"
+        value={value.appName}
+        onChange={(e) => onChange({ ...value, appName: e.target.value })}
+        placeholder="App"
+        aria-label="Filter by app name"
+        className={`${inputClass} w-32`}
+      />
+      <datalist id="log-app-names">
+        {appNames.map((n) => (
+          <option key={n} value={n} />
         ))}
-      </select>
+      </datalist>
+
+      <input
+        type="text"
+        list="log-app-versions"
+        value={value.appVersion}
+        onChange={(e) => onChange({ ...value, appVersion: e.target.value })}
+        placeholder="Version"
+        aria-label="Filter by app version"
+        className={`${inputClass} w-24`}
+      />
+      <datalist id="log-app-versions">
+        {appVersions.map((v) => (
+          <option key={v} value={v} />
+        ))}
+      </datalist>
 
       <div className="flex items-center gap-1">
         {LEVELS.map((level) => {

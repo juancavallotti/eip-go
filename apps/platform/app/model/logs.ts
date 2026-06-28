@@ -39,6 +39,10 @@ export interface LogPage {
 export interface LogFilters {
   /** Limit to one deployment. */
   deploymentId?: string;
+  /** Limit to one app by its display name (exact match). */
+  appName?: string;
+  /** Limit to one app version/tag (exact match). */
+  appVersion?: string;
   /** Limit to these levels (e.g. ["ERROR", "WARN"]). */
   levels?: string[];
   /** RFC3339 lower/upper bounds on the record timestamp. */

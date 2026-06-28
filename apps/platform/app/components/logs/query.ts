@@ -32,7 +32,8 @@ export function buildFilters(
   limit: number,
 ): LogFilters {
   return {
-    deploymentId: v.deploymentId || undefined,
+    appName: v.appName || undefined,
+    appVersion: v.appVersion || undefined,
     levels: v.levels.length ? v.levels : undefined,
     from: toRFC3339(v.from),
     to: toRFC3339(v.to),
@@ -45,7 +46,8 @@ export function buildFilters(
 /** Read the filter values out of the URL query string (for bookmarkability). */
 export function readFilters(sp: URLSearchParams): FilterValues {
   return {
-    deploymentId: sp.get("deploymentId") ?? "",
+    appName: sp.get("appName") ?? "",
+    appVersion: sp.get("appVersion") ?? "",
     levels: (sp.get("levels") ?? "").split(",").filter(Boolean),
     from: sp.get("from") ?? "",
     to: sp.get("to") ?? "",
@@ -56,7 +58,8 @@ export function readFilters(sp: URLSearchParams): FilterValues {
 /** Serialize the filter values into a query string, omitting empty axes. */
 export function writeFilters(f: FilterValues): string {
   const p = new URLSearchParams();
-  if (f.deploymentId) p.set("deploymentId", f.deploymentId);
+  if (f.appName) p.set("appName", f.appName);
+  if (f.appVersion) p.set("appVersion", f.appVersion);
   if (f.levels.length) p.set("levels", f.levels.join(","));
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);

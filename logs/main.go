@@ -1,0 +1,128 @@
+// Command logs is the log-aggregator service. It consumes log events shipped by
+// deployed runtimes over the internal.logs NATS subject (as a competing consumer)
+// and persists them to Postgres for the platform's /logs view to query.
+//
+// This scaffold establishes the service lifecycle: configuration from the
+// environment, a Postgres pool, a health endpoint, and graceful shutdown on
+// SIGINT/SIGTERM. The NATS consumer and the query API are added in later changes.
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/juancavallotti/octo/logs/internal/db"
+)
+
+const (
+	defaultPort = "8091"
+	// shutdownTimeout bounds how long in-flight HTTP requests have to drain when a
+	// termination signal arrives.
+	shutdownTimeout = 10 * time.Second
+	// readHeaderTimeout bounds time spent reading request headers, mitigating
+	// slow-header denial-of-service attempts.
+	readHeaderTimeout = 10 * time.Second
+)
+
+func main() {
+	level, levelErr := parseLevel(os.Getenv("LOG_LEVEL"))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	if levelErr != nil {
+		slog.Warn("invalid LOG_LEVEL, defaulting to info", "error", levelErr)
+	}
+
+	if err := run(); err != nil {
+		slog.Error("log aggregator stopped with error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	port := envOr("PORT", defaultPort)
+	dsn := os.Getenv("DATABASE_URL")
+
+	// Root context cancelled on SIGINT/SIGTERM so pod termination drains cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var database *db.DB
+	if dsn == "" {
+		// The service still serves /healthz without a database, keeping it useful for
+		// liveness probes before Postgres is reachable.
+		slog.Warn("DATABASE_URL is not set; the log store is unavailable")
+	} else {
+		d, err := db.New(ctx, dsn)
+		if err != nil {
+			return err
+		}
+		defer d.Close()
+		database = d
+		slog.Info("connected to database pool")
+	}
+
+	httpServer := &http.Server{
+		Addr:              ":" + port,
+		Handler:           newServer(database),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("log aggregator listening", "addr", httpServer.Addr, "db", database != nil)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		slog.Info("shutdown signal received, draining")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		return httpServer.Shutdown(shutdownCtx)
+	}
+}
+
+// newServer wires the HTTP routes. database may be nil when DATABASE_URL is unset;
+// the query API added later guards on it.
+func newServer(_ *db.DB) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("ok"))
+	})
+	return mux
+}
+
+// envOr returns the value of key, or fallback when it is empty.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// parseLevel maps a LOG_LEVEL name to an slog.Level, defaulting to info. It
+// matches the runtime's accepted level names so operators configure both alike.
+func parseLevel(name string) (slog.Level, error) {
+	switch name {
+	case "", "info":
+		return slog.LevelInfo, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, errors.New("log level is not one of debug/info/warn/error")
+	}
+}

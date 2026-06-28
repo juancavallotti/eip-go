@@ -41,6 +41,12 @@ spec:
               value: {{ .Values.runtime.servicesModule | quote }}
             - name: ORCHESTRATOR_URL
               value: {{ include "octo.orchestrator.url" . | quote }}
+            {{- if .Values.nats.enabled }}
+            # In-cluster NATS broker for cross-node pub-sub. Set so the URL is
+            # discoverable; consumers land with the pub-sub migration.
+            - name: NATS_URL
+              value: {{ include "octo.nats.url" . | quote }}
+            {{- end }}
             - name: RUNTIME_SERVICE_ACCOUNT
               value: {{ include "octo.runtime.serviceAccountName" . | quote }}
             {{- if .Values.kv.encryptionKey }}

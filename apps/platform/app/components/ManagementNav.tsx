@@ -5,18 +5,24 @@ import { usePathname } from "next/navigation";
 import { MANAGEMENT_SECTIONS } from "@/app/components/integrations/views";
 
 /**
- * The management area's section switcher: a segmented control of links across the
- * sibling routes (Integrations, Secrets, Queues, …), highlighting the one matching
- * the current path. Replaces the former in-page ViewTabs state now that each
- * section is its own route; rendered in the shared AppHeader on every management
- * page so the bar stays put as you move between them.
+ * The platform's section switcher: a segmented control of links across the
+ * top-level routes (Dashboard, Integrations, Deployments, …), highlighting the one
+ * matching the current path. Rendered in the shared AppHeader on every signed-in
+ * page so the bar stays put as you move between sections.
  */
 export default function ManagementNav() {
   const pathname = usePathname();
+  // Highlight the single best (longest) matching section, so the Dashboard tab
+  // ("/platform") isn't lit on every subroute it prefixes.
+  const activeHref = MANAGEMENT_SECTIONS.reduce<string | null>((best, s) => {
+    const match = pathname === s.href || pathname.startsWith(`${s.href}/`);
+    if (!match) return best;
+    return best === null || s.href.length > best.length ? s.href : best;
+  }, null);
   return (
     <nav className="flex items-center gap-0.5 rounded-md bg-black/[0.04] p-0.5 dark:bg-white/[0.06]">
       {MANAGEMENT_SECTIONS.map((s) => {
-        const active = pathname === s.href || pathname.startsWith(`${s.href}/`);
+        const active = s.href === activeHref;
         const Icon = s.icon;
         return (
           <Link

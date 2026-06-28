@@ -12,6 +12,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
+import ManagementNav from "@/app/components/ManagementNav";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
 import { listAllDeployments } from "@/app/model/orchestrator";
 import {
@@ -71,7 +72,9 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
 
   return (
     <div className="flex h-full flex-col">
-      <AppHeader logoHref={null} userMenu={userMenu} />
+      <AppHeader userMenu={userMenu}>
+        <ManagementNav />
+      </AppHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-6 py-8">

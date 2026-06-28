@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,10 +19,15 @@ import (
 	"time"
 
 	"github.com/juancavallotti/octo/logs/internal/db"
+	"github.com/juancavallotti/octo/logs/internal/ingest"
+	"github.com/juancavallotti/octo/logs/internal/repo"
+	"github.com/nats-io/nats.go"
 )
 
 const (
 	defaultPort = "8091"
+	// defaultWorkers bounds concurrent inserts feeding off the NATS subscription.
+	defaultWorkers = 8
 	// shutdownTimeout bounds how long in-flight HTTP requests have to drain when a
 	// termination signal arrives.
 	shutdownTimeout = 10 * time.Second
@@ -64,6 +70,31 @@ func run() error {
 		defer d.Close()
 		database = d
 		slog.Info("connected to database pool")
+	}
+
+	// Start the NATS consumer when both a store and a broker are configured. Without
+	// either, the service still serves /healthz so liveness probes pass while the
+	// dependencies come up.
+	natsURL := os.Getenv("NATS_URL")
+	switch {
+	case database == nil:
+		slog.Warn("DATABASE_URL is not set; not consuming logs")
+	case natsURL == "":
+		slog.Warn("NATS_URL is not set; not consuming logs")
+	default:
+		conn, err := nats.Connect(natsURL, nats.Name("octo-logs"))
+		if err != nil {
+			return fmt.Errorf("connect nats %q: %w", natsURL, err)
+		}
+		defer conn.Close()
+
+		consumer := ingest.NewConsumer(repo.NewRepo(database.Pool()), defaultWorkers)
+		sub, err := consumer.Start(ctx, conn)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = sub.Close() }()
+		slog.Info("consuming logs", "subject", ingest.LogSubject, "nats", natsURL)
 	}
 
 	httpServer := &http.Server{

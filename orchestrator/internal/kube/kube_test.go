@@ -177,6 +177,7 @@ func TestRuntimeServicesEnvInjected(t *testing.T) {
 		Module:          "k8s",
 		OrchestratorURL: "http://octo-orchestrator.octo-dev:8090",
 		ServiceAccount:  "octo-runtime",
+		NATSURL:         "nats://octo-nats.octo-dev:4222",
 	}
 	ctx := context.Background()
 	spec := Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 1, Env: map[string]string{"LOG_LEVEL": "debug"}}
@@ -206,6 +207,9 @@ func TestRuntimeServicesEnvInjected(t *testing.T) {
 	if byName[envOrchestrator].Value != "http://octo-orchestrator.octo-dev:8090" {
 		t.Errorf("%s = %q, want the orchestrator URL", envOrchestrator, byName[envOrchestrator].Value)
 	}
+	if byName[envNATSURL].Value != "nats://octo-nats.octo-dev:4222" {
+		t.Errorf("%s = %q, want the NATS URL", envNATSURL, byName[envNATSURL].Value)
+	}
 	for _, name := range []string{envPodName, envPodNamespace} {
 		ref := byName[name].ValueFrom
 		if ref == nil || ref.FieldRef == nil {
@@ -218,6 +222,27 @@ func TestRuntimeServicesEnvInjected(t *testing.T) {
 	// Injected vars precede the user's own env so the spec is deterministic.
 	if env[len(env)-1].Name != "LOG_LEVEL" {
 		t.Errorf("user env should come last, got order %v", env)
+	}
+}
+
+// TestRuntimeServicesEnvOmitsNATSWhenUnset verifies that with the runtime-services
+// module configured but no broker URL, the runtime-services env is still injected
+// while NATS_URL is omitted (so a deploy without NATS injects nothing for it).
+func TestRuntimeServicesEnvOmitsNATSWhenUnset(t *testing.T) {
+	c := newClient("")
+	c.runtimeServices = RuntimeServices{
+		Module:          "k8s",
+		OrchestratorURL: "http://octo-orchestrator.octo-dev:8090",
+	}
+	ctx := context.Background()
+	if err := c.Apply(ctx, Spec{ID: "d1", IntegrationID: "int-1", Definition: "x: 1", Replicas: 1}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	dep, _ := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, resourceName("d1"), metav1.GetOptions{})
+	for _, e := range dep.Spec.Template.Spec.Containers[0].Env {
+		if e.Name == envNATSURL {
+			t.Fatalf("%s should be omitted when unset, got %q", envNATSURL, e.Value)
+		}
 	}
 }
 

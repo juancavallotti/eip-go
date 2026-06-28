@@ -153,6 +153,8 @@ type RuntimeServices interface {
 	KV() KV
 	//nolint:ireturn // returns the SecretStore interface a connector depends on
 	Secrets() SecretStore
+	//nolint:ireturn // returns the Queues interface a connector depends on
+	Queues() Queues
 	Close() error
 }
 
@@ -169,6 +171,9 @@ func (noopRuntimeServices) KV() KV { return noopKV{} }
 
 //nolint:ireturn // satisfies the RuntimeServices interface
 func (noopRuntimeServices) Secrets() SecretStore { return noopKV{} }
+
+//nolint:ireturn // satisfies the RuntimeServices interface
+func (noopRuntimeServices) Queues() Queues { return noopQueues{} }
 
 func (noopRuntimeServices) Close() error { return nil }
 

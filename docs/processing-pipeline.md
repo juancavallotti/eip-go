@@ -263,6 +263,9 @@ Other call sites expose their own variables:
   message unchanged.
 - **`cron` source** (`payload` setting) sees `now` (the fire time) and the
   source's static `settings`. The result becomes the message body.
+- **`queue-dispatch` block** (`subject` setting) sees the same surface as the
+  message-driven blocks (`body`, `vars`, `eventID`, `correlationID`, `env`, `now`),
+  so a flow can route or shard work per message — e.g. `'"orders." + vars.region'`.
 
 ### The `log` block and `logger` connectors
 
@@ -418,6 +421,69 @@ flows:
 
 See [`samples/http-orders.yaml`](../samples/http-orders.yaml) for a fuller example
 (query-param defaulting, POST-body transform, conditional priority flag).
+
+### Platform queues: the `queue` source and `queue-dispatch` block
+
+Queues are a **core runtime service** (in-process in the standalone module,
+NATS-backed in k8s), scoped to the deployment. Subscribers to a subject form one
+**competing-consumer** group, so each message is handled by **exactly one**
+replica. That makes queues the construct for **load balancing work across the
+cluster**: route work onto a subject and run as many worker replicas as you need —
+how integration load balancing happens is up to you. Delivery is at-most-once (a
+message published with no live consumer is dropped).
+
+Two blocks expose this to flows, mirroring the `flow-ref` idiom — "requiring a
+response, or dispatching" — across replicas instead of in-process:
+
+- **`queue-dispatch`** (a processor block) sends the current message to a subject.
+  By default it does a **request**: it waits for one competing consumer's reply and
+  folds the reply's `body` and `variables` back into the message (the cross-replica
+  analogue of a two-way `flow-ref`). With `oneWay: true` it **publishes**
+  fire-and-forget and returns the message unchanged. The outgoing message is cloned
+  and **rekeyed** so the sub-invocation correlates independently of this flow.
+
+  | setting   | meaning                                                          | default |
+  | --------- | --------------------------------------------------------------- | ------- |
+  | `subject` | CEL expression for the subject to send to (required)             | —       |
+  | `oneWay`  | publish fire-and-forget if `true`; otherwise request-and-wait    | `false` |
+  | `timeout` | how long a request waits for a reply (e.g. `30s`)                | queue service default |
+
+- The **`queue` source** subscribes to a subject and runs each delivered message
+  through its flow. For a message that came from a request it returns the flow's
+  **final message as the reply** (correlated on the flow-event bus by `EventID`,
+  exactly as the HTTP source does); for a fire-and-forget publish the queue layer
+  simply drops the reply — one handler serves both. A handler holds a listener until
+  its flow finishes, which bounds in-flight work to the listener count.
+
+  | setting     | meaning                                                       | default |
+  | ----------- | ------------------------------------------------------------- | ------- |
+  | `subject`   | subject to subscribe to (required)                            | —       |
+  | `listeners` | concurrent handler goroutines on this replica                 | `8`     |
+  | `timeout`   | how long a handler waits for its flow to finish               | queue service default |
+
+The `queue` connector has **no global config**, so there is nothing to declare:
+a `source` (or `queue-dispatch`) of `type: queue` resolves it implicitly and the
+runtime starts a default instance on demand.
+
+```yaml
+flows:
+  - name: orders-api
+    source: { connector: api, type: http, settings: { path: /orders/{id} } }
+    process:
+      - { type: queue-dispatch, settings: { subject: '"audit-work"', oneWay: true } }  # publish
+      - { type: queue-dispatch, settings: { subject: '"enrich-work"' } }               # request; reply folds back
+
+  - name: order-enricher                 # competing consumer; scale replicas to load balance
+    source:
+      type: queue                        # implicit connector — no instance to declare
+      settings: { subject: enrich-work, listeners: 8 }
+    process:
+      - { type: set-payload, settings: { value: '{"order": body, "status": "accepted"}' } }
+```
+
+See [`samples/queue-loadbalance.yaml`](../samples/queue-loadbalance.yaml) for a
+fuller example (HTTP entry point, a request worker whose reply folds back, and a
+one-way audit worker).
 
 ## Writing a connector source
 

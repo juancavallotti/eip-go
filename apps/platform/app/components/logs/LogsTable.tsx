@@ -29,7 +29,7 @@ function formatTime(ts: string): string {
  */
 export default function LogsTable({ entries }: { entries: LogEntry[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
+    <div>
       {entries.map((e) => (
         <LogRow key={e.id} entry={e} />
       ))}

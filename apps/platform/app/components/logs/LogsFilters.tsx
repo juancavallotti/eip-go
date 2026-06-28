@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 
 /** The levels the runtime emits, in severity order, offered as filter toggles. */
 export const LEVELS = ["ERROR", "WARN", "INFO", "DEBUG"] as const;
@@ -34,14 +34,15 @@ export default function LogsFilters({
   value,
   apps,
   onChange,
-  onRefresh,
-  refreshing,
+  tailing,
+  onToggleTail,
 }: {
   value: FilterValues;
   apps: AppOption[];
   onChange: (next: FilterValues) => void;
-  onRefresh: () => void;
-  refreshing: boolean;
+  /** Whether live tailing (polling for new rows) is on. */
+  tailing: boolean;
+  onToggleTail: () => void;
 }) {
   const toggleLevel = (level: string) => {
     const levels = value.levels.includes(level)
@@ -117,12 +118,16 @@ export default function LogsFilters({
 
       <button
         type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        aria-label="Refresh logs"
-        className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.05] hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-white/[0.06] dark:hover:text-zinc-200"
+        onClick={onToggleTail}
+        aria-pressed={tailing}
+        className={`ml-auto flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+          tailing
+            ? "bg-emerald-600 text-white hover:bg-emerald-500"
+            : "bg-black/[0.05] text-zinc-600 hover:bg-black/[0.08] dark:bg-white/[0.06] dark:text-zinc-300"
+        }`}
       >
-        <RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />
+        {tailing ? <Pause size={14} /> : <Play size={14} />}
+        {tailing ? "Tailing" : "Tail"}
       </button>
     </div>
   );

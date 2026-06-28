@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import AppHeader from "@/app/components/AppHeader";
 import ManagementNav from "@/app/components/ManagementNav";
 import UserMenu from "@/app/components/UserMenu";
@@ -15,7 +16,11 @@ export default function LogsPage() {
       <AppHeader userMenu={<UserMenu />}>
         <ManagementNav />
       </AppHeader>
-      <LogsMonitor />
+      {/* LogsMonitor reads filters from the URL via useSearchParams, which needs a
+          Suspense boundary. */}
+      <Suspense>
+        <LogsMonitor />
+      </Suspense>
     </div>
   );
 }

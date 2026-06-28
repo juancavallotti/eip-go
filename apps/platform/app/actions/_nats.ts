@@ -14,6 +14,7 @@
 import { requestJson, type ActionResult } from "@octo/http";
 import type {
   QueueConnection,
+  QueueDestination,
   QueueServerStats,
   QueueStats,
 } from "@/app/model/queues";
@@ -34,7 +35,15 @@ interface Varz {
   subscriptions: number;
 }
 
-/** The subset of NATS `/connz` we surface. */
+/** One subscription as NATS reports it under `?subs=detail`. */
+interface SubDetail {
+  subject: string;
+  /** Queue-group name; present only for queue (load-balanced) subscriptions. */
+  qgroup?: string;
+  msgs: number;
+}
+
+/** The subset of NATS `/connz` we surface (fetched with `?subs=detail`). */
 interface Connz {
   connections: Array<{
     cid: number;
@@ -45,7 +54,17 @@ interface Connz {
     out_msgs: number;
     in_bytes: number;
     out_bytes: number;
+    subscriptions_list_detail?: SubDetail[];
   }>;
+}
+
+// Platform queue subjects are scoped as `octo.<deployment>.q.<name>` and queue-
+// subscribed on that same string (see runtime queues.go). Parse the readable parts.
+const QUEUE_SUBJECT_RE = /^octo\.([^.]+)\.q\.(.+)$/;
+
+/** Skip NATS/JetStream internal subjects (reply inboxes, system, JS) as non-queues. */
+function isInternalSubject(subject: string): boolean {
+  return subject.startsWith("_") || subject.startsWith("$");
 }
 
 /** The monitoring base URL with any trailing slash trimmed, or "" when unset. */
@@ -84,6 +103,51 @@ function toConnections(c: Connz): QueueConnection[] {
 }
 
 /**
+ * Roll the per-connection subscription detail up into destinations: one row per
+ * subject, carrying its subscriber/message totals and the full connections
+ * consuming it (so expanding a destination shows the same per-connection stats the
+ * old standalone table did). Internal subjects (reply inboxes, system) are dropped
+ * — they aren't queues. `connections` indexes the full connection objects by cid.
+ */
+function toDestinations(
+  c: Connz,
+  connections: QueueConnection[],
+): QueueDestination[] {
+  const byCid = new Map(connections.map((conn) => [conn.cid, conn]));
+  const bySubject = new Map<string, QueueDestination>();
+  const seen = new Map<string, Set<number>>();
+  for (const conn of c.connections) {
+    for (const sub of conn.subscriptions_list_detail ?? []) {
+      if (isInternalSubject(sub.subject)) continue;
+      let dest = bySubject.get(sub.subject);
+      if (!dest) {
+        const m = QUEUE_SUBJECT_RE.exec(sub.subject);
+        dest = {
+          subject: sub.subject,
+          queue: sub.qgroup ?? null,
+          deployment: m?.[1] ?? null,
+          name: m?.[2] ?? sub.subject,
+          subscribers: 0,
+          msgs: 0,
+          connections: [],
+        };
+        bySubject.set(sub.subject, dest);
+        seen.set(sub.subject, new Set());
+      }
+      dest.subscribers += 1;
+      dest.msgs += sub.msgs;
+      const cids = seen.get(sub.subject)!;
+      const full = byCid.get(conn.cid);
+      if (full && !cids.has(conn.cid)) {
+        cids.add(conn.cid);
+        dest.connections.push(full);
+      }
+    }
+  }
+  return [...bySubject.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Pull a broker snapshot: `/varz` for the totals and `/connz` for the open
  * connections, fetched together. Returns an error result when monitoring is
  * unconfigured (`NATS_MONITOR_URL` unset) or either endpoint is unreachable.
@@ -98,12 +162,16 @@ export async function getQueueStats(): Promise<ActionResult<QueueStats>> {
   }
   const [varz, connz] = await Promise.all([
     requestJson<Varz>("GET", `${base}/varz`),
-    requestJson<Connz>("GET", `${base}/connz`),
+    requestJson<Connz>("GET", `${base}/connz?subs=detail`),
   ]);
   if (!varz.ok) return varz;
   if (!connz.ok) return connz;
+  const connections = toConnections(connz.data);
   return {
     ok: true,
-    data: { server: toServer(varz.data), connections: toConnections(connz.data) },
+    data: {
+      server: toServer(varz.data),
+      destinations: toDestinations(connz.data, connections),
+    },
   };
 }

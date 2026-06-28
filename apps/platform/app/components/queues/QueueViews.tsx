@@ -1,6 +1,6 @@
 "use client";
 
-import type { QueueStats } from "@/app/model/queues";
+import type { QueueConnection } from "@/app/model/queues";
 
 /** Group digits for readability; counts and byte values can run large. */
 export function num(n: number): string {
@@ -49,7 +49,7 @@ export function Stat({
 export function ConnectionsTable({
   connections,
 }: {
-  connections: QueueStats["connections"];
+  connections: QueueConnection[];
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">

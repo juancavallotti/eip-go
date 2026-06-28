@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Network, RefreshCw } from "lucide-react";
 import { EmptyState } from "@/app/(session)/platform/DashboardTiles";
 import { listQueueStats, type QueueStats } from "@/app/model/queues";
-import { ConnectionsTable, Stat, bytes, num } from "./QueueViews";
+import { Stat, bytes, num } from "./QueueViews";
+import QueueDestinations from "./QueueDestinations";
 
 /** How often to re-poll the broker snapshot. SSE isn't warranted for a counter. */
 const POLL_MS = 5000;
@@ -114,17 +115,20 @@ export default function QueuesMonitor() {
             </div>
 
             <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-zinc-400">
-              Connections
+              Destinations
             </h2>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Subjects clients consume from. Expand one to see its connections.
+            </p>
             <div className="mt-4">
-              {stats.connections.length === 0 ? (
+              {stats.destinations.length === 0 ? (
                 <EmptyState
                   icon={Network}
-                  title="No open connections"
-                  body="No clients are currently connected to the broker."
+                  title="No active destinations"
+                  body="No clients are subscribed to any queues right now."
                 />
               ) : (
-                <ConnectionsTable connections={stats.connections} />
+                <QueueDestinations destinations={stats.destinations} />
               )}
             </div>
           </>

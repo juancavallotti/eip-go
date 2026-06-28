@@ -607,7 +607,7 @@
       "type": "object-read",
       "label": "Object Read",
       "category": "processor",
-      "icon": "ArrowDownToLine",
+      "icon": "HardDriveDownload",
       "description": "Read an object from the runtime store into the body or a variable.",
       "fields": [
         {
@@ -630,7 +630,7 @@
       "type": "object-write",
       "label": "Object Write",
       "category": "processor",
-      "icon": "ArrowUpFromLine",
+      "icon": "HardDriveUpload",
       "description": "Write an object to the runtime store under a key.",
       "fields": [
         {
@@ -664,9 +664,76 @@
           "description": "CEL expression evaluated to the object key."
         }
       ]
+    },
+    {
+      "type": "queue-dispatch",
+      "label": "Queue Dispatch",
+      "category": "processor",
+      "icon": "Send",
+      "description": "Send the message to a platform queue subject to load balance work across replicas. By default it publishes fire-and-forget (one-way); enable Await reply to wait for one consumer's reply and fold it back in (request).",
+      "fields": [
+        {
+          "name": "subject",
+          "label": "Subject",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the queue subject to send to; enables per-message routing/sharding."
+        },
+        {
+          "name": "awaitReply",
+          "label": "Await reply",
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Wait for one consumer's reply and fold its body and variables back in (request). When false (the default) the message is published fire-and-forget (one-way)."
+        },
+        {
+          "name": "timeout",
+          "label": "Timeout",
+          "type": "string",
+          "required": false,
+          "description": "How long to wait for a reply when Await reply is set (e.g. 30s); defaults to the queue service timeout."
+        }
+      ]
     }
   ],
   "connectors": [
+    {
+      "type": "queue",
+      "label": "Platform Queue",
+      "icon": "Inbox",
+      "settings": [],
+      "sources": [
+        {
+          "type": "queue",
+          "label": "Platform Queue",
+          "icon": "Inbox",
+          "fields": [
+            {
+              "name": "subject",
+              "label": "Subject",
+              "type": "string",
+              "required": true,
+              "description": "Queue subject to subscribe to. Every replica subscribed to the same subject competes for messages, so each message is handled once across the cluster."
+            },
+            {
+              "name": "listeners",
+              "label": "Listeners",
+              "type": "number",
+              "required": false,
+              "description": "Number of concurrent handler goroutines; defaults to the queue service default."
+            },
+            {
+              "name": "timeout",
+              "label": "Timeout",
+              "type": "string",
+              "required": false,
+              "description": "How long a handler waits for its flow to finish (e.g. 30s); defaults to the queue service timeout."
+            }
+          ]
+        }
+      ]
+    },
     {
       "type": "cron",
       "label": "Cron",

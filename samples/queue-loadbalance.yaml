@@ -1,0 +1,133 @@
+service:
+  name: queue-loadbalance
+
+# This sample shows the platform queue blocks as the construct for load balancing
+# work across replicas. The HTTP-triggered flow hands work to two worker flows
+# through a queue subject instead of calling them in-process:
+#   * audit-work  — dispatched ONE-WAY (oneWay: true): fire-and-forget publish, the
+#                   caller does not wait. Any replica subscribed to the subject may
+#                   pick it up.
+#   * enrich-work — dispatched the default way (request): the caller waits for one
+#                   competing consumer to reply, and the reply's body + variables
+#                   are folded back into the message — the cross-replica analogue of
+#                   a two-way flow-ref.
+#
+# Each worker flow is fronted by a `queue` source on the matching subject. Run more
+# replicas of this service and the queue spreads messages across them (competing
+# consumers), so each message is handled exactly once cluster-wide. In the
+# standalone module the queue is in-process; in the k8s module it is NATS-backed.
+#
+# Try it:
+#   go run ./cli -config samples/queue-loadbalance.yaml
+#   curl -s -X POST localhost:8080/api/v1/orders/42 \
+#     -H 'X-Tenant: acme' -H 'X-Request-Id: req-1' \
+#     -d '{"item":"widget","amount":1500}'
+
+env:
+  - name: HTTP_HOST
+    default: 0.0.0.0
+  - name: HTTP_PORT
+    default: "8080"
+  - name: HTTP_BASE_PATH
+    default: /api/v1
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      host: ${HTTP_HOST}
+      port: ${HTTP_PORT}
+      basePath: ${HTTP_BASE_PATH}
+      requestTimeout: 5s
+  - name: debug
+    type: logger
+    settings:
+      format: json
+      level: debug
+  # No queue connector is declared: it has no global config, so a `source` (or the
+  # queue-dispatch block) of type "queue" resolves it implicitly — the runtime
+  # starts a default instance on demand. The queue itself is a core runtime service.
+
+flows:
+  # --- HTTP entry point: dispatches work onto queue subjects. ---
+  - name: orders-api
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /orders/{id}            # {id} -> vars.id
+        correlationIdHeader: X-Request-Id
+        headers: [X-Tenant]
+        timeout: 5s
+    process:
+      # --- Default dispatch: fire-and-forget audit. queue-dispatch publishes and
+      #     does not wait for a worker; the request keeps moving immediately. ---
+      - type: queue-dispatch
+        name: audit-async
+        settings:
+          subject: '"audit-work"'      # subject is a CEL expression
+
+      # --- REQUEST dispatch: hand normalization to a worker on "enrich-work" and
+      #     wait for its reply. awaitReply opts into request/reply; whichever replica
+      #     is free handles it and its body + variables are folded back in. ---
+      - type: queue-dispatch
+        name: enrich-sync
+        settings:
+          subject: '"enrich-work"'
+          awaitReply: true             # wait for the worker's reply and fold it back
+
+      - type: log
+        settings:
+          message: '"responded to order " + vars.id + " priority=" + vars.priority'
+
+  # --- Worker flow: competing consumer on "enrich-work". Scale replicas to load
+  #     balance; each message is handled by exactly one of them. Its final message
+  #     is returned to the requester as the reply. ---
+  - name: order-enricher
+    source:
+      type: queue                      # implicit connector — no instance needed
+      settings:
+        subject: enrich-work
+        listeners: 8                   # concurrent handlers on this replica
+    process:
+      - type: set-payload
+        name: normalize-order
+        settings:
+          value: >
+            {
+              "orderId":   vars.id,
+              "tenant":    vars["X-Tenant"],
+              "item":      body.item,
+              "amount":    body.amount,
+              "requestId": correlationID
+            }
+      - type: if
+        name: priority-check
+        condition: 'body.amount >= 1000.0'
+        then:
+          process:
+            - type: set-variable
+              settings: { name: priority, value: '"high"' }
+        else:
+          process:
+            - type: set-variable
+              settings: { name: priority, value: '"normal"' }
+      - type: set-payload
+        name: wrap-response
+        settings:
+          value: '{"order": body, "priority": vars.priority, "status": "accepted"}'
+
+  # --- Worker flow: competing consumer on "audit-work". Invoked one-way, so its
+  #     result is discarded; it runs purely for the side effect (an audit log). ---
+  - name: order-auditor
+    source:
+      type: queue                      # implicit connector — no instance needed
+      settings:
+        subject: audit-work
+    process:
+      - type: log
+        name: audit-log
+        settings:
+          logger: debug
+          level: info
+          message: '"AUDIT order " + vars.id + " req=" + correlationID'

@@ -34,6 +34,10 @@ spec:
             # proxy routes front the orchestrator (in-cluster service DNS).
             - name: ORCHESTRATOR_URL
               value: http://orchestrator.octo-dev:8090
+            # NATS monitoring HTTP service (deploy/k8s/nats.yaml, port 8222). The
+            # /platform/queues view polls /varz + /connz from here directly.
+            - name: NATS_MONITOR_URL
+              value: http://nats:8222
             # Canonical base URL Auth.js builds sign-in redirects / OAuth callbacks
             # against. Without it, trustHost infers the host from request headers,
             # which behind the k3d loadbalancer/NodePort is 0.0.0.0:3000 — sending

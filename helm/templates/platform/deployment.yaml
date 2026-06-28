@@ -33,6 +33,13 @@ spec:
             # fronts the orchestrator at its in-cluster Service DNS.
             - name: ORCHESTRATOR_URL
               value: "http://{{ include "octo.orchestrator.serviceName" . }}:{{ .Values.orchestrator.service.port }}"
+            {{- if .Values.nats.enabled }}
+            # NATS monitoring HTTP service (port 8222); the /platform/queues view
+            # polls /varz + /connz from here directly. Omitted when NATS is off, in
+            # which case the queues view shows its unavailable state.
+            - name: NATS_MONITOR_URL
+              value: {{ include "octo.nats.monitorUrl" . | quote }}
+            {{- end }}
             {{- if .Values.auth.oidc.enabled }}
             # OIDC SSO (Auth.js). The presence of AUTH_EETR_ISSUER + AUTH_SECRET
             # turns auth on in the editor. Issuer and client id are non-secret plain

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Tag } from "lucide-react";
 import type { LogEntry } from "@/app/model/logs";
 
 /** Tailwind classes for each level's badge; unknown levels fall back to zinc. */
@@ -65,11 +65,22 @@ function LogRow({ entry }: { entry: LogEntry }) {
         >
           {entry.level || "—"}
         </span>
-        <span
-          className="mt-0.5 hidden w-32 shrink-0 truncate text-xs text-zinc-500 sm:block dark:text-zinc-400"
-          title={`${entry.appName}${entry.appVersion ? ` ${entry.appVersion}` : ""}`}
-        >
-          {entry.appName || entry.deploymentId}
+        <span className="mt-0.5 hidden w-44 shrink-0 items-center gap-1.5 sm:flex">
+          <span
+            className="truncate text-xs text-zinc-500 dark:text-zinc-400"
+            title={entry.appName || entry.deploymentId}
+          >
+            {entry.appName || entry.deploymentId}
+          </span>
+          {entry.appVersion && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded bg-black/[0.05] px-1 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-white/[0.08] dark:text-zinc-400"
+              title={`version ${entry.appVersion}`}
+            >
+              <Tag size={9} />
+              {entry.appVersion}
+            </span>
+          )}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm" title={entry.message}>
           {entry.message}

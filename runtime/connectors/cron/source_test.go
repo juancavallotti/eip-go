@@ -21,7 +21,10 @@ func (fakeServices) KV() core.KV { return nil }
 
 //nolint:ireturn // implements core.RuntimeServices
 func (fakeServices) Secrets() core.SecretStore { return nil }
-func (fakeServices) Close() error              { return nil }
+
+//nolint:ireturn // implements core.RuntimeServices
+func (fakeServices) Queues() core.Queues { return core.NoopQueues() }
+func (fakeServices) Close() error        { return nil }
 
 type fakeLeaderElection struct{ leader bool }
 

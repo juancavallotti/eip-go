@@ -1,10 +1,10 @@
 // This file provides the "queue-dispatch" block: it sends the current message to
-// a queue subject, mirroring the flow-ref idiom over the cluster's queues. By
-// default it does a Request — it waits for one competing consumer to handle the
-// message and folds the reply's body and variables back in, the cross-replica
-// analogue of a two-way flow-ref. With oneWay it does a fire-and-forget Publish
-// and returns the message unchanged. The subject is a CEL expression evaluated per
-// message, so a flow can route or shard work dynamically.
+// a queue subject to load balance work across replicas. By default it does a
+// fire-and-forget Publish and returns the message unchanged — dispatching is the
+// common case. With awaitReply it instead does a Request, waiting for one competing
+// consumer to handle the message and folding the reply's body and variables back
+// in (the cross-replica analogue of a two-way flow-ref). The subject is a CEL
+// expression evaluated per message, so a flow can route or shard work dynamically.
 package queue
 
 import (
@@ -31,22 +31,22 @@ var exprVars = []string{"body", "vars", "eventID", "correlationID", "env", "now"
 type dispatchSettings struct {
 	// Subject is a CEL expression producing the queue subject to send to (required).
 	Subject string `json:"subject"`
-	// OneWay fires the message and returns immediately, ignoring any reply. When
-	// false (the default) the block waits for one consumer's reply and folds its
-	// body and variables back into the current message.
-	OneWay bool `json:"oneWay"`
-	// Timeout bounds the wait for a reply in request mode; it defaults to the queue
-	// service's request timeout.
+	// AwaitReply waits for one consumer's reply and folds its body and variables
+	// back into the current message (request). When false (the default) the block
+	// publishes fire-and-forget and returns immediately, ignoring any reply.
+	AwaitReply bool `json:"awaitReply"`
+	// Timeout bounds the wait for a reply when AwaitReply is set; it defaults to the
+	// queue service's request timeout.
 	Timeout duration `json:"timeout"`
 }
 
-// dispatch sends the message to a queue subject. Two-way (the default) waits for a
-// reply and merges it back; one-way fires and forgets.
+// dispatch sends the message to a queue subject. The default is a fire-and-forget
+// publish; awaitReply waits for a reply and merges it back.
 type dispatch struct {
-	subject *expr.Program
-	oneWay  bool
-	timeout time.Duration
-	env     map[string]any
+	subject    *expr.Program
+	awaitReply bool
+	timeout    time.Duration
+	env        map[string]any
 }
 
 //nolint:ireturn // a BlockFactory returns the MessageProcessor interface
@@ -63,17 +63,17 @@ func newDispatch(raw types.Settings, deps core.BlockDeps) (core.MessageProcessor
 		return nil, fmt.Errorf("queue-dispatch: compile subject: %w", err)
 	}
 	return &dispatch{
-		subject: program,
-		oneWay:  cfg.OneWay,
-		timeout: time.Duration(cfg.Timeout),
-		env:     envActivation(deps.Env),
+		subject:    program,
+		awaitReply: cfg.AwaitReply,
+		timeout:    time.Duration(cfg.Timeout),
+		env:        envActivation(deps.Env),
 	}, nil
 }
 
 // Process resolves the subject, then sends a fresh sub-message (cloned and
 // rekeyed so the sub-invocation correlates on its own EventID, not this flow's
-// terminal event) to the queue. One-way publishes and returns the message
-// unchanged; two-way requests a reply and folds its body and variables back in.
+// terminal event) to the queue. The default publishes and returns the message
+// unchanged; awaitReply requests a reply and folds its body and variables back in.
 func (d *dispatch) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
 	subject, err := d.subject.EvalString(messageActivation(msg, d.env))
 	if err != nil {
@@ -91,7 +91,7 @@ func (d *dispatch) Process(ctx context.Context, msg *types.Message) (*types.Mess
 		return nil, fmt.Errorf("queue-dispatch %q: %w", subject, err)
 	}
 
-	if d.oneWay {
+	if !d.awaitReply {
 		if err := queues.Publish(ctx, subject, *sub); err != nil {
 			return nil, fmt.Errorf("queue-dispatch publish to %q: %w", subject, err)
 		}

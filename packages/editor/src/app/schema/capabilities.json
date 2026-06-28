@@ -607,7 +607,7 @@
       "type": "object-read",
       "label": "Object Read",
       "category": "processor",
-      "icon": "ArrowDownToLine",
+      "icon": "HardDriveDownload",
       "description": "Read an object from the runtime store into the body or a variable.",
       "fields": [
         {
@@ -630,7 +630,7 @@
       "type": "object-write",
       "label": "Object Write",
       "category": "processor",
-      "icon": "ArrowUpFromLine",
+      "icon": "HardDriveUpload",
       "description": "Write an object to the runtime store under a key.",
       "fields": [
         {
@@ -669,8 +669,8 @@
       "type": "queue-dispatch",
       "label": "Queue Dispatch",
       "category": "processor",
-      "icon": "ArrowUpFromLine",
-      "description": "Send the message to a platform queue subject to load balance work across replicas. By default it waits for one consumer's reply and folds it back in (request); one-way fires and forgets (publish).",
+      "icon": "Send",
+      "description": "Send the message to a platform queue subject to load balance work across replicas. By default it publishes fire-and-forget (one-way); enable Await reply to wait for one consumer's reply and fold it back in (request).",
       "fields": [
         {
           "name": "subject",
@@ -680,19 +680,19 @@
           "description": "CEL expression for the queue subject to send to; enables per-message routing/sharding."
         },
         {
-          "name": "oneWay",
-          "label": "One-way",
+          "name": "awaitReply",
+          "label": "Await reply",
           "type": "boolean",
           "required": false,
           "default": false,
-          "description": "Fire-and-forget (publish) if true; otherwise wait for one consumer's reply and fold its body and variables back in (request)."
+          "description": "Wait for one consumer's reply and fold its body and variables back in (request). When false (the default) the message is published fire-and-forget (one-way)."
         },
         {
           "name": "timeout",
           "label": "Timeout",
           "type": "string",
           "required": false,
-          "description": "How long to wait for a reply in request mode (e.g. 30s); defaults to the queue service timeout."
+          "description": "How long to wait for a reply when Await reply is set (e.g. 30s); defaults to the queue service timeout."
         }
       ]
     }
@@ -701,13 +701,13 @@
     {
       "type": "queue",
       "label": "Platform Queue",
-      "icon": "ArrowDownToLine",
+      "icon": "Inbox",
       "settings": [],
       "sources": [
         {
           "type": "queue",
-          "label": "Platform Queue subscription",
-          "icon": "ArrowDownToLine",
+          "label": "Platform Queue",
+          "icon": "Inbox",
           "fields": [
             {
               "name": "subject",

@@ -16,8 +16,10 @@ import {
   Route,
   Bot,
   Eraser,
-  ArrowDownToLine,
-  ArrowUpFromLine,
+  HardDriveDownload,
+  HardDriveUpload,
+  Send,
+  Inbox,
   Box,
   type LucideIcon,
 } from "lucide-react";
@@ -54,8 +56,10 @@ const ICONS: Record<string, LucideIcon> = {
   Route,
   Bot,
   Eraser,
-  ArrowDownToLine,
-  ArrowUpFromLine,
+  HardDriveDownload,
+  HardDriveUpload,
+  Send,
+  Inbox,
 };
 
 /** Resolve a block's icon name to a component, falling back to a generic box. */

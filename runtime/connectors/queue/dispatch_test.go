@@ -86,7 +86,7 @@ func TestDispatchRequestFoldsReplyBack(t *testing.T) {
 	reply := types.Message{Body: "enriched", Variables: types.Variables{"score": 42.0}}
 	q := &fakeQueues{reply: reply}
 
-	p := build(t, types.Settings{"subject": `"orders." + vars.region`})
+	p := build(t, types.Settings{"subject": `"orders." + vars.region`, "awaitReply": true})
 
 	msg, _ := types.NewMessage("corr-1")
 	msg.Body = "raw"
@@ -114,9 +114,10 @@ func TestDispatchRequestFoldsReplyBack(t *testing.T) {
 	}
 }
 
-func TestDispatchOneWayPublishesAndLeavesMessage(t *testing.T) {
+func TestDispatchPublishesByDefaultAndLeavesMessage(t *testing.T) {
 	q := &fakeQueues{}
-	p := build(t, types.Settings{"subject": `"audit"`, "oneWay": true})
+	// No awaitReply: the default is fire-and-forget publish.
+	p := build(t, types.Settings{"subject": `"audit"`})
 
 	msg, _ := types.NewMessage("")
 	msg.Body = "original"
@@ -132,7 +133,7 @@ func TestDispatchOneWayPublishesAndLeavesMessage(t *testing.T) {
 		t.Fatalf("published %d times, want 1", len(q.published))
 	}
 	if len(q.requested) != 0 {
-		t.Fatalf("one-way must not Request; got %d", len(q.requested))
+		t.Fatalf("default must not Request; got %d", len(q.requested))
 	}
 	if q.published[0].subject != "audit" {
 		t.Fatalf("subject = %q, want audit", q.published[0].subject)

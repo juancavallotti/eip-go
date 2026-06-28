@@ -26,9 +26,9 @@ import (
 	"github.com/juancavallotti/octo/core"
 	"github.com/juancavallotti/octo/core/runtime"
 	"github.com/juancavallotti/octo/services"
-	_ "github.com/juancavallotti/octo/services/k8s"        // registers the "k8s" services provider
-	_ "github.com/juancavallotti/octo/services/standalone" // registers the "standalone" services provider (default)
 	"github.com/juancavallotti/octo/types"
+	// The active runtime-services provider is selected at build time by tag:
+	// standalone by default, k8s with -tags k8s. See providers_*.go.
 )
 
 // defaultInvokeTimeout bounds how long `invoke` waits for the flow by default.

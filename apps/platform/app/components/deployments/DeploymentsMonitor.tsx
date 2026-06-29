@@ -3,25 +3,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FolderTree, RefreshCw } from "lucide-react";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
-import { listAllDeployments } from "@/app/model/orchestrator";
+import { listAllDeployments, scaleDeployment } from "@/app/model/orchestrator";
 import {
-  DeploymentTile,
   EmptyState,
   type DeployedTile,
 } from "@/app/(session)/platform/DashboardTiles";
+import DeploymentListItem from "./DeploymentListItem";
 
 /**
- * The deployments view: every active deployment across every integration, with
- * live status (polled while the page is open). Reuses the dashboard's aggregation
- * (listAllDeployments) and tile so the standalone page and the dashboard summary
- * stay in sync. The grid is the same DeploymentTile, whose corner actions open the
- * integration in the manager or the editor.
+ * The deployments view: every active deployment across every integration, shown as
+ * a list with live per-pod state (polled while the page is open). Unlike the
+ * dashboard's read-only tile grid, each row exposes the management actions the
+ * dedicated page is for — scale the deployment, jump to its logs, or open the
+ * integration in the manager/editor. Reuses the dashboard's aggregation
+ * (listAllDeployments) so the page and the dashboard summary stay in sync.
  */
 export default function DeploymentsMonitor() {
   const { available, ready } = useOrchestrator();
   const [deployments, setDeployments] = useState<DeployedTile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   // Fetch without touching the spinner flag, so it's safe to call from the effect.
   const load = useCallback(
@@ -48,6 +50,23 @@ export default function DeploymentsMonitor() {
     const id = setInterval(load, 8000);
     return () => clearInterval(id);
   }, [available, load]);
+
+  // Scale a deployment, then refresh so the count reflects the live desired state.
+  const scale = useCallback(
+    async (d: DeployedTile, replicas: number) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await scaleDeployment(d.id, replicas);
+        await load();
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
 
   const sorted = useMemo(
     () =>
@@ -108,11 +127,16 @@ export default function DeploymentsMonitor() {
               body="Deploy an integration and it will show up here with live status."
             />
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="space-y-3">
               {sorted.map((d) => (
-                <DeploymentTile key={d.id} d={d} />
+                <DeploymentListItem
+                  key={d.id}
+                  deployment={d}
+                  busy={busy}
+                  onScale={scale}
+                />
               ))}
-            </div>
+            </ul>
           )}
         </div>
       </div>

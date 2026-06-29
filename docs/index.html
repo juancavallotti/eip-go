@@ -23,13 +23,9 @@
   <div class="wrap nav-inner">
     <a class="brand" href="#top"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
     <nav class="nav-links">
-      <a href="#concepts">Concepts</a>
-      <a href="#architecture">Architecture</a>
-      <a href="#patterns">Patterns</a>
-      <a href="cel.html">CEL</a>
+      <a href="#features">Features</a>
+      <a href="docs.html">Docs</a>
       <a href="#samples">Samples</a>
-      <a href="#guides">Guides</a>
-      <a href="#quickstart">Quickstart</a>
       <a href="#whats-new">What's New</a>
       <a href="#roadmap">Roadmap</a>
       <a href="#releases">Releases</a>
@@ -49,7 +45,7 @@
         <span class="badge">YAML flows</span>
         <span class="badge">CEL expressions</span>
         <span class="badge">hot reload</span>
-        <span class="badge">v<!-- x-release-please-start-version -->0.1.8<!-- x-release-please-end-version --></span>
+        <span class="badge">v<!-- x-release-please-start-version -->0.2.0<!-- x-release-please-end-version --></span>
       </div>
       <h1>The integration platform,<br /><span class="grad">reimagined for what comes next.</span></h1>
       <p class="lead">
@@ -57,8 +53,8 @@
         modern, concurrent runtime carry them. Cloud-native today, AI-native by design.
       </p>
       <div class="cta">
-        <a class="btn btn-primary" href="#quickstart">Get started →</a>
-        <a class="btn btn-ghost" href="https://github.com/juancavallotti/octo" target="_blank" rel="noopener">★ Star on GitHub</a>
+        <a class="btn btn-primary" href="docs.html">Read the docs →</a>
+        <a class="btn btn-ghost" href="#quickstart">Quickstart</a>
       </div>
     </div>
     <div class="hero-card">
@@ -109,265 +105,7 @@
       <div class="card"><div class="ic">⚡</div><h3>Call flows from the CLI</h3><p><code>invoke</code> runs a single flow by name with JSON in and JSON out — no sources started, no ports bound. Testing a flow is one command.</p></div>
       <div class="card"><div class="ic">🧵</div><h3>Concurrent by design</h3><p>Each flow runs on a dedicated worker pool reading a bounded channel. Backpressure is built in; FIFO is one setting away (<code>workers: 1</code>).</p></div>
       <div class="card"><div class="ic">🔤</div><h3>CEL expressions</h3><p>Routing, transforms, and payloads are <a href="https://github.com/google/cel-go" target="_blank" rel="noopener">CEL</a> expressions, compiled once at build time so a typo fails at startup, not in production.</p></div>
-      <div class="card"><div class="ic">📡</div><h3>Observable</h3><p>Every message emits <code>started</code> then exactly one terminal event — <code>completed</code>, <code>dropped</code>, or <code>failed</code> — on a process-wide event bus for metrics and dead-lettering.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================== CONCEPTS ============================== -->
-<section id="concepts" class="alt">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">The processing model</span>
-      <h2>From an external event to a processed message.</h2>
-      <p>A connector turns the outside world into messages; a source feeds them to a flow; the flow runs them through an ordered chain of blocks. That's the whole model — and it composes all the way down.</p>
-    </div>
-
-    <div class="diagram-stack">
-      <figure class="diagram">
-        <div class="mermaid">
-flowchart LR
-  EXT([external event]):::ext --> CONN["Connector<br/><small>owns connections, tx, clients</small>"]:::conn
-  CONN --> SRC["Message Source<br/><small>builds a Message</small>"]:::src
-  SRC --> CH{{"bounded channel<br/>(buffer)"}}:::ch
-  CH --> FLOW
-  subgraph FLOW["Flow — a MessageProcessor"]
-    direction LR
-    B1["block"]:::blk --> B2["block"]:::blk --> B3["block"]:::blk
-  end
-  FLOW --> OUT([terminal event]):::ext
-  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
-  classDef conn fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
-  classDef src fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
-  classDef ch fill:#1a232e,stroke:#f5b14c,color:#e6edf3;
-  classDef blk fill:#141b24,stroke:#b692ff,color:#e6edf3;
-        </div>
-        <figcaption class="diagram-cap">connector → source → flow → block → processor</figcaption>
-      </figure>
-
-      <div class="grid cols-2">
-        <figure class="diagram">
-          <div class="mermaid">
-flowchart TB
-  SRC["Source"]:::src --> CH{{"buffer<br/>bounded channel"}}:::ch
-  CH --> W1["worker 1"]:::w
-  CH --> W2["worker 2"]:::w
-  CH --> W3["worker N"]:::w
-  W1 --> RUN["run flow<br/>per message"]:::run
-  W2 --> RUN
-  W3 --> RUN
-  RUN -. "fork branches" .-> SP[("shared flow pool")]:::pool
-  classDef src fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
-  classDef ch fill:#1a232e,stroke:#f5b14c,color:#e6edf3;
-  classDef w fill:#141b24,stroke:#36d399,color:#e6edf3;
-  classDef run fill:#141b24,stroke:#b692ff,color:#e6edf3;
-  classDef pool fill:#1a232e,stroke:#b692ff,color:#e6edf3;
-          </div>
-          <figcaption class="diagram-cap">Two levels of concurrency: a per-flow worker pool, plus a shared pool for parallel composites. Backpressure comes from the bounded channel.</figcaption>
-        </figure>
-
-        <figure class="diagram">
-          <div class="mermaid">
-stateDiagram-v2
-  direction LR
-  [*] --> started
-  started --> completed: returns a message
-  started --> dropped: returns (nil, nil)
-  started --> failed: returns an error
-  completed --> [*]
-  dropped --> [*]
-  failed --> [*]
-          </div>
-          <figcaption class="diagram-cap">Each message produces a <code>started</code> event, then exactly one terminal event on the flow-event bus.</figcaption>
-        </figure>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================== ARCHITECTURE ============================== -->
-<section id="architecture">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">How the container works</span>
-      <h2>One process, one container, a clear lifecycle.</h2>
-      <p>A service owns the start/stop discipline: connectors acquire resources first, flows build and start, sources begin to emit. On shutdown everything unwinds in strict reverse — channels close, workers drain, connectors release.</p>
-    </div>
-
-    <div class="diagram-stack">
-      <figure class="diagram">
-        <div class="mermaid">
-flowchart TB
-  subgraph SVC["Octo service · one process / one container"]
-    direction TB
-    subgraph CONN["Connectors — acquire resources on start"]
-      direction LR
-      C1["cron"]:::c
-      C2["http"]:::c
-      C3["http-client"]:::c
-      C4["database"]:::c
-      C5["logger"]:::c
-    end
-    subgraph FL["Flows — concurrent message processors"]
-      direction LR
-      F1["orders-api<br/><small>http source</small>"]:::f
-      F2["enrich-order<br/><small>sourceless · callable</small>"]:::f
-    end
-  end
-  C2 -->|"provides source"| F1
-  F1 -->|"flow-ref (sync)"| F2
-  C4 -. "sql block" .-> F1
-  C5 -. "log block" .-> F1
-  classDef c fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
-  classDef f fill:#141b24,stroke:#36d399,color:#e6edf3;
-        </div>
-        <figcaption class="diagram-cap">Connectors own external resources and may <em>provide a source</em> to a flow. Blocks reach back into named connectors for capabilities (a logger, a DB, an HTTP client).</figcaption>
-      </figure>
-
-      <figure class="diagram">
-        <div class="mermaid">
-sequenceDiagram
-  autonumber
-  participant S as Service
-  participant C as Connectors
-  participant F as Flows
-  participant Src as Sources
-  S->>C: Start (acquire resources, in order)
-  S->>F: Build (resolve source, build block chain)
-  S->>F: Start worker pool + shared pool
-  F->>Src: Start — begin emitting messages
-  Note over S,Src: running — messages flow through workers
-  S-->>Src: ctx.Done() → Stop source
-  Src-->>F: close channel, drain workers
-  F-->>C: Stop connectors (strict reverse order)
-        </div>
-        <figcaption class="diagram-cap">The start/stop lifecycle. Whoever creates the channel closes it — after the source stops.</figcaption>
-      </figure>
-    </div>
-
-    <h3 style="margin-top:56px">Composite blocks — composition all the way down</h3>
-    <p style="max-width:720px">A composite block embeds sub-flows through explicit, typed slots. <code>handle-errors</code> is the single-threaded half (an error boundary with recovery); <code>fork</code> is the concurrent half (scatter, then join). Both keep the one-in / one-out seam intact.</p>
-    <div class="grid cols-2" style="margin-top:22px">
-      <figure class="diagram">
-        <div class="mermaid">
-flowchart TB
-  IN([message]):::ext --> MAIN
-  subgraph SCOPE["handle-errors — error boundary · sequential"]
-    direction TB
-    MAIN["process chain"]:::blk -->|ok| OUT
-    MAIN -->|error| ALT["error chain<br/><small>sees vars.error · recover</small>"]:::alt --> OUT([continue]):::ext
-  end
-  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
-  classDef blk fill:#141b24,stroke:#b692ff,color:#e6edf3;
-  classDef alt fill:#141b24,stroke:#f5b14c,color:#e6edf3;
-        </div>
-        <figcaption class="diagram-cap"><code>handle-errors</code> — try / catch, the recovery path.</figcaption>
-      </figure>
-      <figure class="diagram">
-        <div class="mermaid">
-flowchart TB
-  IN([message]):::ext --> FORK{{fork}}:::fork
-  FORK -->|clone| A["branch: notify"]:::blk
-  FORK -->|clone| B["branch: audit"]:::blk
-  FORK -->|clone| C["branch: index"]:::blk
-  A --> JOIN{{join}}:::fork
-  B --> JOIN
-  C --> JOIN
-  JOIN --> OUT([input passes through]):::ext
-  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
-  classDef fork fill:#1a232e,stroke:#4aa8ff,color:#e6edf3;
-  classDef blk fill:#141b24,stroke:#b692ff,color:#e6edf3;
-        </div>
-        <figcaption class="diagram-cap"><code>fork</code> — scatter-gather on the shared pool, joins before returning.</figcaption>
-      </figure>
-    </div>
-
-    <h3 style="margin-top:56px">The platform — native on Kubernetes</h3>
-    <p style="max-width:760px">That runtime is one process. The platform around it is cloud-native: a <strong>control plane</strong> — the editor (with OIDC SSO) and the orchestrator, backed by Postgres — and a <strong>data plane</strong> where every integration you deploy becomes its own Kubernetes Deployment of the very same runtime image. Replicas are pods; a Service gives each a stable in-cluster address; an Ingress makes it public when you ask. See the <a href="deployment.html">deployment guide</a>.</p>
-    <figure class="diagram" style="margin-top:22px">
-      <div class="mermaid">
-flowchart TB
-  USER([you · browser]):::ext --> ED
-  subgraph CP["Control plane"]
-    direction LR
-    ED["Editor<br/><small>Next.js · OIDC SSO</small>"]:::conn -->|BFF| OR["Orchestrator"]:::conn
-    OR --> PG[("Postgres<br/><small>integrations · deployments · secrets</small>")]:::pool
-  end
-  OR -->|"applies manifests"| K8S{{"Kubernetes API"}}:::ch
-  subgraph DP["Data plane — one Deployment per integration"]
-    direction LR
-    P1["pod<br/><small>octo runtime + your flows</small>"]:::f
-    P2["pod<br/><small>octo runtime</small>"]:::f
-  end
-  K8S --> P1
-  K8S --> P2
-  NET([public traffic]):::ext --> ING["Traefik Ingress<br/><small>slug.your-domain</small>"]:::src
-  ING --> SVC["Service<br/><small>octo-int-slug</small>"]:::src
-  SVC --> P1
-  SVC --> P2
-  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
-  classDef conn fill:#141b24,stroke:#4aa8ff,color:#e6edf3;
-  classDef src fill:#141b24,stroke:#f5b14c,color:#e6edf3;
-  classDef f fill:#141b24,stroke:#36d399,color:#e6edf3;
-  classDef ch fill:#1a232e,stroke:#b692ff,color:#e6edf3;
-  classDef pool fill:#1a232e,stroke:#4aa8ff,color:#e6edf3;
-      </div>
-      <figcaption class="diagram-cap">The iPaaS, native on Kubernetes: the editor + orchestrator + Postgres control plane provisions one Deployment per integration; pods run the same runtime, behind a Service and an optional Ingress.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- ============================== PATTERNS ============================== -->
-<section id="patterns" class="alt">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">Enterprise integration patterns</span>
-      <h2>The patterns you know — mapped to real blocks.</h2>
-      <p>Many classic EIPs map onto a block, a composite, or a connector capability that ships today. Every entry below names a construct you can actually write in a flow — nothing aspirational.</p>
-    </div>
-
-    <div class="sample-grid">
-      <table class="eip-table">
-        <thead><tr><th>Pattern</th><th>In Octo</th></tr></thead>
-        <tbody>
-          <tr><td>Message</td><td>JSON body + <code>vars</code> + <code>correlationID</code></td></tr>
-          <tr><td>Polling Consumer</td><td><code>cron</code> source</td></tr>
-          <tr><td>Request–Reply</td><td><code>http</code> source (synchronous response)</td></tr>
-          <tr><td>Content-Based Router</td><td><code>switch</code> block</td></tr>
-          <tr><td>Conditional branch</td><td><code>if</code> block</td></tr>
-          <tr><td>Message Translator</td><td><code>set-payload</code> (CEL) · <code>ai-mapping</code> (LLM)</td></tr>
-          <tr><td>Content Enricher</td><td><code>flow-ref</code> (synchronous; result folds back)</td></tr>
-          <tr><td>Splitter</td><td><code>foreach</code> block</td></tr>
-          <tr><td>Scatter-Gather</td><td><code>fork</code> composite</td></tr>
-          <tr><td>Wire Tap</td><td><code>log</code> block (passes the message through)</td></tr>
-          <tr><td>Dead Letter / recovery</td><td><code>handle-errors</code> block · flow <code>error:</code> chain</td></tr>
-          <tr><td>Process Manager</td><td>sourceless flow + <code>flow-ref</code></td></tr>
-          <tr><td>Content-based routing (LLM)</td><td><code>ai-router</code> composite</td></tr>
-        </tbody>
-      </table>
-
-      <div>
-        <figure class="diagram">
-          <div class="mermaid">
-flowchart TB
-  IN(["HTTP POST /orders/{id}"]):::ext --> WT["log · wire tap"]:::blk
-  WT --> AUD[/"flow-ref: audit<br/>one-way"/]:::async
-  WT --> SW{"switch<br/>content-based router"}:::route
-  SW -->|"method == POST"| ENR["flow-ref: enrich-order<br/><small>content enricher</small>"]:::blk
-  SW -->|"method == GET"| LK["set-payload<br/><small>translator</small>"]:::blk
-  SW -->|default| ERR["set-payload: error"]:::alt
-  ENR --> RESP([JSON 200]):::ext
-  LK --> RESP
-  ERR --> RESP
-  classDef ext fill:#11161d,stroke:#36d399,color:#e6edf3;
-  classDef blk fill:#141b24,stroke:#b692ff,color:#e6edf3;
-  classDef route fill:#1a232e,stroke:#4aa8ff,color:#e6edf3;
-  classDef async fill:#141b24,stroke:#f5b14c,color:#e6edf3;
-  classDef alt fill:#141b24,stroke:#ff6b6b,color:#e6edf3;
-          </div>
-          <figcaption class="diagram-cap">The <code>http-orders</code> sample, drawn: a wire tap, a one-way audit, content-based routing, and a synchronous content enricher.</figcaption>
-        </figure>
-      </div>
+      <div class="card"><div class="ic">📡</div><h3>Centralized event log</h3><p>The platform collects a centralized event log across your integrations and monitors the event queues — see what's flowing, what's backed up, and what failed, all in one place.</p></div>
     </div>
   </div>
 </section>
@@ -386,46 +124,23 @@ flowchart TB
   </div>
 </section>
 
-<!-- ============================== GUIDES ============================== -->
-<section id="guides" class="alt">
+<!-- ============================== DOCS ============================== -->
+<section id="docs" class="alt">
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">Go deeper</span>
-      <h2>Guides.</h2>
-      <p>Beyond the landing tour: reference pages for the pieces you'll reach for most. More to come.</p>
+      <h2>Documentation.</h2>
+      <p>The full docs cover the runtime model, the platform, building integrations, the built-in connectors and blocks, CEL expressions, and AI authoring with MCP.</p>
     </div>
-    <div class="grid cols-2">
-      <a class="card" href="connectors.html" style="text-decoration:none">
-        <div class="ic">🔌</div>
-        <h3>Connectors &amp; blocks</h3>
-        <p>Every connector — cron, http, http-client (with OAuth2), database, logger, the LLM providers — plus the built-in state &amp; cache blocks and their settings.</p>
-      </a>
-      <a class="card" href="state.html" style="text-decoration:none">
-        <div class="ic">🗃️</div>
-        <h3>State &amp; clustering</h3>
-        <p>The key–value store, encrypted secret store, leader election, and distributed cron — and how the <code>object-*</code> and cache blocks persist state across replicas.</p>
-      </a>
-      <a class="card" href="mcp.html" style="text-decoration:none">
-        <div class="ic">🤖</div>
-        <h3>Authoring with AI (MCP)</h3>
-        <p>The MCP server, its tools and resources, the <code>/mcp</code> endpoint, and per-user API keys — let an AI assistant draft, validate, and run integrations.</p>
-      </a>
-      <a class="card" href="cel.html" style="text-decoration:none">
-        <div class="ic">🔤</div>
-        <h3>CEL cheat sheet</h3>
-        <p>The variables in scope, what each source exposes, and copy-paste recipes for routing, transforms, payloads, and error recovery.</p>
-      </a>
-      <a class="card" href="error-handling.html" style="text-decoration:none">
-        <div class="ic">🧯</div>
-        <h3>Error handling</h3>
-        <p>The <code>handle-errors</code> block, flow-level <code>error:</code> paths, <code>vars.error</code>, HTTP status codes, and self-healing with <code>ai-retry</code>.</p>
-      </a>
-      <a class="card" href="deployment.html" style="text-decoration:none">
-        <div class="ic">🚀</div>
-        <h3>Deployment</h3>
-        <p>Run locally, in Docker, on k3d, or managed on GCP — plus public vs private exposure, OIDC SSO, TLS, and secrets.</p>
-      </a>
+    <div class="grid cols-3">
+      <a class="card" href="docs.html" style="text-decoration:none"><div class="ic">📚</div><h3>Start here</h3><p>The two-layer mental model and a map of everything else.</p></a>
+      <a class="card" href="runtime-architecture.html" style="text-decoration:none"><div class="ic">⚙️</div><h3>Runtime architecture</h3><p>Messages, connectors, sources, flows, blocks, concurrency, lifecycle.</p></a>
+      <a class="card" href="platform.html" style="text-decoration:none"><div class="ic">☸️</div><h3>Platform architecture</h3><p>The orchestrator, deployments, and the Kubernetes data plane.</p></a>
+      <a class="card" href="building-integrations.html" style="text-decoration:none"><div class="ic">🧱</div><h3>Building integrations</h3><p>The config schema, blocks, and custom connectors in Go.</p></a>
+      <a class="card" href="connectors.html" style="text-decoration:none"><div class="ic">🔌</div><h3>Connectors &amp; blocks</h3><p>The built-in reference, plus state, cache, and AI blocks.</p></a>
+      <a class="card" href="mcp.html" style="text-decoration:none"><div class="ic">🤖</div><h3>Authoring with MCP</h3><p>Let an AI assistant draft, validate, and run integrations.</p></a>
     </div>
+    <p style="margin-top:24px"><a class="btn btn-primary" href="docs.html">Open the docs →</a></p>
   </div>
 </section>
 
@@ -454,10 +169,10 @@ flowchart TB
         <p style="font-size:0.9rem">Edit the YAML (or a <code>.env</code>), save, and the runtime rebuilds itself.</p>
 
         <h3 style="margin-top:28px">5 · Check the version</h3>
-        <div class="cmd"><span class="p">$</span> ./bin/octo --version<br /><span class="c"># → octo 0.2.0 (built 2026-06-18T22:31:23Z)</span></div>
+        <div class="cmd"><span class="p">$</span> ./bin/octo --version<br /><span class="c"># → octo <!-- x-release-please-start-version -->0.2.0<!-- x-release-please-end-version --> (built 2026-06-18T22:31:23Z)</span></div>
       </div>
     </div>
-    <div class="note"><strong>Tip:</strong> sourceless flows (no <code>source:</code>) get an implicit source and become callable by name — ideal for <code>invoke</code> and for <code>flow-ref</code> sub-flows.</div>
+    <div class="note"><strong>Tip:</strong> sourceless flows (no <code>source:</code>) get an implicit source and become callable by name — ideal for <code>invoke</code> and for <code>flow-ref</code> sub-flows. See the full <a href="standalone.html">standalone guide</a> for the CLI, hot reload, and the Docker editor.</div>
   </div>
 </section>
 
@@ -467,7 +182,7 @@ flowchart TB
     <div class="section-head">
       <span class="eyebrow">Recently shipped</span>
       <h2>What's new.</h2>
-      <p>The 0.2.0–0.1.8 wave made integrations <strong>stateful</strong>, gave them <strong>versioned deployments</strong>, and opened the door to <strong>authoring with AI assistants</strong> over MCP. Here's the tour.</p>
+      <p>The 0.1.7–0.1.8 wave made integrations <strong>stateful</strong>, gave them <strong>versioned deployments</strong>, and opened the door to <strong>authoring with AI assistants</strong> over MCP. Here's the tour.</p>
     </div>
 
     <div class="grid cols-2">
@@ -513,11 +228,11 @@ flowchart TB
 
     <div class="grid cols-2" style="margin-top:22px">
       <figure class="diagram">
-        <img class="shot" src="assets/screenshots/sample-ai-router.png" alt="An ai-router flow on the Octo editor canvas: an AI Router block fanning out to billing, technical, and default routes." />
+        <img class="shot" src="assets/screenshots/sample-ai-router.png" alt="An ai-router flow on the Octo editor canvas: an AI Router block fanning out to billing, technical, and default routes." onerror="this.closest('figure').remove()" />
         <figcaption class="diagram-cap">An <code>ai-router</code> flow rendered in the visual editor.</figcaption>
       </figure>
       <figure class="diagram">
-        <img class="shot" src="assets/screenshots/sample-error-handling.png" alt="The error-handling sample on the canvas: a handle-errors block with a recovery lane, and a flow-level error path." />
+        <img class="shot" src="assets/screenshots/sample-error-handling.png" alt="The error-handling sample on the canvas: a handle-errors block with a recovery lane, and a flow-level error path." onerror="this.closest('figure').remove()" />
         <figcaption class="diagram-cap">A flow's recovery path: the <code>error:</code> chain that sees <code>vars.error</code>.</figcaption>
       </figure>
     </div>

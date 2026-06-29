@@ -14,21 +14,10 @@
 </head>
 <body>
 
-<header class="nav">
-  <div class="wrap nav-inner">
-    <a class="brand" href="index.html"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="connectors.html">Connectors</a>
-      <a href="cel.html">CEL</a>
-      <a href="state.html">State</a>
-      <a href="mcp.html">MCP</a>
-      <a href="error-handling.html">Error handling</a>
-      <a href="deployment.html">Deploy</a>
-      <a class="nav-gh" href="https://github.com/juancavallotti/octo" target="_blank" rel="noopener">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
+<header id="docs-topbar"></header>
+<div class="docs-layout">
+  <aside id="docs-nav"></aside>
+  <main class="docs-content">
 
 <section class="hero" style="padding:72px 0 48px">
   <div class="wrap">
@@ -38,8 +27,8 @@
       Flows are stateless by default — but real integrations need to remember a cursor, cache an
       expensive call, hold a token, or make sure a scheduled job fires <em>once</em> even when the
       integration runs as several replicas. Octo's <strong>runtime services</strong> give blocks a
-      key–value store, an encrypted secret store, and leader election, behind one interface that
-      works the same in a single process and across a cluster.
+      key–value store, an encrypted secret store, leader election, and message queues, behind one
+      interface that works the same in a single process and across a cluster.
     </p>
   </div>
 </section>
@@ -47,16 +36,18 @@
 <!-- overview -->
 <section id="overview">
   <div class="wrap">
-    <div class="section-head"><span class="eyebrow">What you get</span><h2>Three primitives.</h2>
+    <div class="section-head"><span class="eyebrow">What you get</span><h2>Four primitives.</h2>
       <p>Runtime services are injected into every flow's execution context. Blocks reach them through stable interfaces, so a flow doesn't know — or care — whether it's running on your laptop or in Kubernetes.</p>
     </div>
-    <div class="grid cols-3">
+    <div class="grid cols-2">
       <div class="card"><div class="ic">🗃️</div><h3>Key–value store</h3>
         <p>Versioned <code>Get</code> / <code>Set</code> / <code>Delete</code> with optimistic concurrency. The <code>object-*</code> and cache blocks build on it; you rarely touch it directly.</p></div>
       <div class="card"><div class="ic">🔐</div><h3>Secret store</h3>
         <p>The same KV API, but routed to <strong>encrypted</strong> namespaces. The http-client OAuth2 token cache lives here; so can anything a connector must keep private.</p></div>
       <div class="card"><div class="ic">👑</div><h3>Leader election</h3>
         <p>Acquire a key and ask <code>IsLeader()</code>. Exactly one replica wins per key — the basis for distributed cron and any run-once work.</p></div>
+      <div class="card"><div class="ic">📨</div><h3>Queues</h3>
+        <p>Publish, subscribe, and request/reply over named subjects. Across replicas they're competing consumers, so work is balanced — see <a href="#queues">internal queues</a>.</p></div>
     </div>
   </div>
 </section>
@@ -124,8 +115,37 @@
   </div>
 </section>
 
+<!-- queues -->
+<section id="queues">
+  <div class="wrap">
+    <div class="section-head"><span class="eyebrow">Decouple &amp; balance</span><h2>Internal queues.</h2>
+      <p>The queues service moves messages between flows over named <strong>subjects</strong>, with publish,
+        subscribe, and request/reply. It's how you decouple a fast ingress from slow work, and how you spread
+        that work across replicas — subscribers join a <strong>queue group</strong>, so each message is handled
+        by exactly one of them.</p>
+    </div>
+    <div class="grid cols-2">
+      <div>
+        <h3>How flows use it</h3>
+        <p style="font-size:0.95rem">A <code>queue</code> <strong>source</strong> subscribes a flow to a subject
+          (a competing consumer); the <code>queue-dispatch</code> <strong>block</strong> publishes the current
+          message to a subject, optionally awaiting a reply. Both are documented under
+          <a href="connectors.html#queue">the queue connector</a>; the load-balancing model is in
+          <a href="clustering.html#queues">clustering</a>.</p>
+      </div>
+      <div>
+        <h3>Standalone vs cluster</h3>
+        <p style="font-size:0.95rem">Standalone, queues are <strong>in-process channels</strong> — perfect for
+          developing and testing a producer/consumer pair in one run. In the cluster they're <strong>NATS</strong>
+          subjects scoped to the deployment (<code>octo.&lt;deploymentId&gt;.q.&lt;subject&gt;</code>), so one
+          integration's traffic never crosses into another's.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- providers -->
-<section id="providers">
+<section id="providers" class="alt">
   <div class="wrap">
     <div class="section-head"><span class="eyebrow">Same interface, two backends</span><h2>Standalone vs Kubernetes.</h2>
       <p>The active provider is chosen at startup by <code>RUNTIME_SERVICES_MODULE</code> (default <code>standalone</code>). The CLI builds services once and reuses them across hot-reloads, so leases and connections aren't churned.</p>
@@ -136,6 +156,7 @@
         <tr><td>KV store</td><td>In-process map. Nothing leaves memory.</td><td>HTTP calls to the orchestrator's per-deployment KV API.</td></tr>
         <tr><td>Secrets</td><td>In-memory (no encryption — never persisted).</td><td>Encrypted at rest with <code>KV_ENCRYPTION_KEY</code>.</td></tr>
         <tr><td>Leader election</td><td>Always leader (single process).</td><td>Kubernetes Leases, one per key, per deployment.</td></tr>
+        <tr><td>Queues</td><td>In-process channels.</td><td>NATS subjects + queue groups, scoped per deployment.</td></tr>
         <tr><td>Scope</td><td>This process / sample run.</td><td>Per deployment (<code>OCTO_DEPLOYMENT_ID</code>), shared across replicas.</td></tr>
       </tbody>
     </table>
@@ -144,8 +165,9 @@
     <table class="eip-table">
       <tbody>
         <tr><td><code>RUNTIME_SERVICES_MODULE</code></td><td><code>k8s</code></td></tr>
-        <tr><td><code>OCTO_DEPLOYMENT_ID</code></td><td>Scopes every KV key and Lease to this deployment.</td></tr>
+        <tr><td><code>OCTO_DEPLOYMENT_ID</code></td><td>Scopes every KV key, Lease, and queue subject to this deployment.</td></tr>
         <tr><td><code>ORCHESTRATOR_URL</code></td><td>The KV API endpoint the provider calls.</td></tr>
+        <tr><td><code>NATS_URL</code></td><td>The NATS broker for queues and log shipping.</td></tr>
         <tr><td><code>POD_NAME</code> / <code>POD_NAMESPACE</code></td><td>Pod identity (downward API), used by leader election.</td></tr>
       </tbody>
     </table>
@@ -183,9 +205,12 @@ task run:sample -- runtime-services.yaml
   </div>
 </footer>
 
+</main>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
-<script>document.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });</script>
+<script src="assets/docs-nav.js?v=1" type="module"></script>
 </body>
 </html>

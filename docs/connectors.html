@@ -15,22 +15,10 @@
 <body>
 
 <!-- ============================== NAV ============================== -->
-<header class="nav">
-  <div class="wrap nav-inner">
-    <a class="brand" href="index.html"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="connectors.html">Connectors</a>
-      <a href="cel.html">CEL</a>
-      <a href="state.html">State</a>
-      <a href="mcp.html">MCP</a>
-      <a href="error-handling.html">Error handling</a>
-      <a href="deployment.html">Deploy</a>
-      <a href="index.html#samples">Samples</a>
-      <a class="nav-gh" href="https://github.com/juancavallotti/eip-go" target="_blank" rel="noopener">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
+<header id="docs-topbar"></header>
+<div class="docs-layout">
+  <aside id="docs-nav"></aside>
+  <main class="docs-content">
 
 <section class="hero" style="padding:72px 0 48px">
   <div class="wrap">
@@ -55,6 +43,7 @@
         <tr><td><code>http-client</code></td><td>—</td><td><code>rest</code></td><td>An outbound HTTP client with base URL, auth, and optional caching.</td></tr>
         <tr><td><code>database</code></td><td>—</td><td><code>sql</code></td><td>A connection pool for Postgres or SQLite.</td></tr>
         <tr><td><code>logger</code></td><td>—</td><td><code>log</code></td><td>A configured structured logger (stdout/stderr/file).</td></tr>
+        <tr><td><code>queue</code></td><td>yes</td><td><code>queue-dispatch</code></td><td>A message queue — in-process standalone, NATS in the cluster. Competing consumers + request/reply.</td></tr>
         <tr><td><code>llm-anthropic</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>Anthropic Claude client.</td></tr>
         <tr><td><code>llm-openai</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>OpenAI client.</td></tr>
         <tr><td><code>llm-gemini</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>Google Gemini client.</td></tr>
@@ -360,8 +349,61 @@
   </div>
 </section>
 
+<!-- ============================== QUEUE ============================== -->
+<section id="queue">
+  <div class="wrap">
+    <div class="section-head"><span class="eyebrow">Source · Block · <code>queue-dispatch</code></span><h2><code>queue</code></h2>
+      <p>A message queue for decoupling and load balancing. It provides both a <strong>source</strong> (subscribe a
+        flow to a subject) and the <strong>queue-dispatch</strong> block (publish the current message to a
+        subject). In standalone mode it's an in-process channel; in the cluster it's NATS, with the subject scoped
+        to the deployment (<code>octo.&lt;deploymentId&gt;.q.&lt;subject&gt;</code>). Subscribers form a
+        <strong>queue group</strong>, so across a deployment's replicas each message is handled by exactly one —
+        see <a href="clustering.html#queues">clustering</a>.</p>
+    </div>
+    <div class="grid cols-2">
+      <div>
+        <h3>Source settings (subscribe)</h3>
+        <table class="eip-table">
+          <thead><tr><th>Setting</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>subject</code></td><td>Required. The subject this flow consumes (a competing consumer).</td></tr>
+            <tr><td><code>listeners</code></td><td>Concurrent handlers in this pod. Default 1.</td></tr>
+            <tr><td><code>timeout</code></td><td>For request/reply: how long to run the flow before the reply times out.</td></tr>
+          </tbody>
+        </table>
+<pre><code class="language-yaml">source:
+  connector: bus
+  type: queue
+  settings:
+    subject: work
+    listeners: 4</code></pre>
+      </div>
+      <div>
+        <h3>The <code>queue-dispatch</code> block (publish)</h3>
+        <table class="eip-table">
+          <thead><tr><th>Setting</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>subject</code></td><td>Required. CEL expression → the target subject (route or shard by content).</td></tr>
+            <tr><td><code>awaitReply</code></td><td>When true, request/reply: wait for a reply and fold it into the message. Default false (fire-and-forget).</td></tr>
+            <tr><td><code>timeout</code></td><td>Reply wait when <code>awaitReply</code> is true.</td></tr>
+            <tr><td><code>connector</code></td><td>The queue connector to publish through.</td></tr>
+          </tbody>
+        </table>
+<pre><code class="language-yaml">- type: queue-dispatch
+  connector: bus
+  settings:
+    subject: '"work." + vars.region'
+    awaitReply: false</code></pre>
+      </div>
+    </div>
+    <div class="note"><strong>Request/reply.</strong> When a producer sets <code>awaitReply: true</code>, the
+      consuming flow's final body is sent back as the reply — the same request/reply seam an <code>http</code>
+      source gives you, but over the queue.</div>
+  </div>
+</section>
+
 <!-- ============================== LLM ============================== -->
-<section id="llm">
+<section id="llm" class="alt">
   <div class="wrap">
     <div class="section-head"><span class="eyebrow">Blocks · <code>ai-mapping</code> · <code>ai-router</code> · <code>ai-agent</code> · <code>ai-retry</code></span>
       <h2>LLM connectors</h2>
@@ -411,8 +453,11 @@
   </div>
 </footer>
 
+</main>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
-<script>document.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });</script>
+<script src="assets/docs-nav.js?v=1" type="module"></script>
 </body>
 </html>

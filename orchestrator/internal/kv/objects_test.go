@@ -112,6 +112,83 @@ func TestObjectDeleteUsesVersionQuery(t *testing.T) {
 	}
 }
 
+func TestObjectNamespaceParamRoutesAndListsNamespaces(t *testing.T) {
+	store := newFakeStore()
+	ts := newObjectServer(t, store)
+
+	// A write naming a non-default namespace lands there, not in "user".
+	resp := do(t, http.MethodPut, ts.URL+"/deployments/dep-1/objects/k?namespace=system", "",
+		`{"value":"v","version":0}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT status = %d, want 200", resp.StatusCode)
+	}
+	if _, ok := store.rows["system/k"]; !ok {
+		t.Fatal("key not stored under the system namespace")
+	}
+
+	// The namespaces endpoint advertises user (always) plus every populated one,
+	// including secret namespaces (the browser can list/clean them up).
+	store.rows["user_secrets/s"] = []byte("ciphertext")
+	list := do(t, http.MethodGet, ts.URL+"/deployments/dep-1/namespaces", "", "")
+	defer list.Body.Close()
+	var listed struct {
+		Items []string `json:"items"`
+	}
+	if err := json.NewDecoder(list.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(listed.Items) != 3 || listed.Items[0] != "user" ||
+		listed.Items[1] != "system" || listed.Items[2] != "user_secrets" {
+		t.Fatalf("namespaces = %v, want [user system user_secrets]", listed.Items)
+	}
+}
+
+// Secret namespaces can be listed and cleaned up but never read or written through
+// the object facade.
+func TestObjectSecretNamespaceListAndDeleteButNotReadOrWrite(t *testing.T) {
+	store := newFakeStore()
+	store.rows["user_secrets/oauth"] = []byte("ciphertext")
+	store.version["user_secrets/oauth"] = 1
+	ts := newObjectServer(t, store)
+
+	// Listing a secret namespace returns key metadata (not the value).
+	list := do(t, http.MethodGet, ts.URL+"/deployments/dep-1/objects?namespace=user_secrets", "", "")
+	defer list.Body.Close()
+	var listed struct {
+		Items []Entry `json:"items"`
+	}
+	if err := json.NewDecoder(list.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].Key != "oauth" {
+		t.Fatalf("list = %+v, want [oauth]", listed.Items)
+	}
+
+	// Reading and writing a secret value are both refused.
+	get := do(t, http.MethodGet, ts.URL+"/deployments/dep-1/objects/oauth?namespace=user_secrets", "", "")
+	get.Body.Close()
+	if get.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET status = %d, want 400", get.StatusCode)
+	}
+	put := do(t, http.MethodPut, ts.URL+"/deployments/dep-1/objects/oauth?namespace=user_secrets", "",
+		`{"value":"x","version":1}`)
+	put.Body.Close()
+	if put.StatusCode != http.StatusBadRequest {
+		t.Fatalf("PUT status = %d, want 400", put.StatusCode)
+	}
+
+	// Deleting a secret key (cleanup) is allowed.
+	del := do(t, http.MethodDelete, ts.URL+"/deployments/dep-1/objects/oauth?namespace=user_secrets&version=1", "", "")
+	del.Body.Close()
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE status = %d, want 204", del.StatusCode)
+	}
+	if _, ok := store.rows["user_secrets/oauth"]; ok {
+		t.Fatal("secret key present after delete")
+	}
+}
+
 func TestObjectBinaryRoundTripsAsBase64(t *testing.T) {
 	store := newFakeStore()
 	ts := newObjectServer(t, store)

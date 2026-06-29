@@ -30,7 +30,8 @@ func (f *fakeRepo) Write(_ context.Context, _, _, _ string, value []byte, _ int6
 	return f.version, nil
 }
 
-func (f *fakeRepo) List(context.Context, string, string) ([]Entry, error)      { return nil, nil }
+func (f *fakeRepo) List(context.Context, string, string) ([]Entry, error)       { return nil, nil }
+func (f *fakeRepo) ListNamespaces(context.Context, string) ([]string, error)    { return nil, nil }
 func (f *fakeRepo) Delete(context.Context, string, string, string, int64) error { return nil }
 func (f *fakeRepo) DeleteByDeployment(context.Context, string) error            { return nil }
 

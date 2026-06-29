@@ -169,6 +169,33 @@ func (r *Repo) List(ctx context.Context, deploymentID, namespace string) ([]Entr
 	return entries, nil
 }
 
+// ListNamespaces returns the distinct namespaces that hold any key for a
+// deployment, ordered by name. The object browser uses it to offer a namespace
+// picker; the facade filters out the encrypted secret namespaces before serving.
+func (r *Repo) ListNamespaces(ctx context.Context, deploymentID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT namespace FROM kv_store WHERE deployment_id = $1 ORDER BY namespace`,
+		deploymentID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("kv repo: list namespaces: %w", err)
+	}
+	defer rows.Close()
+
+	var namespaces []string
+	for rows.Next() {
+		var ns string
+		if err := rows.Scan(&ns); err != nil {
+			return nil, fmt.Errorf("kv repo: list namespaces scan: %w", err)
+		}
+		namespaces = append(namespaces, ns)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("kv repo: list namespaces rows: %w", err)
+	}
+	return namespaces, nil
+}
+
 // DeleteByDeployment removes every key for a deployment, for best-effort cleanup
 // when a deployment is undeployed.
 func (r *Repo) DeleteByDeployment(ctx context.Context, deploymentID string) error {

@@ -26,6 +26,7 @@ const (
 type Store interface {
 	Get(ctx context.Context, deploymentID, namespace, key string) ([]byte, int64, bool, error)
 	List(ctx context.Context, deploymentID, namespace string) ([]Entry, error)
+	ListNamespaces(ctx context.Context, deploymentID string) ([]string, error)
 	Set(ctx context.Context, deploymentID, namespace, key string, value []byte, expectedVersion int64) (int64, error)
 	Delete(ctx context.Context, deploymentID, namespace, key string, expectedVersion int64) error
 }

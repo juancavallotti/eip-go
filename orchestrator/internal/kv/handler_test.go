@@ -39,6 +39,20 @@ func (f *fakeStore) List(_ context.Context, _, namespace string) ([]Entry, error
 	return entries, nil
 }
 
+func (f *fakeStore) ListNamespaces(_ context.Context, _ string) ([]string, error) {
+	seen := map[string]bool{}
+	var namespaces []string
+	for k := range f.rows {
+		ns, _, _ := strings.Cut(k, "/")
+		if !seen[ns] {
+			seen[ns] = true
+			namespaces = append(namespaces, ns)
+		}
+	}
+	sort.Strings(namespaces)
+	return namespaces, nil
+}
+
 func (f *fakeStore) Set(_ context.Context, _, namespace, key string, value []byte, _ int64) (int64, error) {
 	if f.setErr != nil {
 		return 0, f.setErr

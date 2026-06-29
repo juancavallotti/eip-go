@@ -10,16 +10,20 @@ import (
 	httpx "github.com/juancavallotti/octo/orchestrator/internal/http"
 )
 
-// userNamespace is the single, user-facing KV namespace the object browser serves.
-// Fixing it here (rather than reading it from the path, as the raw KV handler does)
-// keeps the system and secret namespaces off the platform's object API.
+// userNamespace is the default namespace the object browser serves when a request
+// names none. The handler serves any namespace named via ?namespace=, including the
+// encrypted secret ones — but only their key metadata (list) and deletion (cleanup):
+// it never reads or writes a secret value, so plaintext/ciphertext never reaches the
+// platform's plain object API.
 const userNamespace = "user"
 
-// ObjectHandler serves the user-facing object browser the platform UI calls: a JSON
-// facade over the KV store, fixed to the "user" namespace so system and secret data
-// never reach it. It adds the listing the raw KV routes lack; reads/writes/deletes
-// otherwise mirror the raw handler's optimistic-concurrency semantics, with the
-// version carried in the JSON body / query string rather than a header.
+// ObjectHandler serves the object browser the platform UI calls: a JSON facade over
+// the KV store for inspecting and troubleshooting deployment state. It adds the
+// namespace + key listing the raw KV routes lack; reads/writes/deletes otherwise
+// mirror the raw handler's optimistic-concurrency semantics, with the version carried
+// in the JSON body / query string rather than a header. Secret namespaces are listed
+// and deletable (so stale credentials can be cleaned up) but their values are never
+// served or edited here — that stays with the dedicated secrets API.
 type ObjectHandler struct {
 	store Store
 }
@@ -32,10 +36,34 @@ func NewObjectHandler(store Store) *ObjectHandler {
 // Register attaches the object routes to mux. The key segment is a trailing wildcard
 // so keys may contain slashes.
 func (h *ObjectHandler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /deployments/{id}/namespaces", h.namespaces)
 	mux.HandleFunc("GET /deployments/{id}/objects", h.list)
 	mux.HandleFunc("GET /deployments/{id}/objects/{key...}", h.get)
 	mux.HandleFunc("PUT /deployments/{id}/objects/{key...}", h.put)
 	mux.HandleFunc("DELETE /deployments/{id}/objects/{key...}", h.delete)
+}
+
+// namespaces lists the namespaces a deployment holds data in, so the browser can
+// offer a picker. Secret namespaces are included — the browser can list and clean up
+// their keys (just not view/edit values), which is the point of the troubleshooting
+// view.
+func (h *ObjectHandler) namespaces(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	all, err := h.store.ListNamespaces(ctx, r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	// Always advertise the default namespace, even before anything is written to it.
+	out := []string{userNamespace}
+	for _, ns := range all {
+		if ns != userNamespace {
+			out = append(out, ns)
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 // objectValue is the JSON shape a single object is returned/written as. Encoding is
@@ -49,10 +77,16 @@ type objectValue struct {
 }
 
 func (h *ObjectHandler) list(w http.ResponseWriter, r *http.Request) {
+	// Listing exposes only key metadata (no values), so secret namespaces are fine.
+	namespace, ok := objectNamespace(w, r, true)
+	if !ok {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	entries, err := h.store.List(ctx, r.PathValue("id"), userNamespace)
+	entries, err := h.store.List(ctx, r.PathValue("id"), namespace)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -64,11 +98,17 @@ func (h *ObjectHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ObjectHandler) get(w http.ResponseWriter, r *http.Request) {
+	// Reading a value: secret namespaces are refused so plaintext never leaks.
+	namespace, ok := objectNamespace(w, r, false)
+	if !ok {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
 	key := r.PathValue("key")
-	value, version, ok, err := h.store.Get(ctx, r.PathValue("id"), userNamespace, key)
+	value, version, ok, err := h.store.Get(ctx, r.PathValue("id"), namespace, key)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -92,6 +132,12 @@ func (h *ObjectHandler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ObjectHandler) put(w http.ResponseWriter, r *http.Request) {
+	// Writing a value: secret namespaces are refused (edit them via the secrets API).
+	namespace, ok := objectNamespace(w, r, false)
+	if !ok {
+		return
+	}
+
 	var req objectValue
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -106,7 +152,7 @@ func (h *ObjectHandler) put(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	version, err := h.store.Set(ctx, r.PathValue("id"), userNamespace, r.PathValue("key"), value, req.Version)
+	version, err := h.store.Set(ctx, r.PathValue("id"), namespace, r.PathValue("key"), value, req.Version)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -115,6 +161,13 @@ func (h *ObjectHandler) put(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ObjectHandler) delete(w http.ResponseWriter, r *http.Request) {
+	// Deleting removes a key (cleanup) without exposing its value, so secret
+	// namespaces are allowed — e.g. to clear stale OAuth credentials.
+	namespace, ok := objectNamespace(w, r, true)
+	if !ok {
+		return
+	}
+
 	expected, err := versionQuery(r)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid version")
@@ -124,11 +177,28 @@ func (h *ObjectHandler) delete(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	if err := h.store.Delete(ctx, r.PathValue("id"), userNamespace, r.PathValue("key"), expected); err != nil {
+	if err := h.store.Delete(ctx, r.PathValue("id"), namespace, r.PathValue("key"), expected); err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// objectNamespace resolves the namespace a request targets from ?namespace=,
+// defaulting to the user namespace. When allowSecret is false it refuses the
+// encrypted secret namespaces (writing a 400, returning ok=false so the caller
+// stops) so their values are never read or written here; list and delete pass
+// allowSecret=true since they only expose key metadata or remove a key.
+func objectNamespace(w http.ResponseWriter, r *http.Request, allowSecret bool) (string, bool) {
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		return userNamespace, true
+	}
+	if !allowSecret && isSecret(namespace) {
+		httpx.WriteError(w, http.StatusBadRequest, "secret values are not accessible here")
+		return "", false
+	}
+	return namespace, true
 }
 
 // decodeValue turns the JSON value into bytes per its encoding ("base64" for binary,

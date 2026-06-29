@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
     "@octo/mcp",
     "@octo/run-host",
   ],
+  // The NATS client is a Node-only package (net/tls transport); keep it external
+  // so it's required at runtime rather than bundled into the server build.
+  serverExternalPackages: ["@nats-io/transport-node"],
 };
 
 export default nextConfig;

@@ -34,6 +34,12 @@ spec:
             - name: ORCHESTRATOR_URL
               value: "http://{{ include "octo.orchestrator.serviceName" . }}:{{ .Values.orchestrator.service.port }}"
             {{- if .Values.nats.enabled }}
+            # In-cluster NATS broker. The BFF subscribes to deployment-status and
+            # integration-write subjects and serves them to the browser as SSE
+            # (issue #74). Omitted when NATS is off, in which case those streams
+            # fall back to polling / the in-process bus.
+            - name: NATS_URL
+              value: {{ include "octo.nats.url" . | quote }}
             # NATS monitoring HTTP service (port 8222); the /platform/queues view
             # polls /varz + /connz from here directly. Omitted when NATS is off, in
             # which case the queues view shows its unavailable state.

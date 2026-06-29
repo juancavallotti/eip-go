@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.2.0](https://github.com/juancavallotti/octo/compare/v0.1.8...v0.2.0) (2026-06-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* RuntimeServices gained a Queues() method; every implementer must provide it.
+
+### Features
+
+* **connectors:** add platform queue source and queue-dispatch block ([6e38534](https://github.com/juancavallotti/octo/commit/6e385340a173a994e8d4929fc2158cb93d06dfbb))
+* **core:** add queue runtime-service interfaces + standalone implementation ([7f202c2](https://github.com/juancavallotti/octo/commit/7f202c2568c0a47068287b0f06af21626cd45978))
+* **core:** add TeeHandler and LogShipper for log fan-out ([a2469ee](https://github.com/juancavallotti/octo/commit/a2469ee859bf1be9b39a1d9f39214be51ad5acc3))
+* **devspace:** run NATS in the local dev cluster ([9f61c5a](https://github.com/juancavallotti/octo/commit/9f61c5afff5d4b056271730c84f4a532d10e9ba8))
+* **editor:** add Platform Queue source and queue-dispatch block to schema ([54706d9](https://github.com/juancavallotti/octo/commit/54706d9e30aaae4c681b10d78f3d0d7ed8f966b2))
+* expose queues on RuntimeServices and inject NATS_URL into runtime pods ([0982f8f](https://github.com/juancavallotti/octo/commit/0982f8fbc2c7deffd64616d32b5d96529f5b3092))
+* **helm:** add NATS broker as a StatefulSet ([3682397](https://github.com/juancavallotti/octo/commit/368239710c0bdc57be1d570c7d1ae58eb7025d0c))
+* **logs:** add GET /logs query API with filters and paging ([e9526cf](https://github.com/juancavallotti/octo/commit/e9526cf73d0bd45ff203d6924cde47ff2af04c41))
+* **logs:** consume internal.logs into Postgres ([5707557](https://github.com/juancavallotti/octo/commit/57075571277a472e7c6c931e84ea52c0f8c0716e))
+* **logs:** filter logs by app name and version ([882d9ad](https://github.com/juancavallotti/octo/commit/882d9ad80bafe6dc37c37987f118587ce5b1257b))
+* **logs:** scaffold log-aggregator service ([6bac8e8](https://github.com/juancavallotti/octo/commit/6bac8e81c96099657e802af52aae04823e93c79b))
+* **orchestrator:** add user-facing object-store JSON facade with listing ([37fa333](https://github.com/juancavallotti/octo/commit/37fa33326a5745f22ee3cafe3bbbf7625a919ec2))
+* **orchestrator:** browse object-store namespaces, clean up secrets ([033fb9b](https://github.com/juancavallotti/octo/commit/033fb9be1275ab1cb37500d70581d491d3453a03))
+* **orchestrator:** publish deployment snapshots to NATS, drop in-process hub ([a617317](https://github.com/juancavallotti/octo/commit/a6173173f00ae3ed5c16dac6eb8ceb14b3c78534))
+* platform queue blocks (source + queue-dispatch) ([a3372e2](https://github.com/juancavallotti/octo/commit/a3372e2f64537edba9b2c5a5b151af53ae603281))
+* **platform:** add /platform/logs view ([0786c18](https://github.com/juancavallotti/octo/commit/0786c18f55bb64668b0ca798b6cf44d2fdea6b89))
+* **platform:** add /platform/queues broker monitoring view ([895454e](https://github.com/juancavallotti/octo/commit/895454e71c3e27f5b6168134a573e89c8ab6c8cf))
+* **platform:** add a dedicated Deployments page ([6c72444](https://github.com/juancavallotti/octo/commit/6c7244446628a364e2d589bd53b2fbe2571b3e42))
+* **platform:** add icons to the management nav tabs ([ac500b0](https://github.com/juancavallotti/octo/commit/ac500b006df575479fa58b9b33afefe565e4bf74))
+* **platform:** add logs data layer (client, action, model) ([d311676](https://github.com/juancavallotti/octo/commit/d31167633cf4a1da328f079ace3c2159f2f11b41))
+* **platform:** add logs shortcut to the dashboard ([258e742](https://github.com/juancavallotti/octo/commit/258e742ef4082f2bb0ba543d6157f539075026b3))
+* **platform:** add object-store BFF and shared listAllDeployments helper ([cfc2e70](https://github.com/juancavallotti/octo/commit/cfc2e70bbe2b8c689e1e3148d2996836a92d2cb6))
+* **platform:** add queue-stats data layer over NATS monitoring ([3fb830c](https://github.com/juancavallotti/octo/commit/3fb830cbce7a244f223b35ae0079c39b233f4084))
+* **platform:** add the Object Store page (view/edit/create/delete) ([4158cb0](https://github.com/juancavallotti/octo/commit/4158cb0e7f9dcae51e19c895a5b0709249a67fd1))
+* **platform:** fan out integration-write events over NATS for editor reload ([750df40](https://github.com/juancavallotti/octo/commit/750df40695248cdbcca13a6a70b6346380da05a7))
+* **platform:** filter logs by app name and version with autocomplete ([f08db55](https://github.com/juancavallotti/octo/commit/f08db55667f17fc644483c3e228099c0432e9ae2))
+* **platform:** full-width logs view with tailing and URL filters ([6776c10](https://github.com/juancavallotti/octo/commit/6776c10059de8975f689f182d2ed79be90054766))
+* **platform:** make the integrations manager bookmarkable ([1b2d09d](https://github.com/juancavallotti/octo/commit/1b2d09dabf2341867376c35ba60ba61e5e46adff))
+* **platform:** make the integrations manager bookmarkable via the path ([0f20682](https://github.com/juancavallotti/octo/commit/0f206825b09fa265194667bfed1ba010212404af))
+* **platform:** navigation restructure, object store & deployments pages, NATS deployment events ([97ed68c](https://github.com/juancavallotti/octo/commit/97ed68c53549348883ada622ba6c1b46e5c026dd))
+* **platform:** pick a namespace in the object store ([3f556b8](https://github.com/juancavallotti/octo/commit/3f556b89f5db782e569812750bc6fdfe6e1b7e60))
+* **platform:** return from the editor to the integration in context ([e10e3d4](https://github.com/juancavallotti/octo/commit/e10e3d41bfdf58cf7518a7f7ac746c4975d80ecc))
+* **platform:** serve deployment-status SSE from NATS, drop orchestrator proxy ([c118210](https://github.com/juancavallotti/octo/commit/c118210f60ff594105c8fe4e4bc91a6e7424210f))
+* **platform:** show app version as a pill in the logs table ([4e6b35e](https://github.com/juancavallotti/octo/commit/4e6b35e28c0dc670c9757eff57ca41375b327dfb))
+* **platform:** show pods and scale on the deployments page ([ed0f12b](https://github.com/juancavallotti/octo/commit/ed0f12ba2e3915497fe1fda70fc58bdc3dc76006))
+* **platform:** show queue destinations on the queues view ([f62192b](https://github.com/juancavallotti/octo/commit/f62192b68f11d199299d2476d33c9e51dfba7bc6))
+* **platform:** show the section nav on every page, including the dashboard ([575b0c1](https://github.com/juancavallotti/octo/commit/575b0c1958f60479b4be93ded764036cebc9b351))
+* **platform:** thread namespace through the object-store BFF ([4d29daf](https://github.com/juancavallotti/octo/commit/4d29dafdcf4cd3b651c9ae85e89fde2f4b2e714b))
+* queues as a runtime service (request-reply + point-to-point) ([c4fc59b](https://github.com/juancavallotti/octo/commit/c4fc59b98a1918b55618240065487d8e58ca0c95))
+* **runtime:** tee process and connector logs to the sink ([081f1ae](https://github.com/juancavallotti/octo/commit/081f1ae446aa4fc555efc2c5a266eebba3a61477))
+* **services:** add NATS-backed queues for the k8s module ([13dbdc9](https://github.com/juancavallotti/octo/commit/13dbdc935bd103c6bc561a9c4f137201675955ad))
+* **services:** ship runtime logs to internal.logs in k8s ([6bbb604](https://github.com/juancavallotti/octo/commit/6bbb60436b9a52200e56b060a32843873c101328))
+* **sql:** add logs table and indexes ([a840b5a](https://github.com/juancavallotti/octo/commit/a840b5a4c8143db2a742e7f0234241cdc3605de5))
+* stamp app name/version onto shipped logs ([ec9c976](https://github.com/juancavallotti/octo/commit/ec9c97649a56c691768c9ae663ebde4f5f6b65cb))
+
+
+### Bug Fixes
+
+* **platform:** render signed-in routes per request so the account tile shows ([5e9f2f3](https://github.com/juancavallotti/octo/commit/5e9f2f3521e4a55a35c5fd64a2cbeb9dde2da79b))
+* **terraform:** avoid sensitive for_each in kv encryption block ([9538143](https://github.com/juancavallotti/octo/commit/95381433c540ad3ba7a3d3f4fcaf4bddc7e21bf1))
+* **terraform:** avoid sensitive for_each in kv encryption block ([0e9abe4](https://github.com/juancavallotti/octo/commit/0e9abe4cb6c2b517b548bfe1e27ed9e816d2ceac))
+
+
+### Refactoring
+
+* **helm:** organize templates into per-service folders ([cbcbb44](https://github.com/juancavallotti/octo/commit/cbcbb44735779a24cb99acd806af5cc952c2d545))
+* **platform:** split management into per-route header tabs ([d395e52](https://github.com/juancavallotti/octo/commit/d395e522e1b550ed8178b0e0d30a0c3f007a240a))
+
+
+### Documentation
+
+* document the platform queue source and queue-dispatch block ([7b6fc27](https://github.com/juancavallotti/octo/commit/7b6fc270e5f114b938ba3b389812c88f8d249a1f))
+* **samples:** add queue-loadbalance example for the platform queue blocks ([e4d903b](https://github.com/juancavallotti/octo/commit/e4d903b596acbdaf9f558979b6572814946f722a))
+* **site:** add State & clustering and MCP authoring guides ([e265e47](https://github.com/juancavallotti/octo/commit/e265e475afcd43093d4269171a03568222eba5d8))
+* **site:** document state/cache blocks, OAuth2, version tags & global now ([58b84c4](https://github.com/juancavallotti/octo/commit/58b84c47a62d9472e581119312fcfbd7ea446b6b))
+* **site:** document the 0.1.7–0.1.8 features (state, versioning, MCP) ([88a22d9](https://github.com/juancavallotti/octo/commit/88a22d98fe387e48fb49f37650b76fd507c2a0e2))
+* **site:** refresh landing page for the 0.1.7–0.1.8 wave ([057ab50](https://github.com/juancavallotti/octo/commit/057ab5045117cae3e9a6ccb8fa8bd97b57e349e4))
+
 ## [0.1.8](https://github.com/juancavallotti/octo/compare/v0.1.7...v0.1.8) (2026-06-27)
 
 

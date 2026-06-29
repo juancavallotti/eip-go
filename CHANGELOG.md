@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.1](https://github.com/juancavallotti/octo/compare/v0.2.0...v0.2.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* **deploy:** track helm chart version via release-please ([5a5d142](https://github.com/juancavallotti/octo/commit/5a5d142d5d98ce848ee09796ff7f29fb3935ddec))
+* **deploy:** track helm chart version via release-please ([05a9b62](https://github.com/juancavallotti/octo/commit/05a9b62dc081522a30d9c72c328d4ae55b8c7779))
+
+
+### Documentation
+
+* expand platform docs — clustering, monitoring, queues, blocks ([5088d85](https://github.com/juancavallotti/octo/commit/5088d85091c4bcbc7b96798c13f0f9e086386af5))
+* restructure site + rewrite/expand platform docs ([ccd2000](https://github.com/juancavallotti/octo/commit/ccd2000e54d0422ef6e660c894015789144893c0))
+* restructure site into a landing page + unified docs section ([c103cd8](https://github.com/juancavallotti/octo/commit/c103cd811dbb7f879287feaa99222af4666d5c4d))
+
 ## [0.2.0](https://github.com/juancavallotti/octo/compare/v0.1.8...v0.2.0) (2026-06-29)
 
 

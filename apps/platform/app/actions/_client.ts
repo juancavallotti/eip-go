@@ -30,10 +30,18 @@ import type {
   VerifiedApiKey,
 } from "@/app/model/apikeys";
 import type { ClusterSecret } from "@/app/model/secrets";
+import type { ObjectEntry, ObjectValue } from "@/app/model/objects";
 
 export type { ActionResult } from "@octo/http";
 
 const enc = encodeURIComponent;
+
+/**
+ * Encode an object key for the `{key...}` path wildcard: keys may contain slashes
+ * (which must stay real path separators), so encode each segment but keep the
+ * slashes between them.
+ */
+const encKey = (key: string): string => key.split("/").map(enc).join("/");
 
 /** The orchestrator base URL with any trailing slash trimmed, or "" when unset. */
 function baseUrl(): string {
@@ -318,5 +326,77 @@ export function deleteSecret(
   return call<void>(
     "DELETE",
     `/secrets/${enc(name)}${force ? "?force=true" : ""}`,
+  );
+}
+
+// --- Objects --------------------------------------------------------------
+// The deployment-scoped object browser: a JSON facade over the orchestrator's KV
+// store, fixed server-side to the user-facing "user" namespace. The list and write
+// endpoints wrap their payload ({ items } / { version }); we unwrap to the bare
+// shape the model expects.
+
+/** The `?namespace=` suffix when a non-default namespace is named, else empty. */
+const nsQuery = (namespace?: string): string =>
+  namespace ? `?namespace=${enc(namespace)}` : "";
+
+export async function listNamespaces(
+  deploymentId: string,
+): Promise<ActionResult<string[]>> {
+  const res = await call<{ items: string[] }>(
+    "GET",
+    `/deployments/${enc(deploymentId)}/namespaces`,
+  );
+  return res.ok ? { ok: true, data: res.data.items } : res;
+}
+
+export async function listObjects(
+  deploymentId: string,
+  namespace?: string,
+): Promise<ActionResult<ObjectEntry[]>> {
+  const res = await call<{ items: ObjectEntry[] }>(
+    "GET",
+    `/deployments/${enc(deploymentId)}/objects${nsQuery(namespace)}`,
+  );
+  return res.ok ? { ok: true, data: res.data.items } : res;
+}
+
+export function getObject(
+  deploymentId: string,
+  key: string,
+  namespace?: string,
+): Promise<ActionResult<ObjectValue>> {
+  return call<ObjectValue>(
+    "GET",
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}${nsQuery(namespace)}`,
+  );
+}
+
+export async function setObject(
+  deploymentId: string,
+  key: string,
+  value: string,
+  version: number,
+  encoding: "utf8" | "base64",
+  namespace?: string,
+): Promise<ActionResult<number>> {
+  const res = await call<{ version: number }>(
+    "PUT",
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}${nsQuery(namespace)}`,
+    { value, encoding, version },
+  );
+  return res.ok ? { ok: true, data: res.data.version } : res;
+}
+
+export function deleteObject(
+  deploymentId: string,
+  key: string,
+  version: number,
+  namespace?: string,
+): Promise<ActionResult<void>> {
+  // version is the primary query param; the namespace (when set) is appended.
+  const ns = namespace ? `&namespace=${enc(namespace)}` : "";
+  return call<void>(
+    "DELETE",
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}?version=${version}${ns}`,
   );
 }

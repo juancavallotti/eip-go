@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,32 @@ func (f *fakeStore) Get(_ context.Context, _, namespace, key string) ([]byte, in
 	k := namespace + "/" + key
 	v, ok := f.rows[k]
 	return v, f.version[k], ok, nil
+}
+
+func (f *fakeStore) List(_ context.Context, _, namespace string) ([]Entry, error) {
+	prefix := namespace + "/"
+	var entries []Entry
+	for k, v := range f.rows {
+		if key, ok := strings.CutPrefix(k, prefix); ok {
+			entries = append(entries, Entry{Key: key, Version: f.version[k], Size: len(v)})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })
+	return entries, nil
+}
+
+func (f *fakeStore) ListNamespaces(_ context.Context, _ string) ([]string, error) {
+	seen := map[string]bool{}
+	var namespaces []string
+	for k := range f.rows {
+		ns, _, _ := strings.Cut(k, "/")
+		if !seen[ns] {
+			seen[ns] = true
+			namespaces = append(namespaces, ns)
+		}
+	}
+	sort.Strings(namespaces)
+	return namespaces, nil
 }
 
 func (f *fakeStore) Set(_ context.Context, _, namespace, key string, value []byte, _ int64) (int64, error) {

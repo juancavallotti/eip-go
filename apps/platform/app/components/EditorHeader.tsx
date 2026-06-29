@@ -42,7 +42,7 @@ export default function EditorHeader({
       <div className="ml-auto flex items-center gap-2">
         {available && (
           <>
-            <IntegrationsButton />
+            <IntegrationsButton getIntegrationId={getIntegrationId} />
             <TagButton getIntegrationId={getIntegrationId} />
             <SaveButton />
           </>

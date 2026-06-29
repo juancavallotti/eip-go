@@ -101,6 +101,39 @@ func TestRepoNamespacesIsolated(t *testing.T) {
 	}
 }
 
+func TestRepoListOrderedWithMetadata(t *testing.T) {
+	repo, dep := newTestRepo(t)
+	ctx := context.Background()
+
+	if _, err := repo.Write(ctx, dep, "user", "beta", []byte("xy"), 0); err != nil {
+		t.Fatalf("write beta: %v", err)
+	}
+	if _, err := repo.Write(ctx, dep, "user", "alpha", []byte("z"), 0); err != nil {
+		t.Fatalf("write alpha: %v", err)
+	}
+	// A key in another namespace must not appear in the user listing.
+	if _, err := repo.Write(ctx, dep, "system", "alpha", []byte("sys"), 0); err != nil {
+		t.Fatalf("write system: %v", err)
+	}
+
+	entries, err := repo.List(ctx, dep, "user")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("len = %d, want 2 (%+v)", len(entries), entries)
+	}
+	if entries[0].Key != "alpha" || entries[1].Key != "beta" {
+		t.Fatalf("order = [%s, %s], want [alpha, beta]", entries[0].Key, entries[1].Key)
+	}
+	if entries[0].Size != 1 || entries[1].Size != 2 {
+		t.Fatalf("sizes = [%d, %d], want [1, 2]", entries[0].Size, entries[1].Size)
+	}
+	if entries[0].Version != 1 || entries[0].UpdatedAt.IsZero() {
+		t.Fatalf("alpha metadata = version %d updatedAt %v", entries[0].Version, entries[0].UpdatedAt)
+	}
+}
+
 func TestRepoDeleteAndByDeployment(t *testing.T) {
 	repo, dep := newTestRepo(t)
 	ctx := context.Background()

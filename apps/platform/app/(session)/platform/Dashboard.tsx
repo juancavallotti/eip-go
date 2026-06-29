@@ -12,28 +12,15 @@ import {
   ScrollText,
 } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
+import ManagementNav from "@/app/components/ManagementNav";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
-import { listDeployments, listIntegrations } from "@/app/model/orchestrator";
+import { listAllDeployments } from "@/app/model/orchestrator";
 import {
   DeploymentTile,
   EmptyState,
   ShortcutTile,
   type DeployedTile,
 } from "./DashboardTiles";
-
-/** Pull every deployment across every integration into one flat, named list. */
-async function loadDeployments(): Promise<DeployedTile[]> {
-  const integrations = await listIntegrations();
-  const lists = await Promise.all(
-    integrations.map((i) =>
-      listDeployments(i.id).then(
-        (ds) => ds.map((d) => ({ ...d, integrationName: i.name })),
-        () => [] as DeployedTile[],
-      ),
-    ),
-  );
-  return lists.flat();
-}
 
 /**
  * The platform dashboard: shortcut tiles for the common actions, then a live grid
@@ -51,7 +38,7 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
   // (its setState calls run inside the promise callbacks, not synchronously).
   const load = useCallback(
     () =>
-      loadDeployments().then(
+      listAllDeployments().then(
         (ds) => {
           setDeployments(ds);
           setError(null);
@@ -85,7 +72,9 @@ export default function Dashboard({ userMenu }: { userMenu?: React.ReactNode }) 
 
   return (
     <div className="flex h-full flex-col">
-      <AppHeader logoHref={null} userMenu={userMenu} />
+      <AppHeader userMenu={userMenu}>
+        <ManagementNav />
+      </AppHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-6 py-8">

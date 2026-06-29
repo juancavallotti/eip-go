@@ -21,9 +21,12 @@ const (
 	headerVersion = "X-Object-Version"
 )
 
-// Store is the operation surface a Handler serves; *Service satisfies it.
+// Store is the operation surface a Handler serves; *Service satisfies it. The
+// object browser's ObjectHandler shares it (it also needs List).
 type Store interface {
 	Get(ctx context.Context, deploymentID, namespace, key string) ([]byte, int64, bool, error)
+	List(ctx context.Context, deploymentID, namespace string) ([]Entry, error)
+	ListNamespaces(ctx context.Context, deploymentID string) ([]string, error)
 	Set(ctx context.Context, deploymentID, namespace, key string, value []byte, expectedVersion int64) (int64, error)
 	Delete(ctx context.Context, deploymentID, namespace, key string, expectedVersion int64) error
 }
@@ -117,10 +120,16 @@ func versionHeader(r *http.Request) (int64, error) {
 	return strconv.ParseInt(raw, 10, 64)
 }
 
-// writeError maps domain errors to HTTP status codes. A version conflict is a 409
-// so the runtime client maps it back to its conflict error; a secret write without
-// a configured key is a 503 (the feature is unavailable, not the caller's fault).
+// writeError maps domain errors to HTTP status codes (see writeStoreError).
 func (h *Handler) writeError(w http.ResponseWriter, err error) {
+	writeStoreError(w, err)
+}
+
+// writeStoreError maps store errors to HTTP status codes, shared by the KV and
+// object handlers. A version conflict is a 409 so the runtime client maps it back
+// to its conflict error; a secret write without a configured key is a 503 (the
+// feature is unavailable, not the caller's fault).
+func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrVersionConflict):
 		httpx.WriteError(w, http.StatusConflict, "version conflict")

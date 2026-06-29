@@ -188,6 +188,28 @@ export async function listDeployments(
   return unwrap(await deploymentActions.listDeployments(integrationId));
 }
 
+/** A deployment paired with the display name of the integration it belongs to. */
+export type DeploymentWithIntegration = Deployment & { integrationName: string };
+
+/**
+ * Aggregate every deployment across every integration into one flat, named list.
+ * A per-integration failure contributes nothing rather than failing the whole
+ * call, so one unreachable integration can't blank the view. Shared by the
+ * dashboard, the deployments page, and the object browser's deployment picker.
+ */
+export async function listAllDeployments(): Promise<DeploymentWithIntegration[]> {
+  const integrations = await listIntegrations();
+  const lists = await Promise.all(
+    integrations.map((i) =>
+      listDeployments(i.id).then(
+        (ds) => ds.map((d) => ({ ...d, integrationName: i.name })),
+        () => [] as DeploymentWithIntegration[],
+      ),
+    ),
+  );
+  return lists.flat();
+}
+
 /**
  * Fetch deploy options for an integration. With no `slug` it returns whether the
  * integration is networked plus a suggested free slug; with a `slug` it validates

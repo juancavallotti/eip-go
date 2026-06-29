@@ -146,7 +146,7 @@ export function DeploymentTile({ d }: { d: DeployedTile }) {
 
       <div className="mt-auto flex items-center justify-end gap-2 pt-1">
         <TileAction
-          href={`/platform/integrations?integration=${encodeURIComponent(d.integrationId)}`}
+          href={`/platform/integrations/i/${encodeURIComponent(d.integrationId)}`}
           icon={SlidersHorizontal}
           label="Manage"
         />

@@ -19,6 +19,8 @@ const secretNamespaceSuffix = "_secrets"
 // Declared in the consumer so service tests can substitute a fake.
 type repository interface {
 	Get(ctx context.Context, deploymentID, namespace, key string) ([]byte, int64, bool, error)
+	List(ctx context.Context, deploymentID, namespace string) ([]Entry, error)
+	ListNamespaces(ctx context.Context, deploymentID string) ([]string, error)
 	Write(ctx context.Context, deploymentID, namespace, key string, value []byte, expectedVersion int64) (int64, error)
 	Delete(ctx context.Context, deploymentID, namespace, key string, expectedVersion int64) error
 	DeleteByDeployment(ctx context.Context, deploymentID string) error
@@ -60,6 +62,18 @@ func (s *Service) Get(ctx context.Context, deploymentID, namespace, key string) 
 		}
 	}
 	return value, version, true, nil
+}
+
+// List returns metadata for every key in a namespace (see Repo.List). The object
+// browser uses it for the non-secret user namespace, so no decryption is involved.
+func (s *Service) List(ctx context.Context, deploymentID, namespace string) ([]Entry, error) {
+	return s.repo.List(ctx, deploymentID, namespace)
+}
+
+// ListNamespaces returns the distinct namespaces holding data for a deployment
+// (see Repo.ListNamespaces). The object browser filters secret namespaces out.
+func (s *Service) ListNamespaces(ctx context.Context, deploymentID string) ([]string, error) {
+	return s.repo.ListNamespaces(ctx, deploymentID)
 }
 
 // Set stores value, encrypting it first when the namespace is a secret namespace.

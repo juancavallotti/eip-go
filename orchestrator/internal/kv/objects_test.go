@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -99,7 +100,7 @@ func TestObjectPutConflictIs409(t *testing.T) {
 func TestObjectDeleteUsesVersionQuery(t *testing.T) {
 	store := newFakeStore()
 	ts := newObjectServer(t, store)
-	if _, err := store.Set(nil, "dep-1", "user", "k", []byte("v"), 0); err != nil {
+	if _, err := store.Set(context.Background(), "dep-1", "user", "k", []byte("v"), 0); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	resp := do(t, http.MethodDelete, ts.URL+"/deployments/dep-1/objects/k?version=1", "", "")

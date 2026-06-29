@@ -241,3 +241,98 @@ footer .foot-links { display: flex; gap: 20px; }
   padding: 14px 18px; color: var(--text-dim); font-size: 0.92rem; margin-top: 20px;
 }
 .note strong { color: var(--text); }
+
+/* ============================================================
+   Docs shell — shared sidebar layout for the /docs section.
+   Rendered by assets/docs-nav.js from a single NAV manifest.
+   ============================================================ */
+
+/* Top bar (slimmer than the landing nav, with a mobile burger). */
+.docs-topbar {
+  position: sticky; top: 0; z-index: 60;
+  background: rgba(11, 15, 20, 0.85); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-soft);
+}
+.docs-topbar-inner { display: flex; align-items: center; gap: 16px; height: 60px; max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+.docs-topbar .brand { font-size: 1.05rem; }
+.docs-topbar-tag {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--border); border-radius: 100px; padding: 3px 10px;
+}
+.docs-topbar-links { display: flex; gap: 20px; margin-left: auto; align-items: center; }
+.docs-topbar-links a { color: var(--text-dim); font-size: 0.9rem; font-weight: 500; }
+.docs-topbar-links a:hover { color: var(--text); text-decoration: none; }
+.docs-burger {
+  display: none; background: none; border: none; color: var(--text); font-size: 1.3rem;
+  cursor: pointer; padding: 4px 8px; line-height: 1;
+}
+
+/* Two-column layout: sticky sidebar + content. */
+.docs-layout {
+  display: grid; grid-template-columns: 256px minmax(0, 1fr);
+  gap: 48px; max-width: 1320px; margin: 0 auto; padding: 0 24px;
+  align-items: start;
+}
+.docs-sidebar {
+  position: sticky; top: 60px; align-self: start;
+  height: calc(100vh - 60px); overflow-y: auto;
+  padding: 32px 8px 48px 0; border-right: 1px solid var(--border-soft);
+}
+.docs-nav-group { margin-bottom: 26px; }
+.docs-nav-title {
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 10px; padding-left: 12px;
+}
+.docs-nav-link {
+  display: block; padding: 7px 12px; border-radius: 8px;
+  color: var(--text-dim); font-size: 0.92rem; font-weight: 500; line-height: 1.35;
+}
+.docs-nav-link:hover { color: var(--text); background: var(--bg-card); text-decoration: none; }
+.docs-nav-link[aria-current="page"] {
+  color: var(--text); background: var(--bg-card);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Content column. Docs sections are tighter than the landing's huge bands. */
+.docs-content { min-width: 0; padding: 40px 0 80px; }
+.docs-content > section { padding: 0; border-top: none; margin-bottom: 56px; }
+.docs-content > section.alt { background: none; }
+.docs-content h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); margin: 0 0 14px; }
+.docs-content .lead { font-size: 1.12rem; color: var(--text-dim); max-width: 70ch; }
+.docs-content h2 { scroll-margin-top: 80px; }
+.docs-content p { max-width: 78ch; }
+.docs-content ul, .docs-content ol { color: var(--text-dim); max-width: 78ch; }
+.docs-content li { margin-bottom: 6px; }
+.docs-content .section-head { margin-bottom: 28px; }
+.docs-page-head { margin-bottom: 40px; padding-bottom: 32px; border-bottom: 1px solid var(--border-soft); }
+
+/* "Next steps" link cards reused across docs pages. */
+.doc-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (max-width: 720px) { .doc-cards { grid-template-columns: 1fr; } }
+.doc-card {
+  display: block; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px; transition: border-color 0.2s, transform 0.2s;
+}
+.doc-card:hover { border-color: var(--accent-2); transform: translateY(-2px); text-decoration: none; }
+.doc-card h3 { color: var(--text); margin: 0 0 4px; font-size: 1rem; }
+.doc-card p { margin: 0; font-size: 0.9rem; }
+
+/* Retrofitted guide pages keep their original .wrap/.hero markup — neutralize it
+   inside the content column so the shared shell controls width and spacing. */
+.docs-content .wrap { max-width: none; margin: 0; padding: 0; }
+.docs-content .hero { padding: 0 0 32px !important; margin-bottom: 40px; border-top: none; border-bottom: 1px solid var(--border-soft); overflow: visible; }
+.docs-content .hero::before { display: none; }
+
+@media (max-width: 980px) {
+  .docs-layout { grid-template-columns: 1fr; gap: 0; }
+  .docs-burger { display: block; }
+  .docs-topbar-links a:not(.nav-gh) { display: none; }
+  .docs-sidebar {
+    position: fixed; top: 60px; left: 0; width: 280px; max-width: 86vw;
+    height: calc(100vh - 60px); background: var(--bg-soft);
+    border-right: 1px solid var(--border); padding: 24px 16px 48px;
+    transform: translateX(-100%); transition: transform 0.2s ease; z-index: 55;
+  }
+  .docs-sidebar.open { transform: translateX(0); box-shadow: 24px 0 60px -20px rgba(0,0,0,0.7); }
+  .docs-content { padding-top: 28px; }
+}

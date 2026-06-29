@@ -14,22 +14,10 @@
 </head>
 <body>
 
-<header class="nav">
-  <div class="wrap nav-inner">
-    <a class="brand" href="index.html"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="connectors.html">Connectors</a>
-      <a href="cel.html">CEL</a>
-      <a href="state.html">State</a>
-      <a href="mcp.html">MCP</a>
-      <a href="error-handling.html">Error handling</a>
-      <a href="deployment.html">Deploy</a>
-      <a href="index.html#samples">Samples</a>
-      <a class="nav-gh" href="https://github.com/juancavallotti/eip-go" target="_blank" rel="noopener">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
+<header id="docs-topbar"></header>
+<div class="docs-layout">
+  <aside id="docs-nav"></aside>
+  <main class="docs-content">
 
 <section class="hero" style="padding:72px 0 48px">
   <div class="wrap">
@@ -195,8 +183,11 @@
   </div>
 </footer>
 
+</main>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
-<script>document.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });</script>
+<script src="assets/docs-nav.js?v=1" type="module"></script>
 </body>
 </html>

@@ -20,6 +20,7 @@
       "extra-files": [
         "runtime/cli/version.go",
         "docs/index.html",
+        "docs/standalone.html",
         "helm/Chart.yaml"
       ]
     }

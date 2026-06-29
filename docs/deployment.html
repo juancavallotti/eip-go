@@ -14,33 +14,21 @@
 </head>
 <body>
 
-<header class="nav">
-  <div class="wrap nav-inner">
-    <a class="brand" href="index.html"><img class="logo" src="assets/octo.png" alt="" /> Octo</a>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="connectors.html">Connectors</a>
-      <a href="cel.html">CEL</a>
-      <a href="state.html">State</a>
-      <a href="mcp.html">MCP</a>
-      <a href="error-handling.html">Error handling</a>
-      <a href="deployment.html">Deploy</a>
-      <a href="index.html#samples">Samples</a>
-      <a class="nav-gh" href="https://github.com/juancavallotti/eip-go" target="_blank" rel="noopener">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
+<header id="docs-topbar"></header>
+<div class="docs-layout">
+  <aside id="docs-nav"></aside>
+  <main class="docs-content">
 
 <section class="hero" style="padding:72px 0 48px">
   <div class="wrap">
     <span class="eyebrow">Guide</span>
     <h1 style="font-size:clamp(2rem,4vw,2.8rem)">Deployment</h1>
     <p class="lead" style="max-width:64ch">
-      Run a flow from the CLI on your laptop, ship the editor as a container, spin up a local
+      Run a flow from the CLI on your laptop, pull the public editor image, spin up a local
       Kubernetes cluster, or stand up the full managed stack on GCP with one Terraform apply.
       This guide covers each path and how an integration's endpoints become public or stay private.
     </p>
-    <p style="max-width:64ch"><a class="btn btn-ghost" href="https://github.com/juancavallotti/eip-go/blob/main/docs/deployment.md" target="_blank" rel="noopener">Full deployment.md ↗</a></p>
+    <p style="max-width:64ch"><a class="btn btn-ghost" href="https://github.com/juancavallotti/octo/blob/main/docs/deployment.md" target="_blank" rel="noopener">Full deployment.md ↗</a></p>
   </div>
 </section>
 
@@ -56,11 +44,10 @@
 <pre><code class="language-bash">task build    # compiles ./bin/octo
 ./bin/octo --config samples/http-orders.yaml --watch</code></pre>
       </div>
-      <div class="card"><div class="ic">🐳</div><h3>Editor in Docker</h3>
-        <p>The editor image bundles the Next.js app and the <code>octo</code> binary, so the RUN feature works in-container.</p>
-<pre><code class="language-bash"># builds from the repo root (runtime + editor)
-docker build -f editor/Dockerfile -t octo-editor .
-docker run -p 3000:3000 octo-editor</code></pre>
+      <div class="card"><div class="ic">🐳</div><h3>Public editor image</h3>
+        <p>A published, self-contained <a href="standalone.html">image</a> — the standalone editor, the <code>octo</code> runtime, a local-disk flow store, and an <a href="mcp.html">MCP</a> server — so anyone can author and run integrations with zero setup. No orchestrator, auth, or database.</p>
+<pre><code class="language-bash">docker run -p 3000:3000 -v "$PWD:/work" juancavallotti/octo
+# editor → http://localhost:3000   ·   MCP → http://localhost:3000/mcp</code></pre>
       </div>
       <div class="card"><div class="ic">☸️</div><h3>Local k3d</h3>
         <p>A local Kubernetes cluster with the full stack (editor + orchestrator + Postgres) via DevSpace, with optional hot reload.</p>
@@ -108,6 +95,7 @@ task deploy TAG=v0.1.4                 # Helm release</code></pre>
       </tbody>
     </table>
     <div class="note"><strong>Env bindings.</strong> Each declared <code>env:</code> entry is bound at deploy time to a literal value or a cluster secret (the secret reference wins). <code>required</code> vars must be bound. <code>HTTP_PORT</code> (which marks the integration as a network service) and <code>HTTP_HOST</code> (<code>0.0.0.0</code>) are supplied by the orchestrator and can't be set by hand. Deploys stream live status over server-sent events, so the editor shows pods going ready in real time.</div>
+    <div class="note"><strong>Wired to the cluster.</strong> Beyond your env, the orchestrator injects the runtime-services config so the pod runs in clustered mode: <code>RUNTIME_SERVICES_MODULE=k8s</code>, <code>OCTO_DEPLOYMENT_ID</code>, <code>ORCHESTRATOR_URL</code> (the KV store), <code>NATS_URL</code> (queues + log shipping), and the pod's name/namespace. The runtime image is built with <code>-tags k8s</code>, so KV goes to the orchestrator, queues and logs go through NATS, and leader election uses Kubernetes Leases — see <a href="platform.html#nats">platform architecture</a>.</div>
   </div>
 </section>
 
@@ -210,7 +198,7 @@ task deploy TAG=v0.1.4                 # Helm release</code></pre>
 <section id="status">
   <div class="wrap">
     <div class="note" style="border-left-color:var(--warn)">
-      <strong>Implemented vs. roadmap.</strong> Everything above ships today: GCP via Terraform + Helm on k3s, Traefik ingress, cert-manager (HTTP-01 and wildcard DNS-01), the create → secrets → deploy workflow with live status, per-deployment and stable internal Services, opt-in public ingress, OIDC SSO for the editor, and state-backed secrets. Each deploy is independent — <strong>integration versioning and promote/rollback are coming soon</strong>; scaling (replica count) is the only in-place change today. Cloud Run, IAP, and API-gateway policies are <em>not</em> part of the current stack.
+      <strong>Implemented vs. roadmap.</strong> Everything above ships today: GCP via Terraform + Helm on k3s, Traefik ingress, cert-manager (HTTP-01 and wildcard DNS-01), the create → secrets → deploy workflow with live status, per-deployment and stable internal Services, opt-in public ingress, OIDC SSO for the editor, state-backed secrets, immutable <a href="#versioning">version tags</a> with in-place rollout, NATS-backed queues with centralized <a href="platform.html#logs">log aggregation</a>, and the public standalone editor image. Cloud Run, IAP, and API-gateway policies are <em>not</em> part of the current stack.
     </div>
   </div>
 </section>
@@ -230,8 +218,11 @@ task deploy TAG=v0.1.4                 # Helm release</code></pre>
   </div>
 </footer>
 
+</main>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
-<script>document.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });</script>
+<script src="assets/docs-nav.js?v=1" type="module"></script>
 </body>
 </html>

@@ -8,9 +8,26 @@
 
 import type { ObjectEntry, ObjectValue } from "@/app/model/objects";
 
+/** The default namespace, shown until another is picked (always available). */
+export const DEFAULT_NAMESPACE = "user";
+
+/** Suffix marking the encrypted secret namespaces (mirrors the orchestrator's kv
+ *  package). Their values can't be viewed or edited here — only listed and deleted
+ *  for cleanup — so the UI uses this to switch the detail panel into a delete-only
+ *  mode. */
+export const SECRET_NAMESPACE_SUFFIX = "_secrets";
+
+/** Whether a namespace holds encrypted secret values (view/edit disabled in the UI). */
+export const isSecretNamespace = (namespace: string): boolean =>
+  namespace.endsWith(SECRET_NAMESPACE_SUFFIX);
+
 export interface State {
   deploymentId: string | null;
-  /** The selected deployment's keys; null while not loaded / loading. */
+  /** The non-secret namespaces the deployment holds; null while not loaded. */
+  namespaces: string[] | null;
+  /** The namespace currently browsed (defaults to DEFAULT_NAMESPACE). */
+  namespace: string;
+  /** The selected deployment+namespace's keys; null while not loaded / loading. */
   entries: ObjectEntry[] | null;
   selectedKey: string | null;
   /** The loaded value+version for selectedKey, or null when none is loaded. */
@@ -27,6 +44,8 @@ export interface State {
 
 export type Action =
   | { type: "selectDeployment"; deploymentId: string | null }
+  | { type: "namespacesLoaded"; namespaces: string[] }
+  | { type: "selectNamespace"; namespace: string }
   | { type: "entriesLoaded"; entries: ObjectEntry[] }
   | { type: "selectKey"; key: string }
   | { type: "valueLoaded"; value: ObjectValue }
@@ -44,9 +63,12 @@ export type Action =
 export function initState(
   deploymentId: string | null,
   selectedKey: string | null,
+  namespace: string | null,
 ): State {
   return {
     deploymentId,
+    namespaces: null,
+    namespace: namespace || DEFAULT_NAMESPACE,
     entries: null,
     selectedKey,
     current: null,
@@ -64,6 +86,20 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         deploymentId: action.deploymentId,
+        namespaces: null,
+        namespace: DEFAULT_NAMESPACE,
+        entries: null,
+        selectedKey: null,
+        current: null,
+        draft: "",
+        creating: false,
+      };
+    case "namespacesLoaded":
+      return { ...state, namespaces: action.namespaces };
+    case "selectNamespace":
+      return {
+        ...state,
+        namespace: action.namespace,
         entries: null,
         selectedKey: null,
         current: null,

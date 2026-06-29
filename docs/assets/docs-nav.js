@@ -36,6 +36,8 @@ const NAV = [
     title: 'Platform',
     links: [
       { href: 'platform.html', label: 'Platform architecture' },
+      { href: 'clustering.html', label: 'Clustering & replicas' },
+      { href: 'monitoring.html', label: 'Monitoring & logs' },
       { href: 'deployment.html', label: 'Deployment' },
     ],
   },

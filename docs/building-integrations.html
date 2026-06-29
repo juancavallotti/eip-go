@@ -93,6 +93,33 @@ flows:                        # one or more root flows
           is how you get branching, loops, parallelism, and error boundaries. Both are listed in the
           <a href="connectors.html">connectors &amp; blocks reference</a>.</p>
       </div>
+
+      <h3 id="leaf-blocks">Built-in leaf blocks</h3>
+      <p>Every block below ships with the runtime. Connector-backed blocks name their connector with a
+        <code>connector:</code> (or <code>logger:</code>) setting; the full settings for each live in the
+        <a href="connectors.html">reference</a>.</p>
+      <table class="eip-table">
+        <thead><tr><th>Block</th><th>Group</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>set-payload</code></td><td>Transform</td><td>Replace the message body from a CEL expression.</td></tr>
+          <tr><td><code>set-variable</code></td><td>Transform</td><td>Set or update a message variable from CEL.</td></tr>
+          <tr><td><code>delete-variable</code></td><td>Transform</td><td>Remove a message variable.</td></tr>
+          <tr><td><code>ai-mapping</code></td><td>Transform</td><td>Reshape the body with an LLM, with optional JSON-schema validation.</td></tr>
+          <tr><td><code>rest</code></td><td>I/O</td><td>Outbound HTTP request via the <a href="connectors.html#http-client">http-client</a> connector.</td></tr>
+          <tr><td><code>sql</code></td><td>I/O</td><td>Run a query via the <a href="connectors.html#database">database</a> connector.</td></tr>
+          <tr><td><code>log</code></td><td>I/O</td><td>Emit a structured log line and pass the message through (wire tap).</td></tr>
+          <tr><td><code>queue-dispatch</code></td><td>Messaging</td><td>Publish (or request/reply) the message to a <a href="connectors.html#queue">queue</a> subject.</td></tr>
+          <tr><td><code>object-read</code></td><td>State</td><td>Read a versioned value from the <a href="state.html#kv">object store</a>.</td></tr>
+          <tr><td><code>object-write</code></td><td>State</td><td>Write with optimistic concurrency (retries the read-modify-write).</td></tr>
+          <tr><td><code>object-delete</code></td><td>State</td><td>Delete a key from the object store.</td></tr>
+          <tr><td><code>invalidate-cache</code></td><td>State</td><td>Bust a <code>cache-scope</code> entry by key.</td></tr>
+          <tr><td><code>flow-ref</code></td><td>Flow control</td><td>Call another flow — synchronously (result folds back) or one-way.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top:36px">Composite blocks</h3>
+      <p>Composites embed sub-flows through typed slots; that's how you get branching, loops, parallelism, and
+        error boundaries.</p>
       <table class="eip-table">
         <thead><tr><th>Composite</th><th>Slots</th><th>What it does</th></tr></thead>
         <tbody>

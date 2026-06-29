@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -39,6 +40,7 @@ import ManagementNav from "@/app/components/ManagementNav";
 import FolderTree from "./FolderTree";
 import IntegrationList from "./IntegrationList";
 import IntegrationDetail from "./IntegrationDetail";
+import { readSelection, writeSelection } from "./query";
 
 /**
  * The `/integrations` management route: a folder tree (with full CRUD) on the
@@ -59,10 +61,20 @@ export default function IntegrationsManager({
 } = {}) {
   const confirm = useConfirm();
   const { available, ready } = useOrchestrator();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Seed the selection from the URL so the manager is bookmarkable; the server
+  // prop is a fallback for the first paint. Thereafter the URL follows the state.
   const [data, setData] = useState<Data>(EMPTY);
-  const [bucket, setBucket] = useState<Bucket>("all");
+  const [bucket, setBucket] = useState<Bucket>(
+    () => readSelection(new URLSearchParams(searchParams.toString())).bucket,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialSelectedId,
+    () =>
+      readSelection(new URLSearchParams(searchParams.toString())).selectedId ??
+      initialSelectedId,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +93,13 @@ export default function IntegrationsManager({
   useEffect(() => {
     if (available) refresh();
   }, [available, refresh]);
+
+  // Mirror the selected bucket + integration into the URL so the view is
+  // bookmarkable and shareable (no navigation, just a query-string replace).
+  useEffect(() => {
+    const qs = writeSelection({ selectedId, bucket });
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [selectedId, bucket, pathname, router]);
 
   /** Run a mutation, then refresh; surface failures inline. */
   const run = useCallback(

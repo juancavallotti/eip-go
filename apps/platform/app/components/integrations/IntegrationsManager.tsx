@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -40,7 +40,12 @@ import ManagementNav from "@/app/components/ManagementNav";
 import FolderTree from "./FolderTree";
 import IntegrationList from "./IntegrationList";
 import IntegrationDetail from "./IntegrationDetail";
-import { readSelection, writeSelection } from "./query";
+import {
+  INTEGRATIONS_BASE,
+  buildPath,
+  parsePathname,
+  type ManagerSelection,
+} from "./query";
 
 /**
  * The `/integrations` management route: a folder tree (with full CRUD) on the
@@ -51,11 +56,8 @@ import { readSelection, writeSelection } from "./query";
  * routes, reached via the shared ManagementNav in the header.
  */
 export default function IntegrationsManager({
-  initialSelectedId = null,
   userMenu,
 }: {
-  /** Integration to preselect on open (e.g. a dashboard tile's "Manage"). */
-  initialSelectedId?: string | null;
   /** Server-rendered account tile, shown in the shared header. */
   userMenu?: React.ReactNode;
 } = {}) {
@@ -63,18 +65,15 @@ export default function IntegrationsManager({
   const { available, ready } = useOrchestrator();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
-  // Seed the selection from the URL so the manager is bookmarkable; the server
-  // prop is a fallback for the first paint. Thereafter the URL follows the state.
+  // The URL is the source of truth for the selection, so it's bookmarkable and
+  // navigated client-side: the bucket + integration are derived from the path, and
+  // selecting something is a router navigation (below). The manager lives in the
+  // route's layout, so these navigations don't remount it — only the path updates.
   const [data, setData] = useState<Data>(EMPTY);
-  const [bucket, setBucket] = useState<Bucket>(
-    () => readSelection(new URLSearchParams(searchParams.toString())).bucket,
-  );
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () =>
-      readSelection(new URLSearchParams(searchParams.toString())).selectedId ??
-      initialSelectedId,
+  const { bucket, selectedId } = useMemo(
+    () => parsePathname(pathname),
+    [pathname],
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,12 +93,20 @@ export default function IntegrationsManager({
     if (available) refresh();
   }, [available, refresh]);
 
-  // Mirror the selected bucket + integration into the URL so the view is
-  // bookmarkable and shareable (no navigation, just a query-string replace).
-  useEffect(() => {
-    const qs = writeSelection({ selectedId, bucket });
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [selectedId, bucket, pathname, router]);
+  // Navigate to a selection (client-side; updates the path the view derives from).
+  const go = useCallback(
+    (sel: ManagerSelection) =>
+      router.push(`${INTEGRATIONS_BASE}${buildPath(sel)}`, { scroll: false }),
+    [router],
+  );
+  const selectBucket = useCallback(
+    (b: Bucket) => go({ bucket: b, selectedId }),
+    [go, selectedId],
+  );
+  const selectIntegration = useCallback(
+    (id: string | null) => go({ bucket, selectedId: id }),
+    [go, bucket],
+  );
 
   /** Run a mutation, then refresh; surface failures inline. */
   const run = useCallback(
@@ -169,7 +176,7 @@ export default function IntegrationsManager({
       danger: true,
     });
     if (!ok) return;
-    if (typeof bucket === "object" && bucket.folder === f.id) setBucket("all");
+    if (typeof bucket === "object" && bucket.folder === f.id) selectBucket("all");
     run(() => deleteFolder(f.id));
   };
 
@@ -182,7 +189,7 @@ export default function IntegrationsManager({
     });
     if (!ok) return;
     const id = selected.id;
-    setSelectedId(null);
+    selectIntegration(null);
     run(() => deleteIntegration(id));
   };
 
@@ -330,7 +337,7 @@ export default function IntegrationsManager({
             unfiledCount={unfiledCount}
             folderCount={folderCount}
             nesting={createParent !== null}
-            onSelect={setBucket}
+            onSelect={selectBucket}
             onCreate={createFolderHere}
             onRename={renameFolderTo}
             onDelete={removeFolder}
@@ -339,7 +346,7 @@ export default function IntegrationsManager({
           <IntegrationList
             integrations={shown}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={selectIntegration}
             reorderable={typeof bucket === "object"}
           />
 

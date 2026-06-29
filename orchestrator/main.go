@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/juancavallotti/octo/orchestrator/internal/apikey"
+	"github.com/juancavallotti/octo/orchestrator/internal/bus"
 	"github.com/juancavallotti/octo/orchestrator/internal/db"
 	"github.com/juancavallotti/octo/orchestrator/internal/deployment"
 	"github.com/juancavallotti/octo/orchestrator/internal/folder"
@@ -43,6 +44,9 @@ const (
 	defaultClusterIssuer = "letsencrypt-prod"
 	shutdownTimeout      = 10 * time.Second
 	dbQueryTimeout       = 5 * time.Second
+	// deploymentSnapshotTimeout bounds the DB + cluster work to compute one
+	// deployment snapshot published from the informer callback.
+	deploymentSnapshotTimeout = 15 * time.Second
 )
 
 func main() {
@@ -245,17 +249,38 @@ func newServer(ctx context.Context, database *db.DB, kc kubeConfig) (http.Handle
 				// Enforce tagged deploys: a deploy must reference a snapshot and ships
 				// its frozen definition.
 				deployment.WithSnapshots(snapshotSvc))
-			// Watch the cluster and push status changes to SSE subscribers; the
-			// informers also back the status read path, so list/stream reads hit a
-			// local cache rather than the API server.
-			hub := deployment.NewHub()
-			kubeClient.StartInformers(ctx, hub.Notify)
-			deployment.NewHandler(deploymentSvc, hub).Register(mux)
+			// Publish deployment status to NATS for cross-node fan-out; the BFF
+			// subscribes and serves the SSE. A noop publisher when NATS_URL is unset
+			// (local/standalone) leaves clients on the list-polling fallback.
+			publisher, err := bus.NewPublisher(os.Getenv("NATS_URL"))
+			if err != nil {
+				return nil, err
+			}
+			context.AfterFunc(ctx, publisher.Close)
+			// Watch the cluster; on each change recompute the integration's snapshot
+			// (DB + live status) and publish it. The informers also back the status
+			// read path, so list reads hit a local cache rather than the API server.
+			kubeClient.StartInformers(ctx, func(integrationID string) {
+				sctx, cancel := context.WithTimeout(ctx, deploymentSnapshotTimeout)
+				defer cancel()
+				items, err := deploymentSvc.ListByIntegration(sctx, integrationID)
+				if err != nil {
+					slog.Error("deployment snapshot", "integrationId", integrationID, "error", err)
+					return
+				}
+				data, err := deployment.MarshalSnapshot(items)
+				if err != nil {
+					slog.Error("deployment snapshot marshal", "integrationId", integrationID, "error", err)
+					return
+				}
+				publisher.Publish(deployment.DeploymentsSubject(integrationID), data)
+			})
+			deployment.NewHandler(deploymentSvc).Register(mux)
 			slog.Info("deployment routes registered",
 				"namespace", kubeClient.Namespace(), "runtimeImage", kc.runtimeImage,
 				"baseDomain", kc.baseDomain, "externalEndpoints", kubeClient.ExternalEnabled(),
-				"endpoints", "POST/GET /integrations/{id}/deployments, "+
-					"GET /integrations/{id}/deployments/events (SSE), GET/DELETE /deployments/{id}")
+				"nats", os.Getenv("NATS_URL") != "",
+				"endpoints", "POST/GET /integrations/{id}/deployments, GET/DELETE /deployments/{id}")
 
 			// Cluster-wide secrets share the kube client (values live in the shared
 			// octo-secrets Secret) and the deployment repo (to refuse deleting a

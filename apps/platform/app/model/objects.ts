@@ -31,17 +31,32 @@ export interface ObjectValue {
   version: number;
 }
 
-/** List the objects a deployment holds in the user namespace (keys + metadata). */
-export async function listObjects(deploymentId: string): Promise<ObjectEntry[]> {
-  return unwrap(await objectActions.listObjects(deploymentId));
+/**
+ * List the non-secret namespaces a deployment holds data in (the user namespace is
+ * always present). Backs the object browser's namespace picker.
+ */
+export async function listNamespaces(deploymentId: string): Promise<string[]> {
+  return unwrap(await objectActions.listNamespaces(deploymentId));
+}
+
+/**
+ * List the objects a deployment holds in a namespace (keys + metadata). The
+ * namespace defaults to the user-facing one server-side when omitted.
+ */
+export async function listObjects(
+  deploymentId: string,
+  namespace?: string,
+): Promise<ObjectEntry[]> {
+  return unwrap(await objectActions.listObjects(deploymentId, namespace));
 }
 
 /** Read a single object's value (and the version to write back). */
 export async function getObject(
   deploymentId: string,
   key: string,
+  namespace?: string,
 ): Promise<ObjectValue> {
-  return unwrap(await objectActions.getObject(deploymentId, key));
+  return unwrap(await objectActions.getObject(deploymentId, key, namespace));
 }
 
 /**
@@ -54,9 +69,17 @@ export async function setObject(
   value: string,
   version: number,
   encoding: "utf8" | "base64" = "utf8",
+  namespace?: string,
 ): Promise<number> {
   return unwrap(
-    await objectActions.setObject(deploymentId, key, value, version, encoding),
+    await objectActions.setObject(
+      deploymentId,
+      key,
+      value,
+      version,
+      encoding,
+      namespace,
+    ),
   );
 }
 
@@ -65,6 +88,9 @@ export async function deleteObject(
   deploymentId: string,
   key: string,
   version = 0,
+  namespace?: string,
 ): Promise<void> {
-  return unwrap(await objectActions.deleteObject(deploymentId, key, version));
+  return unwrap(
+    await objectActions.deleteObject(deploymentId, key, version, namespace),
+  );
 }

@@ -12,17 +12,25 @@ import { withRead, withWrite } from "./_auth";
 import * as client from "./_client";
 import type { ActionResult } from "./_client";
 
+export async function listNamespaces(
+  deploymentId: string,
+): Promise<ActionResult<string[]>> {
+  return withRead(() => client.listNamespaces(deploymentId));
+}
+
 export async function listObjects(
   deploymentId: string,
+  namespace?: string,
 ): Promise<ActionResult<ObjectEntry[]>> {
-  return withRead(() => client.listObjects(deploymentId));
+  return withRead(() => client.listObjects(deploymentId, namespace));
 }
 
 export async function getObject(
   deploymentId: string,
   key: string,
+  namespace?: string,
 ): Promise<ActionResult<ObjectValue>> {
-  return withRead(() => client.getObject(deploymentId, key));
+  return withRead(() => client.getObject(deploymentId, key, namespace));
 }
 
 export async function setObject(
@@ -31,9 +39,10 @@ export async function setObject(
   value: string,
   version: number,
   encoding: "utf8" | "base64" = "utf8",
+  namespace?: string,
 ): Promise<ActionResult<number>> {
   return withWrite(() =>
-    client.setObject(deploymentId, key, value, version, encoding),
+    client.setObject(deploymentId, key, value, version, encoding, namespace),
   );
 }
 
@@ -41,6 +50,9 @@ export async function deleteObject(
   deploymentId: string,
   key: string,
   version = 0,
+  namespace?: string,
 ): Promise<ActionResult<void>> {
-  return withWrite(() => client.deleteObject(deploymentId, key, version));
+  return withWrite(() =>
+    client.deleteObject(deploymentId, key, version, namespace),
+  );
 }

@@ -335,12 +335,27 @@ export function deleteSecret(
 // endpoints wrap their payload ({ items } / { version }); we unwrap to the bare
 // shape the model expects.
 
+/** The `?namespace=` suffix when a non-default namespace is named, else empty. */
+const nsQuery = (namespace?: string): string =>
+  namespace ? `?namespace=${enc(namespace)}` : "";
+
+export async function listNamespaces(
+  deploymentId: string,
+): Promise<ActionResult<string[]>> {
+  const res = await call<{ items: string[] }>(
+    "GET",
+    `/deployments/${enc(deploymentId)}/namespaces`,
+  );
+  return res.ok ? { ok: true, data: res.data.items } : res;
+}
+
 export async function listObjects(
   deploymentId: string,
+  namespace?: string,
 ): Promise<ActionResult<ObjectEntry[]>> {
   const res = await call<{ items: ObjectEntry[] }>(
     "GET",
-    `/deployments/${enc(deploymentId)}/objects`,
+    `/deployments/${enc(deploymentId)}/objects${nsQuery(namespace)}`,
   );
   return res.ok ? { ok: true, data: res.data.items } : res;
 }
@@ -348,10 +363,11 @@ export async function listObjects(
 export function getObject(
   deploymentId: string,
   key: string,
+  namespace?: string,
 ): Promise<ActionResult<ObjectValue>> {
   return call<ObjectValue>(
     "GET",
-    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}`,
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}${nsQuery(namespace)}`,
   );
 }
 
@@ -361,10 +377,11 @@ export async function setObject(
   value: string,
   version: number,
   encoding: "utf8" | "base64",
+  namespace?: string,
 ): Promise<ActionResult<number>> {
   const res = await call<{ version: number }>(
     "PUT",
-    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}`,
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}${nsQuery(namespace)}`,
     { value, encoding, version },
   );
   return res.ok ? { ok: true, data: res.data.version } : res;
@@ -374,9 +391,12 @@ export function deleteObject(
   deploymentId: string,
   key: string,
   version: number,
+  namespace?: string,
 ): Promise<ActionResult<void>> {
+  // version is the primary query param; the namespace (when set) is appended.
+  const ns = namespace ? `&namespace=${enc(namespace)}` : "";
   return call<void>(
     "DELETE",
-    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}?version=${version}`,
+    `/deployments/${enc(deploymentId)}/objects/${encKey(key)}?version=${version}${ns}`,
   );
 }

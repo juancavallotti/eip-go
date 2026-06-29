@@ -1,7 +1,7 @@
 import type { IntegrationRecord, IntegrationStore } from "@octo/mcp";
 import type { ActionResult } from "@octo/http";
-import { publish } from "@octo/events";
 import type { Integration } from "@/app/model/orchestrator";
+import { publishIntegrationEvent } from "@/app/lib/integrationEvents";
 import * as client from "@/app/actions/_client";
 
 /**
@@ -25,12 +25,17 @@ function toRecord(it: Integration): IntegrationRecord {
 }
 
 /**
- * Announce a write on the in-process bus so an editor with this file open can
- * live-reload it (see @octo/events). Fire-and-forget: never let it affect the
- * write's result. Returns the record for call-site convenience.
+ * Announce a write so an editor with this file open can live-reload it (NATS when
+ * configured, else the in-process bus — see {@link publishIntegrationEvent}).
+ * Fire-and-forget: never let it affect the write's result. Returns the record for
+ * call-site convenience.
  */
 function announce(rec: IntegrationRecord): IntegrationRecord {
-  publish({ type: "integration.updated", id: rec.id, name: rec.name });
+  void publishIntegrationEvent({
+    type: "integration.updated",
+    id: rec.id,
+    name: rec.name,
+  });
   return rec;
 }
 

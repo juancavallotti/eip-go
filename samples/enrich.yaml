@@ -1,0 +1,47 @@
+service:
+  name: enrich
+
+# Demonstrates the enrich scope: run a body flow on an isolated copy of the
+# message, then enrich the original message from the scope's result using CEL
+# expressions — setBody for the body, and setVars for named variables. Here the
+# scope freely computes a summary body and a scratch variable on its clone, but
+# only the total escapes (via setVars); setBody is omitted so the original order
+# body is preserved and the scratch state stays isolated.
+#
+# Run it (standalone services module, in-process store):
+#   octo invoke --config samples/enrich.yaml --flow order \
+#     --data '{"orderId":"A-1","qty":3,"price":10.0}'
+#   # -> logs "order A-1 total=30" and returns the untouched order body.
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: order
+    process:
+      - type: enrich
+        name: derive-total
+        # setBody omitted: the incoming order body is preserved.
+        setVars:
+          total: body.total # pull just the total out of the scope's summary
+        body:
+          process:
+            - type: set-variable
+              name: scratch
+              settings:
+                name: workingNote
+                value: '"scope-only, never propagated"'
+            - type: set-payload
+              name: summary
+              settings:
+                # The scope rewrites the body on its clone; it stays isolated.
+                value: '{"total": body.qty * body.price, "note": "scope-only body"}'
+      - type: log
+        name: emit
+        settings:
+          logger: out
+          message: '"order " + body.orderId + " total=" + string(vars.total)'

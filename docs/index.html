@@ -757,6 +757,53 @@ flows:
               settings: { value: '{"status": "needs-manual-review"}' }
 </script>
 
+  <script type="text/plain" data-sample-meta="ai-agent-memory"
+    data-title="ai-agent-memory" data-blurb="An ai-agent with per-thread memory: set memoryThreadId (a CEL expression) and it loads a thread's prior transcript before the run and saves it after — bounded by memoryMaxTokens and memoryCompaction (prune / summarize). clear-agent-memory wipes a thread. Needs ANTHROPIC_API_KEY."
+    data-run="./bin/octo invoke --config samples/ai-agent-memory.yaml --flow chat --data '{&quot;threadId&quot;:&quot;user-42&quot;,&quot;message&quot;:&quot;My name is Sam.&quot;}'"
+    data-pills="ai|llm-anthropic|memory|agent"></script>
+  <script type="text/plain" data-sample-src="ai-agent-memory">service:
+  name: ai-agent-memory
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+
+flows:
+  - name: chat
+    process:
+      - type: ai-agent
+        name: assistant
+        connector: claude
+        memoryThreadId: body.threadId   # CEL: the conversation thread id
+        memoryMaxTokens: 4000
+        memoryCompaction: summarize
+        prompt: >
+          You are a helpful assistant in an ongoing conversation. Use the prior
+          turns for context and answer the latest message. Respond with a JSON
+          object {"reply": "..."}.
+        tools:
+          - name: remember_note
+            description: Save a short note to scratch state for later in this task.
+            inputSchema: |
+              {"type":"object","required":["note"],"properties":{"note":{"type":"string"}}}
+            process:
+              - type: set-variable
+                settings: { name: note, value: body.note }
+
+  - name: forget
+    process:
+      - type: clear-agent-memory
+        settings: { threadId: body.threadId }
+      - type: set-payload
+        settings: { value: '{"cleared": true}' }
+</script>
+
   <script type="text/plain" data-sample-meta="ai-mapping"
     data-title="ai-mapping" data-blurb="Reshape a message body to a target shape from a prompt, optional examples, and an output JSON Schema (validated). On a bad shape it errors — so it composes with ai-retry / handle-errors. Needs ANTHROPIC_API_KEY."
     data-run="./bin/octo invoke --config samples/ai-mapping.yaml --flow normalize-contact --data '{&quot;name&quot;:&quot;Ada Lovelace&quot;,&quot;tel&quot;:&quot;(415) 555-0132&quot;}'"

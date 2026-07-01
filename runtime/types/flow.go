@@ -34,7 +34,8 @@ type SourceConfig struct {
 // Settings. Composite kinds use explicit typed slots: a "handle-errors" populates
 // Process and Error; a "fork" populates Branches; an "if" populates
 // Condition/Then/Else; a "switch" populates Cases and optionally Default; a
-// "foreach" populates Items/As/Body. The AI composites use Connector/Prompt and
+// "foreach" populates Items/As/Body; an "enrich" populates Body and optionally
+// SetBody/SetVars. The AI composites use Connector/Prompt and
 // their own slots: an "ai-router" populates Routes (+ Default as the guardrail);
 // an "ai-agent" populates Tools (+ Default), MaxIterations; an "ai-retry"
 // populates Process/Error and MaxAttempts. The Flow<->Block recursion
@@ -80,9 +81,20 @@ type BlockConfig struct {
 	// As is the variable name a "foreach" block binds each element to; it
 	// defaults to "item" when unset.
 	As string `yaml:"as,omitempty"`
-	// Body is the flow a "foreach" or "cache-scope" block runs; foreach runs it
-	// once per element, cache-scope runs it on a cache miss.
+	// Body is the flow a "foreach", "cache-scope", or "enrich" block runs; foreach
+	// runs it once per element, cache-scope runs it on a cache miss, enrich runs it
+	// once on an isolated copy of the message.
 	Body *FlowConfig `yaml:"body,omitempty"`
+
+	// SetBody is an "enrich" block's CEL expression for the body to propagate back
+	// to the message. It is evaluated against the scope's result (the message after
+	// the body flow ran on an isolated clone), so it can reference the enriched
+	// body/vars. Empty leaves the incoming body unchanged.
+	SetBody string `yaml:"setBody,omitempty"`
+	// SetVars is an "enrich" block's map of variable name to CEL expression. Each
+	// expression is evaluated against the scope's result and set on the message, so
+	// the block enriches exactly the variables it names.
+	SetVars map[string]string `yaml:"setVars,omitempty"`
 
 	// Key is the cache-key expression of a "cache-scope" block (evaluated per
 	// message). TTL is how long a cached entry stays fresh, a duration string
@@ -108,6 +120,16 @@ type BlockConfig struct {
 	// MaxIterations caps how many tool-calling turns an "ai-agent" runs before
 	// falling back to the guardrail (default applied by the builder).
 	MaxIterations int `yaml:"maxIterations,omitempty"`
+	// MemoryThreadID enables per-thread conversation memory for an "ai-agent": a
+	// CEL expression resolved to the thread id whose transcript is loaded before
+	// the run and saved after. Empty disables memory.
+	MemoryThreadID string `yaml:"memoryThreadId,omitempty"`
+	// MemoryMaxTokens is the estimated-token budget for an "ai-agent"'s stored
+	// transcript; it is compacted when it exceeds this. Default applied by the builder.
+	MemoryMaxTokens int `yaml:"memoryMaxTokens,omitempty"`
+	// MemoryCompaction is how an "ai-agent" shrinks memory over budget: "prune"
+	// (drop oldest, the default) or "summarize" (fold the oldest turns into a summary).
+	MemoryCompaction string `yaml:"memoryCompaction,omitempty"`
 	// MaxAttempts caps how many times an "ai-retry" re-runs its Process chain
 	// after an LLM-driven revision before falling through to Error (default
 	// applied by the builder).

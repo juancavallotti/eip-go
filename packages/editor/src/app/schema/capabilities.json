@@ -374,6 +374,37 @@
       ]
     },
     {
+      "type": "enrich",
+      "label": "Enrich",
+      "category": "control-flow",
+      "group": "Flow Control",
+      "icon": "Sparkles",
+      "description": "Run a body flow on an isolated copy of the message, then enrich the message from the result: a CEL expression for the body and a CEL expression per variable.",
+      "fields": [
+        {
+          "name": "setBody",
+          "label": "Set body",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the new body, evaluated against the scope's result (the enriched clone). Empty leaves the body unchanged."
+        },
+        {
+          "name": "setVars",
+          "label": "Set variables",
+          "type": "string-map",
+          "required": false,
+          "description": "Map of variable name to CEL expression, each evaluated against the scope's result and set on the message."
+        },
+        {
+          "name": "body",
+          "label": "Body",
+          "type": "flow",
+          "required": true,
+          "description": "Flow run once on an isolated clone of the message."
+        }
+      ]
+    },
+    {
       "type": "ai-mapping",
       "label": "AI Mapping",
       "category": "processor",
@@ -557,6 +588,30 @@
           "description": "Cap on tool-calling turns before falling back to the guardrail."
         },
         {
+          "name": "memoryThreadId",
+          "label": "Memory thread ID",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the conversation thread id. When set, the agent loads the thread's prior transcript before its run and saves it after; empty disables memory."
+        },
+        {
+          "name": "memoryMaxTokens",
+          "label": "Memory max tokens",
+          "type": "number",
+          "required": false,
+          "default": 8000,
+          "description": "Estimated-token budget for the stored transcript; it is compacted when it exceeds this."
+        },
+        {
+          "name": "memoryCompaction",
+          "label": "Memory compaction",
+          "type": "enum",
+          "required": false,
+          "default": "prune",
+          "enum": ["prune", "summarize"],
+          "description": "How to shrink memory over budget: prune drops the oldest turns; summarize folds them into a running summary."
+        },
+        {
           "name": "tools",
           "label": "Tools",
           "type": "tool-list",
@@ -569,6 +624,23 @@
           "type": "flow",
           "required": false,
           "description": "The guardrail path, run when the agent cannot complete the task."
+        }
+      ]
+    },
+    {
+      "type": "clear-agent-memory",
+      "label": "Clear Agent Memory",
+      "category": "processor",
+      "group": "AI & LLM",
+      "icon": "BrainCog",
+      "description": "Erase an ai-agent conversation thread's stored memory by its thread id.",
+      "fields": [
+        {
+          "name": "threadId",
+          "label": "Thread ID",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the thread id whose memory is cleared."
         }
       ]
     },

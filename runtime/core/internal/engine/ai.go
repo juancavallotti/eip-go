@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/juancavallotti/octo/core"
+	"github.com/juancavallotti/octo/core/expr"
 	"github.com/juancavallotti/octo/types"
 )
 
@@ -473,6 +474,14 @@ type aiAgent struct {
 	maxIterations int
 	name          string
 	connector     string
+	// Conversation memory (optional). When memoryThreadID is nil, memory is
+	// disabled and the agent is stateless across invocations. When set, the agent
+	// loads the thread's transcript before its run and saves the accumulated
+	// transcript after, compacting it to memoryMaxTokens with memoryCompaction.
+	memoryThreadID   *expr.Program
+	memoryMaxTokens  int
+	memoryCompaction string
+	env              map[string]any
 }
 
 //nolint:ireturn // builders intentionally return the MessageProcessor interface
@@ -484,7 +493,8 @@ func (b *builder) aiAgent(cfg types.BlockConfig) (core.MessageProcessor, error) 
 		return nil, errors.New("ai-agent block requires a prompt")
 	}
 	if err := allowSlots(cfg, blockKindAIAgent,
-		"tools", "default", "connector", "prompt", "guardrail", "maxIterations"); err != nil {
+		"tools", "default", "connector", "prompt", "guardrail", "maxIterations",
+		"memoryThreadId", "memoryMaxTokens", "memoryCompaction"); err != nil {
 		return nil, err
 	}
 
@@ -511,6 +521,10 @@ func (b *builder) aiAgent(cfg types.BlockConfig) (core.MessageProcessor, error) 
 		maxIterations: maxIterations,
 		name:          cfg.Name,
 		connector:     cfg.Connector,
+		env:           envActivation(b.deps.Env),
+	}
+	if err := b.configureAgentMemory(block, cfg); err != nil {
+		return nil, err
 	}
 	if cfg.Default != nil {
 		guardrail, defErr := b.subFlow(*cfg.Default)
@@ -520,6 +534,36 @@ func (b *builder) aiAgent(cfg types.BlockConfig) (core.MessageProcessor, error) 
 		block.guardrail = guardrail
 	}
 	return block, nil
+}
+
+// configureAgentMemory wires optional per-thread memory onto the agent, compiling
+// the thread-id expression and applying defaults. A block without a memoryThreadId
+// is left memory-disabled.
+func (b *builder) configureAgentMemory(block *aiAgent, cfg types.BlockConfig) error {
+	if cfg.MemoryThreadID == "" {
+		return nil
+	}
+	threadID, err := expr.Compile(cfg.MemoryThreadID, exprVarNames...)
+	if err != nil {
+		return err
+	}
+	block.memoryThreadID = threadID
+
+	block.memoryMaxTokens = cfg.MemoryMaxTokens
+	if block.memoryMaxTokens <= 0 {
+		block.memoryMaxTokens = defaultMemoryMaxTokens
+	}
+
+	compaction := cfg.MemoryCompaction
+	if compaction == "" {
+		compaction = memoryCompactPrune
+	}
+	if compaction != memoryCompactPrune && compaction != memoryCompactSummarize {
+		return fmt.Errorf("ai-agent memoryCompaction must be %q or %q, got %q",
+			memoryCompactPrune, memoryCompactSummarize, compaction)
+	}
+	block.memoryCompaction = compaction
+	return nil
 }
 
 // agentTools builds the tool branches and their model-facing definitions,
@@ -557,14 +601,10 @@ func (b *builder) agentTools(configs []types.ToolConfig) (map[string]*Flow, []co
 // the shared message so variables accumulate; the final assistant text is folded
 // into the body as the result.
 func (a *aiAgent) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
-	body, err := msg.BodyJSON()
+	threadID, messages, err := a.initConversation(ctx, msg)
 	if err != nil {
-		return nil, fmt.Errorf("ai-agent: encode input body: %w", err)
+		return nil, err
 	}
-	messages := []core.LLMMessage{{
-		Role: core.LLMRoleUser,
-		Text: "Accomplish the task for this input message body:\n" + string(body),
-	}}
 
 	current := msg
 	for iter := 0; iter < a.maxIterations; iter++ {
@@ -583,10 +623,12 @@ func (a *aiAgent) Process(ctx context.Context, msg *types.Message) (*types.Messa
 		messages = append(messages, resp.Raw)
 
 		if resp.StopReason == core.LLMStopRefusal {
+			a.persistMemory(ctx, threadID, messages)
 			return a.fallback(ctx, current, "model refused")
 		}
 		if len(resp.ToolCalls) == 0 {
 			slog.Info("ai-agent finished", "block", a.name, "iterations", iter+1)
+			a.persistMemory(ctx, threadID, messages)
 			return foldResult(current, resp.Text), nil
 		}
 
@@ -599,7 +641,60 @@ func (a *aiAgent) Process(ctx context.Context, msg *types.Message) (*types.Messa
 		messages = append(messages, core.LLMMessage{Role: core.LLMRoleTool, ToolResults: results})
 	}
 
+	a.persistMemory(ctx, threadID, messages)
 	return a.fallback(ctx, current, "exceeded max iterations")
+}
+
+// initConversation encodes the input body and seeds the LLM message list,
+// prepending the thread's prior transcript when memory is enabled. It returns the
+// resolved thread id (empty when memory is disabled).
+func (a *aiAgent) initConversation(ctx context.Context, msg *types.Message) (string, []core.LLMMessage, error) {
+	body, err := msg.BodyJSON()
+	if err != nil {
+		return "", nil, fmt.Errorf("ai-agent: encode input body: %w", err)
+	}
+	threadID, history, err := a.loadHistory(ctx, msg)
+	if err != nil {
+		return "", nil, err
+	}
+	messages := make([]core.LLMMessage, 0, len(history)+1)
+	messages = append(messages, history...)
+	messages = append(messages, core.LLMMessage{
+		Role: core.LLMRoleUser,
+		Text: "Accomplish the task for this input message body:\n" + string(body),
+	})
+	return threadID, messages, nil
+}
+
+// loadHistory resolves the memory thread id and loads its prior transcript when
+// memory is enabled. It returns the resolved thread id (empty when disabled) and
+// the prior messages (nil when disabled or the thread is new).
+func (a *aiAgent) loadHistory(ctx context.Context, msg *types.Message) (string, []core.LLMMessage, error) {
+	if a.memoryThreadID == nil {
+		return "", nil, nil
+	}
+	threadID, err := a.memoryThreadID.EvalString(messageActivation(msg, a.env))
+	if err != nil {
+		return "", nil, fmt.Errorf("ai-agent memory threadId: %w", err)
+	}
+	history, err := loadMemory(ctx, threadID)
+	if err != nil {
+		return "", nil, fmt.Errorf("ai-agent load memory: %w", err)
+	}
+	return threadID, history, nil
+}
+
+// persistMemory saves the accumulated transcript for the thread (best-effort,
+// compacted to the budget). It is a no-op when memory is disabled; a save failure
+// is logged rather than failing the flow.
+func (a *aiAgent) persistMemory(ctx context.Context, threadID string, messages []core.LLMMessage) {
+	if a.memoryThreadID == nil {
+		return
+	}
+	compacted := compactMemory(ctx, a.client, messages, a.memoryMaxTokens, a.memoryCompaction)
+	if err := saveMemory(ctx, threadID, compacted); err != nil {
+		slog.Warn("ai-agent failed to save memory", "block", a.name, "thread", threadID, "error", err)
+	}
 }
 
 // runTool dispatches one tool call to its branch: the call arguments become the

@@ -130,6 +130,49 @@ type foreachBlock struct {
 	env   map[string]any
 }
 
+// enrichScope is a composite that runs its body flow on an isolated clone of the
+// message, then enriches the original message from the scope's result using CEL
+// expressions: setBody produces the new body, and each entry in setVars produces
+// a variable. The expressions are evaluated against the scope's result, so they
+// can reference the enriched body/vars while leaving everything else isolated.
+type enrichScope struct {
+	body    *Flow
+	setBody *expr.Program            // nil leaves the incoming body unchanged
+	setVars map[string]*expr.Program // variable name -> expression
+	env     map[string]any
+}
+
+// Process runs the body on a clone, then applies the enrichment expressions
+// against the clone's result. A body error aborts; a body that drops the message
+// drops it here too.
+func (e *enrichScope) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
+	clone := msg.Clone()
+	out, err := e.body.Process(ctx, clone)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return nil, nil
+	}
+
+	activation := messageActivation(out, e.env)
+	if e.setBody != nil {
+		value, evalErr := e.setBody.Eval(activation)
+		if evalErr != nil {
+			return nil, fmt.Errorf("enrich setBody: %w", evalErr)
+		}
+		msg.Body = value
+	}
+	for name, program := range e.setVars {
+		value, evalErr := program.Eval(activation)
+		if evalErr != nil {
+			return nil, fmt.Errorf("enrich setVars[%q]: %w", name, evalErr)
+		}
+		msg.Variables.Set(name, value)
+	}
+	return msg, nil
+}
+
 // evalCondition evaluates a boolean expression against the message, erroring if
 // the result is not a bool.
 func evalCondition(program *expr.Program, msg *types.Message, env map[string]any) (bool, error) {
@@ -335,6 +378,41 @@ func (b *builder) switchBlock(cfg types.BlockConfig) (core.MessageProcessor, err
 			return nil, fmt.Errorf("switch default: %w", err)
 		}
 		block.def = def
+	}
+	return block, nil
+}
+
+//nolint:ireturn // builders intentionally return the MessageProcessor interface
+func (b *builder) enrich(cfg types.BlockConfig) (core.MessageProcessor, error) {
+	if cfg.Body == nil {
+		return nil, errors.New("enrich block requires a body flow")
+	}
+	if err := allowSlots(cfg, blockKindEnrich, "body", "setBody", "setVars"); err != nil {
+		return nil, err
+	}
+
+	body, err := b.subFlow(*cfg.Body)
+	if err != nil {
+		return nil, fmt.Errorf("enrich body: %w", err)
+	}
+
+	block := &enrichScope{body: body, env: envActivation(b.deps.Env)}
+	if cfg.SetBody != "" {
+		setBody, compileErr := expr.Compile(cfg.SetBody, exprVarNames...)
+		if compileErr != nil {
+			return nil, fmt.Errorf("enrich setBody: %w", compileErr)
+		}
+		block.setBody = setBody
+	}
+	if len(cfg.SetVars) > 0 {
+		block.setVars = make(map[string]*expr.Program, len(cfg.SetVars))
+		for name, expression := range cfg.SetVars {
+			program, compileErr := expr.Compile(expression, exprVarNames...)
+			if compileErr != nil {
+				return nil, fmt.Errorf("enrich setVars[%q]: %w", name, compileErr)
+			}
+			block.setVars[name] = program
+		}
 	}
 	return block, nil
 }

@@ -1,0 +1,65 @@
+service:
+  name: ai-agent-memory
+
+# Demonstrates per-thread memory on the ai-agent: with a memoryThreadId set, the
+# agent loads the thread's prior transcript before its run and saves it after, so
+# a conversation persists across invocations. The thread id is a CEL expression
+# (here body.threadId), the transcript is compacted to memoryMaxTokens using the
+# chosen strategy, and the clear-agent-memory block wipes a thread.
+#
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#   # First turn — introduce yourself:
+#   octo invoke --config samples/ai-agent-memory.yaml --flow chat \
+#     --data '{"threadId":"user-42","message":"My name is Sam."}'
+#   # Second turn on the same thread remembers it:
+#   octo invoke --config samples/ai-agent-memory.yaml --flow chat \
+#     --data '{"threadId":"user-42","message":"What is my name?"}'
+#   # Forget the thread:
+#   octo invoke --config samples/ai-agent-memory.yaml --flow forget \
+#     --data '{"threadId":"user-42"}'
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: ${ANTHROPIC_API_KEY}
+
+flows:
+  - name: chat
+    process:
+      - type: ai-agent
+        name: assistant
+        connector: claude
+        # Per-thread memory: load/save this thread's transcript around the run.
+        memoryThreadId: body.threadId
+        memoryMaxTokens: 4000
+        memoryCompaction: summarize
+        prompt: >
+          You are a helpful assistant in an ongoing conversation. Use the prior
+          turns for context and answer the user's latest message. Respond with a
+          JSON object {"reply": "..."}.
+        tools:
+          - name: remember_note
+            description: Save a short note to scratch state for later in this task.
+            inputSchema: |
+              {"type":"object","required":["note"],"properties":{"note":{"type":"string"}}}
+            process:
+              - type: set-variable
+                settings:
+                  name: note
+                  value: body.note
+
+  # Erase a thread's memory so the next chat starts fresh.
+  - name: forget
+    process:
+      - type: clear-agent-memory
+        name: wipe-thread
+        settings:
+          threadId: body.threadId
+      - type: set-payload
+        settings:
+          value: '{"cleared": true}'

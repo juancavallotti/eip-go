@@ -18,7 +18,7 @@ const TUNING_FIELDS: {
   {
     field: "workers",
     label: "Workers",
-    default: 1,
+    default: 8,
     help: "Concurrent message processors for this flow.",
   },
   {

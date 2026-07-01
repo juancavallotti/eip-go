@@ -90,9 +90,10 @@ export function removeSlotFlow(
 }
 
 /**
- * Set one per-entry metadata field on a sub-flow: a switch-case's CEL `when`
- * guard, an ai-router route / ai-agent tool's `description`, or a tool's
- * `inputSchema`. The steps inside the sub-flow are edited on the canvas.
+ * Set one flow field by name: a sub-flow's per-entry metadata (a switch-case's
+ * CEL `when` guard, an ai-router route / ai-agent tool's `description`, or a
+ * tool's `inputSchema`) or a root flow's concurrency tuning (`workers`/`buffer`/
+ * `pool`). The steps inside the flow are edited on the canvas.
  */
 export function setFlowMeta(
   state: EditorState,

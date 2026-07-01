@@ -12,6 +12,10 @@ export interface RuntimeFlow {
   process?: RuntimeBlock[];
   /** The flow-level error path: a bare block chain (root flows only). */
   error?: RuntimeBlock[];
+  /** Root-flow concurrency tuning (worker pool / inbound buffer / shared pool). */
+  workers?: number;
+  buffer?: number;
+  pool?: number;
 }
 
 export interface RuntimeCase extends RuntimeFlow {

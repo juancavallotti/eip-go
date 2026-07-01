@@ -31,6 +31,7 @@ import {
   SetIntegrationTitlePayload,
   SetIntegrationFolderPayload,
   LoadIntegrationPayload,
+  SetViewModePayload,
 } from "./actions";
 import * as handlers from "./handlers";
 import * as sourceHandlers from "./sourceHandlers";
@@ -57,8 +58,13 @@ export interface IntegrationMeta {
   folderId: string | null;
 }
 
+/** Which view the editor body shows: the visual canvas or the read-only YAML. */
+export type ViewMode = SetViewModePayload;
+
 export interface EditorState {
   document: EditorDocument;
+  /** Editor body view: the visual canvas or the read-only YAML preview. */
+  viewMode: ViewMode;
   /** Target flow for click-to-add; also highlighted on the canvas. */
   activeFlowId: string | null;
   /** Currently selected block on the canvas, or null. */
@@ -76,6 +82,7 @@ export interface EditorState {
 function makeInitialState(): EditorState {
   return {
     document: blankDocument(),
+    viewMode: "canvas",
     activeFlowId: null,
     selectedBlockId: null,
     selectedSourceFlowId: null,
@@ -213,6 +220,8 @@ export function reducer(
       );
     case EditorActionType.NEW_INTEGRATION:
       return integrationHandlers.newIntegration(state);
+    case EditorActionType.SET_VIEW_MODE:
+      return { ...state, viewMode: action.data as SetViewModePayload };
     case EditorActionType.SELECT_COMPONENT:
       return { ...state, selectedComponentId: action.data as string };
     case EditorActionType.CLEAR_SELECTION:

@@ -52,7 +52,7 @@ export enum EditorActionType {
   ADD_SLOT_FLOW = "ADD_SLOT_FLOW",
   /** Remove a sub-flow from a composite block's list slot by id. */
   REMOVE_SLOT_FLOW = "REMOVE_SLOT_FLOW",
-  /** Set a sub-flow's per-entry metadata: a case's `when`, a route/tool's description, a tool's inputSchema. */
+  /** Set a flow field by name: a sub-flow's when/description/inputSchema, or a root flow's workers/buffer/pool. */
   SET_FLOW_META = "SET_FLOW_META",
   /** Replace the document's declared environment variables. */
   SET_ENV = "SET_ENV",
@@ -68,6 +68,8 @@ export enum EditorActionType {
   LOAD_INTEGRATION = "LOAD_INTEGRATION",
   /** Start a fresh, unsaved integration (clear metadata + document). */
   NEW_INTEGRATION = "NEW_INTEGRATION",
+  /** Switch the editor body between the visual canvas and the YAML preview. */
+  SET_VIEW_MODE = "SET_VIEW_MODE",
   /** Highlight a palette component. */
   SELECT_COMPONENT = "SELECT_COMPONENT",
   /** Clear the palette highlight. */
@@ -194,10 +196,18 @@ export interface RemoveSlotFlowPayload {
 
 export interface SetFlowMetaPayload {
   flowId: string;
-  /** Which per-entry metadata field to set on the sub-flow. */
-  field: "when" | "description" | "inputSchema";
-  value: string;
+  /**
+   * Which flow field to set: a sub-flow's per-entry metadata (a case's `when`, a
+   * route/tool's `description`, a tool's `inputSchema`) or a root flow's
+   * concurrency tuning (`workers`/`buffer`/`pool`). Numeric fields take `undefined`
+   * to clear them back to the runtime default.
+   */
+  field: "when" | "description" | "inputSchema" | "workers" | "buffer" | "pool";
+  value: string | number | undefined;
 }
+
+/** Which view the editor body shows. */
+export type SetViewModePayload = "canvas" | "yaml";
 
 export interface SetEnvPayload {
   env: EnvVar[];

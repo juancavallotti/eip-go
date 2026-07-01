@@ -66,6 +66,17 @@ export interface FlowDoc {
   description?: string;
   /** JSON Schema for an ai-agent tool's arguments (written inline as a string). */
   inputSchema?: string;
+  /**
+   * Root-flow-only concurrency tuning (the runtime's FlowConfig — see
+   * runtime/types/flow.go). Sub-flows must not set them, so they are only edited
+   * from the Flow settings panel for top-level flows and only serialize when set:
+   * `workers` sizes the message worker pool (default 1), `buffer` the inbound
+   * channel depth (default 64), `pool` the shared pool composites like fork draw
+   * from (default 8).
+   */
+  workers?: number;
+  buffer?: number;
+  pool?: number;
 }
 
 /** Field types whose value is one or more nested sub-flows (or block chains). */

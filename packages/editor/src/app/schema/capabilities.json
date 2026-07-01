@@ -4,6 +4,7 @@
       "type": "set-payload",
       "label": "Set Payload",
       "category": "processor",
+      "group": "Data",
       "icon": "Wand2",
       "description": "Replace the message body with the result of a CEL expression.",
       "fields": [
@@ -20,6 +21,7 @@
       "type": "set-variable",
       "label": "Set Variable",
       "category": "processor",
+      "group": "Data",
       "icon": "Variable",
       "description": "Store the result of a CEL expression in a named variable.",
       "fields": [
@@ -43,6 +45,7 @@
       "type": "delete-variable",
       "label": "Delete Variable",
       "category": "processor",
+      "group": "Data",
       "icon": "Trash2",
       "description": "Remove a named variable from the message.",
       "fields": [
@@ -59,6 +62,7 @@
       "type": "log",
       "label": "Log",
       "category": "processor",
+      "group": "Data",
       "icon": "ScrollText",
       "description": "Wire-tap that logs the message and passes it through unchanged.",
       "fields": [
@@ -100,6 +104,7 @@
       "type": "rest",
       "label": "REST Call",
       "category": "processor",
+      "group": "Integration",
       "icon": "Globe",
       "description": "Make an HTTP request through an http-client connector.",
       "fields": [
@@ -170,6 +175,7 @@
       "type": "sql",
       "label": "SQL",
       "category": "processor",
+      "group": "Integration",
       "icon": "Database",
       "description": "Execute a SQL statement against a database connector.",
       "fields": [
@@ -217,6 +223,7 @@
       "type": "flow-ref",
       "label": "Flow Reference",
       "category": "processor",
+      "group": "Integration",
       "icon": "Webhook",
       "description": "Invoke another flow by name.",
       "fields": [
@@ -242,6 +249,7 @@
       "type": "handle-errors",
       "label": "Handle Errors",
       "category": "control-flow",
+      "group": "Flow Control",
       "icon": "ShieldAlert",
       "description": "Run the process chain; on error, expose vars.error and run the error chain (recovery).",
       "fields": [
@@ -265,6 +273,7 @@
       "type": "fork",
       "label": "Fork",
       "category": "control-flow",
+      "group": "Flow Control",
       "icon": "GitFork",
       "description": "Scatter the message across parallel branches, then join and pass through.",
       "fields": [
@@ -281,6 +290,7 @@
       "type": "if",
       "label": "If",
       "category": "control-flow",
+      "group": "Flow Control",
       "icon": "Split",
       "description": "Conditional branching on a CEL boolean expression.",
       "fields": [
@@ -311,6 +321,7 @@
       "type": "switch",
       "label": "Switch",
       "category": "control-flow",
+      "group": "Flow Control",
       "icon": "Split",
       "description": "Multi-case routing; runs the first matching case or the default.",
       "fields": [
@@ -334,6 +345,7 @@
       "type": "foreach",
       "label": "For Each",
       "category": "control-flow",
+      "group": "Flow Control",
       "icon": "Repeat",
       "description": "Sequentially iterate over an array, running the body per element.",
       "fields": [
@@ -365,6 +377,7 @@
       "type": "ai-mapping",
       "label": "AI Mapping",
       "category": "processor",
+      "group": "AI & LLM",
       "icon": "Sparkles",
       "description": "Reshape the message body to a target shape described by a prompt; validates against an optional output schema and errors on failure.",
       "fields": [
@@ -417,6 +430,7 @@
       "type": "ai-retry",
       "label": "AI Retry",
       "category": "control-flow",
+      "group": "AI & LLM",
       "icon": "RefreshCw",
       "description": "Run the process chain; on error, let the LLM inspect vars.error, revise the message, and retry up to maxAttempts, then run the error chain.",
       "fields": [
@@ -463,6 +477,7 @@
       "type": "ai-router",
       "label": "AI Router",
       "category": "control-flow",
+      "group": "AI & LLM",
       "icon": "Route",
       "description": "Route the message to a named branch the LLM chooses after inspecting it; the default path is the guardrail taken when it is not confident.",
       "fields": [
@@ -508,6 +523,7 @@
       "type": "ai-agent",
       "label": "AI Agent",
       "category": "control-flow",
+      "group": "AI & LLM",
       "icon": "Bot",
       "description": "Let the LLM call branches as tools in a loop to accomplish a task; tool runs share accumulating variables. The default path is the guardrail.",
       "fields": [
@@ -560,6 +576,7 @@
       "type": "cache-scope",
       "label": "Cache",
       "category": "control-flow",
+      "group": "Storage & Cache",
       "icon": "Clock",
       "description": "Memoize the body flow's result in the runtime store, keyed by a CEL expression.",
       "fields": [
@@ -591,6 +608,7 @@
       "type": "invalidate-cache",
       "label": "Invalidate Cache",
       "category": "processor",
+      "group": "Storage & Cache",
       "icon": "Eraser",
       "description": "Evict a cache-scope entry by its key so the next run recomputes.",
       "fields": [
@@ -607,6 +625,7 @@
       "type": "object-read",
       "label": "Object Read",
       "category": "processor",
+      "group": "Storage & Cache",
       "icon": "HardDriveDownload",
       "description": "Read an object from the runtime store into the body or a variable.",
       "fields": [
@@ -630,6 +649,7 @@
       "type": "object-write",
       "label": "Object Write",
       "category": "processor",
+      "group": "Storage & Cache",
       "icon": "HardDriveUpload",
       "description": "Write an object to the runtime store under a key.",
       "fields": [
@@ -653,6 +673,7 @@
       "type": "object-delete",
       "label": "Object Delete",
       "category": "processor",
+      "group": "Storage & Cache",
       "icon": "Trash2",
       "description": "Delete an object from the runtime store by key.",
       "fields": [
@@ -669,6 +690,7 @@
       "type": "queue-dispatch",
       "label": "Queue Dispatch",
       "category": "processor",
+      "group": "Integration",
       "icon": "Send",
       "description": "Send the message to a platform queue subject to load balance work across replicas. By default it publishes fire-and-forget (one-way); enable Await reply to wait for one consumer's reply and fold it back in (request).",
       "fields": [
@@ -700,6 +722,7 @@
       "type": "slack-send-message",
       "label": "Slack Send Message",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Post a message to a Slack channel or user through a slack connector.",
       "fields": [
@@ -756,6 +779,7 @@
       "type": "slack-verify-request",
       "label": "Slack Verify Request",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Verify an inbound Slack request signature and answer the URL-verification challenge.",
       "fields": [
@@ -800,6 +824,7 @@
       "type": "slack-event",
       "label": "Slack Event",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Normalize a verified Slack event and filter it by type and an optional predicate.",
       "fields": [
@@ -823,6 +848,7 @@
       "type": "slack-lookup-user",
       "label": "Slack Lookup User",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Resolve a Slack user by email (users.lookupByEmail) into a variable.",
       "fields": [
@@ -866,6 +892,7 @@
       "type": "slack-add-reaction",
       "label": "Slack Add Reaction",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Add an emoji reaction to a message (reactions.add).",
       "fields": [
@@ -915,6 +942,7 @@
       "type": "slack-update-message",
       "label": "Slack Update Message",
       "category": "processor",
+      "group": "Slack",
       "icon": "Slack",
       "description": "Edit a message the bot posted earlier (chat.update).",
       "fields": [

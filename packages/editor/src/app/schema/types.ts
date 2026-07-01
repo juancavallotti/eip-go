@@ -77,6 +77,12 @@ export interface BlockSpec {
   type: string;
   label: string;
   category: BlockCategory;
+  /**
+   * Logical palette group (e.g. "Data", "Slack", "Flow Control"). Presentation
+   * only — the Sidebar renders one collapsible section per group; it is never
+   * serialized and the runtime ignores it. Blocks without one fall into "Other".
+   */
+  group?: string;
   /** Name of a lucide icon, resolved to a component by the loader. */
   icon: string;
   description: string;

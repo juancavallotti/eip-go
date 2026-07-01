@@ -1,7 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { IntegrationTitle, RunBar, SaveButton } from "@octo/editor";
+import {
+  IntegrationTitle,
+  RunBar,
+  SaveButton,
+  ViewModeToggle,
+} from "@octo/editor";
 import StandaloneFileMenu from "./StandaloneFileMenu";
 
 /* onSaved (URL sync) lives on EditorRoot — see StandaloneEditor — so all save
@@ -33,6 +38,7 @@ export default function StandaloneHeader() {
       <span className="mx-1 h-5 w-px bg-black/10 dark:bg-white/10" />
       <IntegrationTitle />
       <StandaloneFileMenu />
+      <ViewModeToggle />
 
       <div className="ml-auto flex items-center gap-2">
         <SaveButton />

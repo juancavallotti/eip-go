@@ -121,6 +121,10 @@ function flowFromRuntime(
     const process = flow.error.map((b) => blockFromRuntime(b, connTypes));
     out.error = { id: newId(), name: "", process };
   }
+  // Root-flow concurrency tuning; present only on top-level flows in valid YAML.
+  if (flow.workers != null) out.workers = flow.workers;
+  if (flow.buffer != null) out.buffer = flow.buffer;
+  if (flow.pool != null) out.pool = flow.pool;
   return out;
 }
 

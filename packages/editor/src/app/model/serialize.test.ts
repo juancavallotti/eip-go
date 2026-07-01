@@ -98,6 +98,23 @@ describe("serialize", () => {
     expect(fromConfig({}).flows).toHaveLength(1);
   });
 
+  it("round-trips a root flow's concurrency tuning, omitting unset fields", () => {
+    const doc = emptyDocument();
+    doc.flows[0].workers = 4;
+    doc.flows[0].pool = 16;
+    // buffer left unset — must not serialize.
+
+    const flow = toConfig(doc).flows![0];
+    expect(flow.workers).toBe(4);
+    expect(flow.pool).toBe(16);
+    expect(flow.buffer).toBeUndefined();
+
+    const restored = fromConfig(toConfig(doc)).flows[0];
+    expect(restored.workers).toBe(4);
+    expect(restored.pool).toBe(16);
+    expect(restored.buffer).toBeUndefined();
+  });
+
   it("round-trips connector instances (connections)", () => {
     const doc = emptyDocument();
     doc.connectors = [

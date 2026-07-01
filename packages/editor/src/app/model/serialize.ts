@@ -77,6 +77,11 @@ function flowToRuntime(flow: FlowDoc, resolve: ConnectorResolver): RuntimeFlow {
   if (flow.error && flow.error.process.length) {
     out.error = flow.error.process.map((b) => blockToRuntime(b, resolve));
   }
+  // Root-flow concurrency tuning, emitted only when set. Sub-flows never carry
+  // these (the panel exposes them for top-level flows only), so they stay root-only.
+  if (flow.workers != null) out.workers = flow.workers;
+  if (flow.buffer != null) out.buffer = flow.buffer;
+  if (flow.pool != null) out.pool = flow.pool;
   return out;
 }
 

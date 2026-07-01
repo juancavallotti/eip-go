@@ -44,6 +44,7 @@
         <tr><td><code>database</code></td><td>—</td><td><code>sql</code></td><td>A connection pool for Postgres or SQLite.</td></tr>
         <tr><td><code>logger</code></td><td>—</td><td><code>log</code></td><td>A configured structured logger (stdout/stderr/file).</td></tr>
         <tr><td><code>queue</code></td><td>yes</td><td><code>queue-dispatch</code></td><td>A message queue — in-process standalone, NATS in the cluster. Competing consumers + request/reply.</td></tr>
+        <tr><td><code>slack</code></td><td>via <code>http</code></td><td><code>slack-send-message</code>, <code>slack-event</code>, +4</td><td>Send Slack messages and enrich with Slack data; verify and normalize inbound events (received over the <code>http</code> connector).</td></tr>
         <tr><td><code>llm-anthropic</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>Anthropic Claude client.</td></tr>
         <tr><td><code>llm-openai</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>OpenAI client.</td></tr>
         <tr><td><code>llm-gemini</code></td><td>—</td><td><code>ai-mapping</code> + AI composites</td><td>Google Gemini client.</td></tr>
@@ -109,6 +110,7 @@
             <tr><td><code>path</code></td><td>Required. e.g. <code>/orders/{id}</code>; <code>{id}</code> → <code>vars.id</code>.</td></tr>
             <tr><td><code>headers</code></td><td>List of request headers to capture as <code>vars["X-…"]</code>.</td></tr>
             <tr><td><code>correlationIdHeader</code></td><td>Header to read the message's <code>correlationID</code> from.</td></tr>
+            <tr><td><code>rawBodyVar</code></td><td>Capture the exact request bytes into <code>vars.&lt;name&gt;</code> — needed to verify an HMAC signature over the raw body (see <a href="#slack">Slack</a>).</td></tr>
             <tr><td><code>timeout</code></td><td>Per-route wait; defaults to <code>requestTimeout</code>.</td></tr>
             <tr><td><code>maxBodyBytes</code></td><td>Request body cap. Default 1 MiB.</td></tr>
           </tbody>
@@ -435,6 +437,87 @@
       <div class="card"><div class="ic">♻️</div><h3><code>ai-retry</code></h3><p>Runs a protected chain; on failure the model inspects <code>vars.error</code>, revises the message, and retries up to <code>maxAttempts</code> before falling to the error chain.</p></div>
     </div>
     <p style="margin-top:22px"><a class="btn btn-ghost" href="index.html#samples">See the AI samples ↗</a></p>
+  </div>
+</section>
+
+<!-- ============================== SLACK ============================== -->
+<section id="slack" class="alt">
+  <div class="wrap">
+    <div class="section-head"><span class="eyebrow">Blocks · <code>slack-*</code></span><h2><code>slack</code></h2>
+      <p>Talk to Slack from a flow. The connector holds the bot token and signing secret and calls the Slack Web API; its blocks send messages, verify and normalize inbound events, and enrich a message with Slack data. It provides no source — events arrive over the <code>http</code> connector.</p>
+    </div>
+    <div class="grid cols-2">
+      <div>
+        <h3>Connector settings</h3>
+        <table class="eip-table">
+          <thead><tr><th>Setting</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>botToken</code></td><td>Required. Bot User OAuth token (<code>xoxb-…</code>).</td></tr>
+            <tr><td><code>signingSecret</code></td><td>Verifies inbound request signatures; required to receive events.</td></tr>
+            <tr><td><code>timeout</code></td><td>Bounds each Web API call. Default 30s.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Blocks</h3>
+        <table class="eip-table">
+          <thead><tr><th>Block</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>slack-send-message</code></td><td><code>chat.postMessage</code> to a channel or user; folds <code>vars.slackChannel</code>/<code>vars.slackTs</code>.</td></tr>
+            <tr><td><code>slack-verify-request</code></td><td>Verify the request signature; flag the URL-verification handshake.</td></tr>
+            <tr><td><code>slack-event</code></td><td>Normalize an <code>event_callback</code>; filter by <code>eventTypes</code> and a CEL <code>filter</code>.</td></tr>
+            <tr><td><code>slack-lookup-user</code></td><td><code>users.lookupByEmail</code> → a variable.</td></tr>
+            <tr><td><code>slack-add-reaction</code></td><td><code>reactions.add</code> — react to a message.</td></tr>
+            <tr><td><code>slack-update-message</code></td><td><code>chat.update</code> — edit a message.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="margin-top:22px">
+      <h3>Receiving events</h3>
+      <p>Slack posts events to an <code>http</code> route. Signatures are an HMAC over the <em>raw</em> body, so the source must copy Slack's headers and the exact bytes; <code>slack-verify-request</code> reads them. Because a dropped message returns <code>204</code> (no body), the URL-verification challenge is echoed from an <code>if</code> branch rather than dropped. Slack expects a <code>2xx</code> within 3 seconds — keep the flow fast, or offload slow work with <code>queue-dispatch</code>.</p>
+      <pre><code class="language-yaml">connectors:
+  - name: api
+    type: http
+    settings: { port: 8080 }
+  - name: slack
+    type: slack
+    settings:
+      botToken: ${SLACK_BOT_TOKEN}
+      signingSecret: ${SLACK_SIGNING_SECRET}
+
+flows:
+  - name: slack-events
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /slack/events
+        headers: [X-Slack-Signature, X-Slack-Request-Timestamp]
+        rawBodyVar: rawBody          # exact bytes, for the signature
+    process:
+      - type: slack-verify-request   # authenticate; flag the URL handshake
+        settings: { connector: slack }
+      - type: if
+        condition: has(vars.slackChallenge)
+        then:
+          process:
+            - type: set-payload      # echo Slack's challenge -> 200
+              settings: { value: '{"challenge": body.challenge}' }
+        else:
+          process:
+            - type: slack-event      # keep only @-mentions from humans
+              settings:
+                eventTypes: [app_mention]
+                filter: body.botId == null
+            - type: slack-send-message
+              settings:
+                connector: slack
+                target: body.channel
+                text: '"you said: " + body.text'</code></pre>
+      <p style="font-size:0.9rem">Runnable: <code>samples/slack-bot.yaml</code>.</p>
+    </div>
   </div>
 </section>
 

@@ -28,6 +28,11 @@ type sourceSettings struct {
 	// CorrelationIDHeader, when set, sources the message CorrelationID from that
 	// request header.
 	CorrelationIDHeader string `json:"correlationIdHeader"`
+	// RawBodyVar, when set, stores the exact request body bytes as a string in
+	// that variable, alongside the parsed Body. It exists for handlers that must
+	// see the unmodified bytes (e.g. verifying an HMAC signature computed over the
+	// raw payload), since Body is re-serialized and loses byte-for-byte fidelity.
+	RawBodyVar string `json:"rawBodyVar"`
 	// Timeout bounds how long the handler waits for the flow to finish; it
 	// defaults to the connector's request timeout.
 	Timeout duration `json:"timeout"`
@@ -45,6 +50,7 @@ type source struct {
 	params       []string
 	headers      []string
 	corrIDHeader string
+	rawBodyVar   string
 	timeout      time.Duration
 	maxBody      int64
 
@@ -86,6 +92,7 @@ func (c *Connector) NewSource(cfg types.SourceConfig, out chan<- *types.Message)
 		params:       parsePathParams(set.Path),
 		headers:      set.Headers,
 		corrIDHeader: set.CorrelationIDHeader,
+		rawBodyVar:   set.RawBodyVar,
 		timeout:      timeout,
 		maxBody:      maxBody,
 		srcDone:      make(chan struct{}),
@@ -247,6 +254,10 @@ func (s *source) buildMessage(r *http.Request, body []byte) (*types.Message, err
 
 	for _, name := range s.headers {
 		msg.Variables.Set(name, r.Header.Get(name))
+	}
+
+	if s.rawBodyVar != "" {
+		msg.Variables.Set(s.rawBodyVar, string(body))
 	}
 
 	if len(body) > 0 {

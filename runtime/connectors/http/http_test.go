@@ -105,6 +105,37 @@ func TestRequestResponseCompleted(t *testing.T) {
 	}
 }
 
+func TestRawBodyVarCaptured(t *testing.T) {
+	c, base := startConnector(t, nil)
+	out := newSource(t, c, map[string]any{
+		"path":       "/ingest",
+		"rawBodyVar": "rawBody",
+	})
+
+	// Echo the variables back so we can assert the raw body was captured verbatim.
+	echoWorker(out, func(msg *types.Message) types.FlowEvent {
+		msg.Body = map[string]any(msg.Variables)
+		return types.FlowEvent{Kind: types.FlowEventCompleted, Result: msg}
+	})
+
+	// A body with insignificant whitespace: SetBodyJSON would re-serialize it, but
+	// the raw var must hold the exact bytes sent.
+	raw := "{\n  \"item\" : \"widget\"\n}"
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		base+"/ingest", bytes.NewReader([]byte(raw)))
+	resp := do(t, req)
+	if resp.status != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.status, resp.body)
+	}
+	var vars map[string]any
+	if err := json.Unmarshal(resp.body, &vars); err != nil {
+		t.Fatalf("decode body: %v (%s)", err, resp.body)
+	}
+	if vars["rawBody"] != raw {
+		t.Errorf("vars.rawBody = %q, want %q", vars["rawBody"], raw)
+	}
+}
+
 func TestRequestResponseOutcomes(t *testing.T) {
 	tests := []struct {
 		name       string

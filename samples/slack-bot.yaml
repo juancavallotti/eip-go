@@ -1,0 +1,83 @@
+service:
+  name: slack-bot
+
+# A Slack bot: receive events over HTTP, verify each request's signature, answer
+# Slack's URL-verification handshake, and reply to @-mentions.
+#
+# Setup:
+#   1. Create a Slack app. Give the bot the chat:write and users:read.email
+#      scopes, and subscribe to the app_mention event.
+#   2. Point the Events API Request URL at this service's /slack/events route
+#      (expose it with a tunnel such as ngrok while developing).
+#   3. Export the credentials:
+#        export SLACK_BOT_TOKEN=xoxb-...
+#        export SLACK_SIGNING_SECRET=...
+#   4. Run: go run ./cli -config samples/slack-bot.yaml
+#
+# Slack expects a 2xx within 3 seconds, so keep the flow fast — offload slow work
+# with queue-dispatch if needed.
+
+env:
+  - name: HTTP_PORT
+    default: "8080"
+  - name: SLACK_BOT_TOKEN
+    required: true
+  - name: SLACK_SIGNING_SECRET
+    required: true
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      port: ${HTTP_PORT}
+
+  - name: slack
+    type: slack
+    settings:
+      botToken: ${SLACK_BOT_TOKEN}
+      signingSecret: ${SLACK_SIGNING_SECRET}
+
+flows:
+  - name: slack-events
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /slack/events
+        # Copy Slack's signature headers into vars and the exact request bytes
+        # into vars.rawBody, so the signature can be verified over the raw body.
+        headers: [X-Slack-Signature, X-Slack-Request-Timestamp]
+        rawBodyVar: rawBody
+    process:
+      # 1. Authenticate the request (aborts on a bad or stale signature) and flag
+      #    Slack's URL-verification handshake.
+      - type: slack-verify-request
+        name: verify
+        settings:
+          connector: slack
+
+      # 2. Either echo the URL-verification challenge, or handle the event.
+      - type: if
+        name: challenge-or-event
+        condition: has(vars.slackChallenge)
+        then:
+          process:
+            # Slack's one-time handshake: reply 200 with the challenge value.
+            - type: set-payload
+              settings:
+                value: '{"challenge": body.challenge}'
+        else:
+          process:
+            # Keep only @-mentions, ignoring the bot's own messages.
+            - type: slack-event
+              name: mentions
+              settings:
+                eventTypes: [app_mention]
+                filter: body.botId == null
+            # Reply in the same channel.
+            - type: slack-send-message
+              name: reply
+              settings:
+                connector: slack
+                target: body.channel
+                text: '"you said: " + body.text'

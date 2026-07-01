@@ -543,6 +543,102 @@ flows:
 `,
 };
 
+/** The enrich scope: run a body on an isolated clone, propagate via expressions. */
+const ENRICH: Example = {
+  slug: "enrich",
+  title: "enrich — isolated scope with expression-based propagation",
+  summary:
+    "Runs a body flow on a clone of the message, then enriches the original from the scope's result via CEL: setBody for the body and setVars (name -> expression) for variables, both evaluated against the enriched clone. Here the scope computes a summary body but only the total escapes via setVars; setBody is omitted so the original body is preserved. These fields sit at the block top level, not under settings.",
+  blocks: ["enrich", "set-variable", "set-payload", "log"],
+  definition: `service:
+  name: enrich
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: order
+    process:
+      - type: enrich
+        name: derive-total
+        # setBody omitted: the incoming order body is preserved.
+        setVars:
+          total: body.total     # pull just the total out of the scope's summary
+        body:
+          process:
+            - type: set-variable
+              settings:
+                name: workingNote
+                value: '"scope-only, never propagated"'
+            - type: set-payload
+              settings:
+                value: '{"total": body.qty * body.price, "note": "scope-only body"}'
+      - type: log
+        settings:
+          logger: out
+          message: '"order " + body.orderId + " total=" + string(vars.total)'
+`,
+};
+
+/** The ai-agent with per-thread memory, plus clearing a thread. */
+const AI_AGENT_MEMORY: Example = {
+  slug: "ai-agent-memory",
+  title: "ai-agent-memory — a stateful agent with per-thread memory",
+  summary:
+    "An ai-agent with memoryThreadId loads a thread's prior transcript before its run and saves it after, so conversations persist across invocations; memoryMaxTokens + memoryCompaction (prune|summarize) bound it. The clear-agent-memory block wipes a thread. Needs ANTHROPIC_API_KEY. The agent's fields (connector/prompt/tools/memory*) sit at the block top level.",
+  blocks: ["ai-agent", "clear-agent-memory", "set-variable", "set-payload"],
+  definition: `service:
+  name: ai-agent-memory
+
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+
+connectors:
+  - name: claude
+    type: llm-anthropic
+    settings:
+      apiKey: \${ANTHROPIC_API_KEY}
+
+flows:
+  - name: chat
+    process:
+      - type: ai-agent
+        name: assistant
+        connector: claude
+        memoryThreadId: body.threadId   # CEL: the conversation thread id
+        memoryMaxTokens: 4000
+        memoryCompaction: summarize
+        prompt: >
+          You are a helpful assistant in an ongoing conversation. Use the prior
+          turns for context and answer the latest message. Respond with JSON
+          {"reply": "..."}.
+        tools:
+          - name: remember_note
+            description: Save a short note to scratch state for later in this task.
+            inputSchema: |
+              {"type":"object","required":["note"],"properties":{"note":{"type":"string"}}}
+            process:
+              - type: set-variable
+                settings:
+                  name: note
+                  value: body.note
+
+  - name: forget
+    process:
+      - type: clear-agent-memory
+        settings:
+          threadId: body.threadId
+      - type: set-payload
+        settings:
+          value: '{"cleared": true}'
+`,
+};
+
 export const EXAMPLES: Example[] = [
   HELLO_WORLD,
   BUILTINS,
@@ -551,6 +647,8 @@ export const EXAMPLES: Example[] = [
   ERROR_HANDLING,
   AI_ROUTER,
   SLACK_BOT,
+  ENRICH,
+  AI_AGENT_MEMORY,
 ];
 
 /** The example whose slug matches, or undefined. */

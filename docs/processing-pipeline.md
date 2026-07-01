@@ -52,6 +52,14 @@ self-documenting and the builder knows each kind's shape:
   branch operating on its own `msg.Clone()`; it joins before returning and passes
   the input message through unchanged. The first branch error aborts the fork and
   cancels the rest.
+- **`enrich`** — a message-enrichment scope. Slot: `body` (the chain to run) plus
+  `setBody` (a CEL expression for the new body) and `setVars` (a map of variable
+  name → CEL expression). Runs `body` on an **isolated `msg.Clone()`**, then
+  enriches the original message from the scope's result: `setBody` (when set)
+  becomes the new body and each `setVars` expression becomes a variable — both
+  evaluated against the enriched clone, so they reference the scope's output while
+  everything else stays isolated. Omitting both runs `body` purely for
+  side-effects. A `body` error aborts; a `body` that drops the message drops it too.
 
 The flow builder **dispatches on block type**: composite kinds build their typed
 sub-flows directly; every other (leaf) block type is resolved through the
@@ -61,6 +69,26 @@ an `init` function, the same pattern connectors use.
 > Adding a new composite *kind* (e.g. `loop`) means extending the builder and the
 > config, not just registering a factory. This is the accepted cost of explicit
 > typed slots while the set of composite kinds is small.
+
+### AI agent memory
+
+The `ai-agent` composite is stateless by default: each invocation is an
+independent conversation. Set **`memoryThreadId`** (a CEL expression) to give it
+per-thread memory backed by the runtime object store (KV): the agent loads that
+thread's prior transcript before its run and saves the accumulated transcript
+after, so a conversation persists across invocations. Two knobs bound the stored
+transcript:
+
+- **`memoryMaxTokens`** — the token budget (estimated with a chars/4 heuristic;
+  there is no tokenizer in the runtime). Defaults to `8000`.
+- **`memoryCompaction`** — how the transcript is shrunk when it exceeds the
+  budget: `prune` (drop the oldest turns, the default) or `summarize` (fold the
+  oldest turns into a running summary via one model call, keeping recent turns).
+
+Memory objects live in the user KV namespace under an `agent-memory/<threadId>`
+key, isolated from `object-read`/`object-write` keys. The **`clear-agent-memory`**
+leaf block erases a thread by its (CEL-resolved) `threadId`; the delete is
+idempotent. See `samples/ai-agent-memory.yaml`.
 
 ## Execution model
 

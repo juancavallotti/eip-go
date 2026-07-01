@@ -145,7 +145,7 @@ func (p *sendProcessor) buildPayload(activation map[string]any) (map[string]any,
 	if channel = strings.TrimSpace(channel); channel == "" {
 		return nil, errors.New("slack-send-message: target evaluated to empty")
 	}
-	payload := map[string]any{"channel": channel}
+	payload := map[string]any{fieldChannel: channel}
 
 	if p.text != nil {
 		text, err := p.text.EvalString(activation)

@@ -17,6 +17,10 @@ import (
 // the other CEL-driven blocks.
 var exprVars = []string{"body", "vars", "eventID", "correlationID", "env", "now"}
 
+// fieldChannel is the Slack Web API request field naming a channel or user ID,
+// shared by the blocks that post to or act on a conversation.
+const fieldChannel = "channel"
+
 // resolveConnector binds a block to its slack connector by name.
 func resolveConnector(name string, deps core.BlockDeps) (*Connector, error) {
 	if name == "" {
@@ -51,6 +55,38 @@ func orDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// compileRequired compiles a required CEL expression, erroring with a block- and
+// field-labelled message when it is empty or malformed.
+func compileRequired(block, field, src string) (*expr.Program, error) {
+	if strings.TrimSpace(src) == "" {
+		return nil, fmt.Errorf("%s requires a %q expression", block, field)
+	}
+	program, err := expr.Compile(src, exprVars...)
+	if err != nil {
+		return nil, fmt.Errorf("%s: compile %s: %w", block, field, err)
+	}
+	return program, nil
+}
+
+// failOnErrorDefault resolves a *bool failOnError setting, defaulting to true
+// when unset (a pointer distinguishes an explicit false from absent).
+func failOnErrorDefault(v *bool) bool {
+	if v != nil {
+		return *v
+	}
+	return true
+}
+
+// onCallError centralizes the "a Slack error aborts unless tolerated" decision:
+// it returns the error when failOnError is set, otherwise the message unchanged
+// so the flow continues.
+func onCallError(msg *types.Message, err error, failOnError bool) (*types.Message, error) {
+	if failOnError {
+		return nil, err
+	}
+	return msg, nil
 }
 
 // messageActivation maps a message (and the block's resolved env) onto the

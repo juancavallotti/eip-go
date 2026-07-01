@@ -24,6 +24,7 @@ import (
 	_ "github.com/juancavallotti/octo/connectors/llm/openai"    // registers the "llm-openai" connector
 	_ "github.com/juancavallotti/octo/connectors/logger"        // registers the "logger" connector and "log" block
 	_ "github.com/juancavallotti/octo/connectors/queue"         // registers the "queue" connector + source and the "queue-dispatch" block
+	_ "github.com/juancavallotti/octo/connectors/slack"         // registers the "slack" connector and its blocks
 	"github.com/juancavallotti/octo/core"
 	"github.com/juancavallotti/octo/core/runtime"
 	"github.com/juancavallotti/octo/services"

@@ -34,7 +34,8 @@ type SourceConfig struct {
 // Settings. Composite kinds use explicit typed slots: a "handle-errors" populates
 // Process and Error; a "fork" populates Branches; an "if" populates
 // Condition/Then/Else; a "switch" populates Cases and optionally Default; a
-// "foreach" populates Items/As/Body. The AI composites use Connector/Prompt and
+// "foreach" populates Items/As/Body; an "enrich" populates Body and optionally
+// PropagateBody/PropagateVars. The AI composites use Connector/Prompt and
 // their own slots: an "ai-router" populates Routes (+ Default as the guardrail);
 // an "ai-agent" populates Tools (+ Default), MaxIterations; an "ai-retry"
 // populates Process/Error and MaxAttempts. The Flow<->Block recursion
@@ -80,9 +81,19 @@ type BlockConfig struct {
 	// As is the variable name a "foreach" block binds each element to; it
 	// defaults to "item" when unset.
 	As string `yaml:"as,omitempty"`
-	// Body is the flow a "foreach" or "cache-scope" block runs; foreach runs it
-	// once per element, cache-scope runs it on a cache miss.
+	// Body is the flow a "foreach", "cache-scope", or "enrich" block runs; foreach
+	// runs it once per element, cache-scope runs it on a cache miss, enrich runs it
+	// once on an isolated copy of the message.
 	Body *FlowConfig `yaml:"body,omitempty"`
+
+	// PropagateBody controls how an "enrich" block folds its body flow's result
+	// back into the message: "replace" (the default) adopts the enriched body,
+	// "keep" leaves the incoming body untouched.
+	PropagateBody string `yaml:"propagateBody,omitempty"`
+	// PropagateVars controls how an "enrich" block folds its body flow's variables
+	// back: "merge" (the default) overlays the enriched variables onto the incoming
+	// ones, "replace" swaps the whole set, "keep" discards them.
+	PropagateVars string `yaml:"propagateVars,omitempty"`
 
 	// Key is the cache-key expression of a "cache-scope" block (evaluated per
 	// message). TTL is how long a cached entry stays fresh, a duration string

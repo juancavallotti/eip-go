@@ -130,6 +130,58 @@ type foreachBlock struct {
 	env   map[string]any
 }
 
+// Variable-propagation policies for the enrich block, naming how the body flow's
+// variables fold back into the message.
+const (
+	propagateVarsMerge   = "merge"   // overlay the enriched variables (default)
+	propagateVarsReplace = "replace" // swap the whole variable set
+	propagateVarsKeep    = "keep"    // discard the enriched variables
+)
+
+// Body-propagation policies for the enrich block.
+const (
+	propagateBodyReplace = "replace" // adopt the enriched body (default)
+	propagateBodyKeep    = "keep"    // leave the incoming body untouched
+)
+
+// enrichScope is a composite that runs its body flow on an isolated clone of the
+// message, then folds the result back per its propagation policies. Running on a
+// clone means the body's mutations never leak unless a policy allows them, so the
+// block can enrich the message (or run pure side-effects) with explicit control
+// over what escapes.
+type enrichScope struct {
+	body        *Flow
+	replaceBody bool   // true adopts the body flow's body
+	vars        string // one of propagateVars*
+}
+
+// Process runs the body on a clone and folds the result back. A body error
+// aborts; a body that drops the message drops it here too.
+func (e *enrichScope) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
+	clone := msg.Clone()
+	out, err := e.body.Process(ctx, clone)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return nil, nil
+	}
+	if e.replaceBody {
+		msg.Body = out.Body
+	}
+	switch e.vars {
+	case propagateVarsMerge:
+		for k, v := range out.Variables {
+			msg.Variables.Set(k, v)
+		}
+	case propagateVarsReplace:
+		msg.Variables = out.Variables
+	case propagateVarsKeep:
+		// discard the enriched variables
+	}
+	return msg, nil
+}
+
 // evalCondition evaluates a boolean expression against the message, erroring if
 // the result is not a bool.
 func evalCondition(program *expr.Program, msg *types.Message, env map[string]any) (bool, error) {
@@ -337,6 +389,57 @@ func (b *builder) switchBlock(cfg types.BlockConfig) (core.MessageProcessor, err
 		block.def = def
 	}
 	return block, nil
+}
+
+//nolint:ireturn // builders intentionally return the MessageProcessor interface
+func (b *builder) enrich(cfg types.BlockConfig) (core.MessageProcessor, error) {
+	if cfg.Body == nil {
+		return nil, errors.New("enrich block requires a body flow")
+	}
+	if err := allowSlots(cfg, blockKindEnrich, "body", "propagateBody", "propagateVars"); err != nil {
+		return nil, err
+	}
+
+	replaceBody, err := parsePropagateBody(cfg.PropagateBody)
+	if err != nil {
+		return nil, err
+	}
+	vars, err := parsePropagateVars(cfg.PropagateVars)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := b.subFlow(*cfg.Body)
+	if err != nil {
+		return nil, fmt.Errorf("enrich body: %w", err)
+	}
+	return &enrichScope{body: body, replaceBody: replaceBody, vars: vars}, nil
+}
+
+// parsePropagateBody validates the body-propagation policy, defaulting to replace.
+func parsePropagateBody(policy string) (bool, error) {
+	switch policy {
+	case "", propagateBodyReplace:
+		return true, nil
+	case propagateBodyKeep:
+		return false, nil
+	default:
+		return false, fmt.Errorf("enrich block: propagateBody must be %q or %q, got %q",
+			propagateBodyReplace, propagateBodyKeep, policy)
+	}
+}
+
+// parsePropagateVars validates the variable-propagation policy, defaulting to merge.
+func parsePropagateVars(policy string) (string, error) {
+	switch policy {
+	case "":
+		return propagateVarsMerge, nil
+	case propagateVarsMerge, propagateVarsReplace, propagateVarsKeep:
+		return policy, nil
+	default:
+		return "", fmt.Errorf("enrich block: propagateVars must be %q, %q, or %q, got %q",
+			propagateVarsMerge, propagateVarsReplace, propagateVarsKeep, policy)
+	}
 }
 
 //nolint:ireturn // builders intentionally return the MessageProcessor interface

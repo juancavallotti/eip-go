@@ -119,6 +119,16 @@ type BlockConfig struct {
 	// MaxIterations caps how many tool-calling turns an "ai-agent" runs before
 	// falling back to the guardrail (default applied by the builder).
 	MaxIterations int `yaml:"maxIterations,omitempty"`
+	// MemoryThreadID enables per-thread conversation memory for an "ai-agent": a
+	// CEL expression resolved to the thread id whose transcript is loaded before
+	// the run and saved after. Empty disables memory.
+	MemoryThreadID string `yaml:"memoryThreadId,omitempty"`
+	// MemoryMaxTokens is the estimated-token budget for an "ai-agent"'s stored
+	// transcript; it is compacted when it exceeds this. Default applied by the builder.
+	MemoryMaxTokens int `yaml:"memoryMaxTokens,omitempty"`
+	// MemoryCompaction is how an "ai-agent" shrinks memory over budget: "prune"
+	// (drop oldest, the default) or "summarize" (fold the oldest turns into a summary).
+	MemoryCompaction string `yaml:"memoryCompaction,omitempty"`
 	// MaxAttempts caps how many times an "ai-retry" re-runs its Process chain
 	// after an LLM-driven revision before falling through to Error (default
 	// applied by the builder).

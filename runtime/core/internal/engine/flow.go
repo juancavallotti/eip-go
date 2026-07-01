@@ -261,6 +261,9 @@ func compositeSlots(cfg types.BlockConfig) []string {
 	add(len(cfg.Tools) > 0, "tools")
 	add(cfg.MaxIterations != 0, "maxIterations")
 	add(cfg.MaxAttempts != 0, "maxAttempts")
+	add(cfg.MemoryThreadID != "", "memoryThreadId")
+	add(cfg.MemoryMaxTokens != 0, "memoryMaxTokens")
+	add(cfg.MemoryCompaction != "", "memoryCompaction")
 	return slots
 }
 

@@ -433,8 +433,9 @@
     <div class="grid cols-2" style="margin-top:22px">
       <div class="card"><div class="ic">🗺️</div><h3><code>ai-mapping</code></h3><p>Reshape the body to a target shape from a prompt, optional examples, and an optional output JSON Schema. On a schema-validation failure it errors — so it composes with <code>ai-retry</code> / <code>handle-errors</code>.</p></div>
       <div class="card"><div class="ic">🔀</div><h3><code>ai-router</code></h3><p>The model picks one of several named, described routes per message. A <code>guardrail</code> describes when to fall through to the <code>default</code> path.</p></div>
-      <div class="card"><div class="ic">🛠️</div><h3><code>ai-agent</code></h3><p>The model accomplishes a task by calling your sub-flows as tools in a loop, up to <code>maxIterations</code>, then returns a result.</p></div>
+      <div class="card"><div class="ic">🛠️</div><h3><code>ai-agent</code></h3><p>The model accomplishes a task by calling your sub-flows as tools in a loop, up to <code>maxIterations</code>, then returns a result. Set <code>memoryThreadId</code> (a CEL expression) for per-thread conversation memory, bounded by <code>memoryMaxTokens</code> and <code>memoryCompaction</code> (<code>prune</code> / <code>summarize</code>).</p></div>
       <div class="card"><div class="ic">♻️</div><h3><code>ai-retry</code></h3><p>Runs a protected chain; on failure the model inspects <code>vars.error</code>, revises the message, and retries up to <code>maxAttempts</code> before falling to the error chain.</p></div>
+      <div class="card"><div class="ic">🧠</div><h3><code>clear-agent-memory</code></h3><p>Erase an <code>ai-agent</code> conversation thread's stored memory by its (CEL-resolved) <code>threadId</code>. The delete is idempotent.</p></div>
     </div>
     <p style="margin-top:22px"><a class="btn btn-ghost" href="index.html#samples">See the AI samples ↗</a></p>
   </div>

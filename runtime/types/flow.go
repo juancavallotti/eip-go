@@ -35,7 +35,7 @@ type SourceConfig struct {
 // Process and Error; a "fork" populates Branches; an "if" populates
 // Condition/Then/Else; a "switch" populates Cases and optionally Default; a
 // "foreach" populates Items/As/Body; an "enrich" populates Body and optionally
-// PropagateBody/PropagateVars. The AI composites use Connector/Prompt and
+// SetBody/SetVars. The AI composites use Connector/Prompt and
 // their own slots: an "ai-router" populates Routes (+ Default as the guardrail);
 // an "ai-agent" populates Tools (+ Default), MaxIterations; an "ai-retry"
 // populates Process/Error and MaxAttempts. The Flow<->Block recursion
@@ -86,14 +86,15 @@ type BlockConfig struct {
 	// once on an isolated copy of the message.
 	Body *FlowConfig `yaml:"body,omitempty"`
 
-	// PropagateBody controls how an "enrich" block folds its body flow's result
-	// back into the message: "replace" (the default) adopts the enriched body,
-	// "keep" leaves the incoming body untouched.
-	PropagateBody string `yaml:"propagateBody,omitempty"`
-	// PropagateVars controls how an "enrich" block folds its body flow's variables
-	// back: "merge" (the default) overlays the enriched variables onto the incoming
-	// ones, "replace" swaps the whole set, "keep" discards them.
-	PropagateVars string `yaml:"propagateVars,omitempty"`
+	// SetBody is an "enrich" block's CEL expression for the body to propagate back
+	// to the message. It is evaluated against the scope's result (the message after
+	// the body flow ran on an isolated clone), so it can reference the enriched
+	// body/vars. Empty leaves the incoming body unchanged.
+	SetBody string `yaml:"setBody,omitempty"`
+	// SetVars is an "enrich" block's map of variable name to CEL expression. Each
+	// expression is evaluated against the scope's result and set on the message, so
+	// the block enriches exactly the variables it names.
+	SetVars map[string]string `yaml:"setVars,omitempty"`
 
 	// Key is the cache-key expression of a "cache-scope" block (evaluated per
 	// message). TTL is how long a cached entry stays fresh, a duration string

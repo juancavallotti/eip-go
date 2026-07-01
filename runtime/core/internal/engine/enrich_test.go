@@ -8,16 +8,15 @@ import (
 	"github.com/juancavallotti/octo/types"
 )
 
-// enrichRegistry extends the shared test registry with a "bodyvar" leaf that
-// rewrites the body, drops a pre-existing variable, and sets a new one, so tests
-// can observe exactly how the enrich block folds the body flow's result back.
+// enrichRegistry extends the shared test registry with a "bodyvar" leaf that, on
+// the isolated clone, rewrites the body to a map and sets a scratch variable, so
+// tests can observe what the enrich expressions pull back and what stays isolated.
 func enrichRegistry() *core.BlockRegistry {
 	reg := testRegistry()
 	reg.MustRegister("bodyvar", func(types.Settings, core.BlockDeps) (core.MessageProcessor, error) {
 		return processorFunc(func(_ context.Context, msg *types.Message) (*types.Message, error) {
-			msg.Body = "enriched"
-			delete(msg.Variables, "keep")
-			msg.Variables.Set("added", true)
+			msg.Body = map[string]any{"tier": "gold"}
+			msg.Variables.Set("leaked", true)
 			return msg, nil
 		}), nil
 	})
@@ -39,8 +38,8 @@ func buildEnrich(t *testing.T, reg *core.BlockRegistry, cfg types.BlockConfig) *
 	return e
 }
 
-// enrichInput returns a message with a known body and a "keep" variable so
-// propagation policies can be told apart.
+// enrichInput returns a message with a known body and a "keep" variable so tests
+// can tell isolated scope state apart from what the enrich expressions propagate.
 func enrichInput(t *testing.T) *types.Message {
 	t.Helper()
 	msg := mustMessage(t)
@@ -49,10 +48,16 @@ func enrichInput(t *testing.T) *types.Message {
 	return msg
 }
 
-func TestEnrichDefaultsReplaceBodyMergeVars(t *testing.T) {
+// bodyFlow is the shared enrichment body: a single "bodyvar" leaf.
+func bodyFlow() *types.FlowConfig {
+	return &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}}
+}
+
+func TestEnrichSetBodyFromScopeResult(t *testing.T) {
 	reg := enrichRegistry()
 	e := buildEnrich(t, reg, types.BlockConfig{
-		Body: &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}},
+		Body:    bodyFlow(),
+		SetBody: `body.tier`, // reads the enriched clone's body
 	})
 
 	msg := enrichInput(t)
@@ -63,94 +68,61 @@ func TestEnrichDefaultsReplaceBodyMergeVars(t *testing.T) {
 	if out != msg {
 		t.Errorf("enrich returned %p, want the input message %p", out, msg)
 	}
-	if msg.Body != "enriched" {
-		t.Errorf("body = %v, want enriched (replace is the default)", msg.Body)
+	if msg.Body != "gold" {
+		t.Errorf("body = %v, want gold (from setBody expression)", msg.Body)
 	}
-	if added, _ := msg.Variables.Bool("added"); !added {
-		t.Error("merge should have folded the added variable back")
+	if _, ok := msg.Variables.Bool("leaked"); ok {
+		t.Error("scope-only variable leaked to the parent")
 	}
 	if keep, _ := msg.Variables.Bool("keep"); !keep {
-		t.Error("merge should leave pre-existing variables intact")
+		t.Error("enrich should leave the incoming variables intact")
 	}
 }
 
-func TestEnrichKeepBody(t *testing.T) {
+func TestEnrichSetVarsFromScopeResult(t *testing.T) {
 	reg := enrichRegistry()
 	e := buildEnrich(t, reg, types.BlockConfig{
-		PropagateBody: propagateBodyKeep,
-		Body:          &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}},
+		Body: bodyFlow(),
+		SetVars: map[string]string{
+			"tier":  `body.tier`,
+			"shout": `body.tier + "!"`,
+		},
 	})
+
+	msg := enrichInput(t)
+	if _, err := e.Process(context.Background(), msg); err != nil {
+		t.Fatalf("enrich Process: %v", err)
+	}
+	if got, _ := msg.Variables.String("tier"); got != "gold" {
+		t.Errorf("vars.tier = %q, want gold", got)
+	}
+	if got, _ := msg.Variables.String("shout"); got != "gold!" {
+		t.Errorf("vars.shout = %q, want gold!", got)
+	}
+	// setBody was empty, so the body is untouched and scope state stays isolated.
+	if msg.Body != "orig" {
+		t.Errorf("body = %v, want orig (no setBody expression)", msg.Body)
+	}
+	if _, ok := msg.Variables.Bool("leaked"); ok {
+		t.Error("scope-only variable leaked to the parent")
+	}
+}
+
+func TestEnrichIsolationWithoutExpressions(t *testing.T) {
+	reg := enrichRegistry()
+	// No setBody/setVars: the body runs purely for side-effects and nothing from
+	// the isolated clone escapes.
+	e := buildEnrich(t, reg, types.BlockConfig{Body: bodyFlow()})
 
 	msg := enrichInput(t)
 	if _, err := e.Process(context.Background(), msg); err != nil {
 		t.Fatalf("enrich Process: %v", err)
 	}
 	if msg.Body != "orig" {
-		t.Errorf("body = %v, want orig (keep leaves the body untouched)", msg.Body)
+		t.Errorf("body = %v, want orig (nothing propagates)", msg.Body)
 	}
-	if added, _ := msg.Variables.Bool("added"); !added {
-		t.Error("vars should still merge when body is kept")
-	}
-}
-
-func TestEnrichKeepVars(t *testing.T) {
-	reg := enrichRegistry()
-	e := buildEnrich(t, reg, types.BlockConfig{
-		PropagateVars: propagateVarsKeep,
-		Body:          &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}},
-	})
-
-	msg := enrichInput(t)
-	if _, err := e.Process(context.Background(), msg); err != nil {
-		t.Fatalf("enrich Process: %v", err)
-	}
-	if msg.Body != "enriched" {
-		t.Errorf("body = %v, want enriched", msg.Body)
-	}
-	if _, ok := msg.Variables.Bool("added"); ok {
-		t.Error("keep should discard the enriched variables")
-	}
-	if keep, _ := msg.Variables.Bool("keep"); !keep {
-		t.Error("keep should leave the incoming variables intact")
-	}
-}
-
-func TestEnrichReplaceVars(t *testing.T) {
-	reg := enrichRegistry()
-	e := buildEnrich(t, reg, types.BlockConfig{
-		PropagateVars: propagateVarsReplace,
-		Body:          &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}},
-	})
-
-	msg := enrichInput(t)
-	if _, err := e.Process(context.Background(), msg); err != nil {
-		t.Fatalf("enrich Process: %v", err)
-	}
-	if added, _ := msg.Variables.Bool("added"); !added {
-		t.Error("replace should adopt the enriched variables")
-	}
-	if _, ok := msg.Variables.Bool("keep"); ok {
-		t.Error("replace should swap the whole set; the body dropped keep")
-	}
-}
-
-func TestEnrichIsolationKeepKeep(t *testing.T) {
-	reg := enrichRegistry()
-	e := buildEnrich(t, reg, types.BlockConfig{
-		PropagateBody: propagateBodyKeep,
-		PropagateVars: propagateVarsKeep,
-		Body:          &types.FlowConfig{Process: []types.BlockConfig{{Type: "bodyvar"}}},
-	})
-
-	msg := enrichInput(t)
-	if _, err := e.Process(context.Background(), msg); err != nil {
-		t.Fatalf("enrich Process: %v", err)
-	}
-	if msg.Body != "orig" {
-		t.Errorf("body = %v, want orig (keep/keep runs the body only for side-effects)", msg.Body)
-	}
-	if _, ok := msg.Variables.Bool("added"); ok {
-		t.Error("keep/keep should leave the input message fully untouched")
+	if _, ok := msg.Variables.Bool("leaked"); ok {
+		t.Error("scope-only variable leaked to the parent")
 	}
 }
 
@@ -184,19 +156,18 @@ func TestEnrichChildDropDropsMessage(t *testing.T) {
 	}
 }
 
-func TestEnrichRejectsUnknownPolicies(t *testing.T) {
+func TestEnrichRejectsInvalidExpressions(t *testing.T) {
 	reg := enrichRegistry()
-	body := &types.FlowConfig{Process: []types.BlockConfig{{Type: "pass"}}}
 
 	if _, err := (&builder{reg: reg}).enrich(types.BlockConfig{
-		Type: blockKindEnrich, PropagateBody: "nope", Body: body,
+		Type: blockKindEnrich, Body: bodyFlow(), SetBody: `body.`,
 	}); err == nil {
-		t.Error("expected an error for an unknown propagateBody value")
+		t.Error("expected an error for an invalid setBody expression")
 	}
 	if _, err := (&builder{reg: reg}).enrich(types.BlockConfig{
-		Type: blockKindEnrich, PropagateVars: "nope", Body: body,
+		Type: blockKindEnrich, Body: bodyFlow(), SetVars: map[string]string{"x": `body.`},
 	}); err == nil {
-		t.Error("expected an error for an unknown propagateVars value")
+		t.Error("expected an error for an invalid setVars expression")
 	}
 }
 

@@ -379,25 +379,21 @@
       "category": "control-flow",
       "group": "Flow Control",
       "icon": "Sparkles",
-      "description": "Run a body flow on an isolated copy of the message, then choose how the enriched body and variables propagate back.",
+      "description": "Run a body flow on an isolated copy of the message, then enrich the message from the result: a CEL expression for the body and a CEL expression per variable.",
       "fields": [
         {
-          "name": "propagateBody",
-          "label": "Propagate body",
-          "type": "enum",
+          "name": "setBody",
+          "label": "Set body",
+          "type": "cel",
           "required": false,
-          "default": "replace",
-          "enum": ["replace", "keep"],
-          "description": "replace adopts the enriched body; keep leaves the incoming body untouched."
+          "description": "CEL expression for the new body, evaluated against the scope's result (the enriched clone). Empty leaves the body unchanged."
         },
         {
-          "name": "propagateVars",
-          "label": "Propagate variables",
-          "type": "enum",
+          "name": "setVars",
+          "label": "Set variables",
+          "type": "string-map",
           "required": false,
-          "default": "merge",
-          "enum": ["merge", "replace", "keep"],
-          "description": "merge overlays the enriched variables; replace swaps the whole set; keep discards them."
+          "description": "Map of variable name to CEL expression, each evaluated against the scope's result and set on the message."
         },
         {
           "name": "body",

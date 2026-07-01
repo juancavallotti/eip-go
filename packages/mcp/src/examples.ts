@@ -472,6 +472,77 @@ flows:
 `,
 };
 
+/** A Slack bot: verify inbound events over HTTP and reply to @-mentions. */
+const SLACK_BOT: Example = {
+  slug: "slack-bot",
+  title: "slack-bot — receive Slack events, verify, and reply",
+  summary:
+    "Slack posts events to an http route. slack-verify-request checks the signature over the raw body (note the source's headers + rawBodyVar); an if branch echoes Slack's URL-verification challenge, otherwise slack-event filters to @-mentions and slack-send-message replies. Needs SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET; test at /slack/events.",
+  blocks: [
+    "http (source)",
+    "slack-verify-request",
+    "if",
+    "set-payload",
+    "slack-event",
+    "slack-send-message",
+    "slack (connector)",
+  ],
+  definition: `service:
+  name: slack-bot
+
+env:
+  - name: SLACK_BOT_TOKEN
+    required: true
+  - name: SLACK_SIGNING_SECRET
+    required: true
+
+connectors:
+  - name: api
+    type: http
+    settings:
+      port: 8080
+  - name: slack
+    type: slack
+    settings:
+      botToken: \${SLACK_BOT_TOKEN}
+      signingSecret: \${SLACK_SIGNING_SECRET}
+
+flows:
+  - name: slack-events
+    source:
+      connector: api
+      type: http
+      settings:
+        path: /slack/events
+        # Copy the signature headers and the exact bytes so the HMAC can be
+        # verified over the raw request body.
+        headers: [X-Slack-Signature, X-Slack-Request-Timestamp]
+        rawBodyVar: rawBody
+    process:
+      - type: slack-verify-request        # authenticate; flag the URL handshake
+        settings:
+          connector: slack
+      - type: if                          # composite fields sit at the top level
+        condition: has(vars.slackChallenge)
+        then:
+          process:
+            - type: set-payload           # echo Slack's challenge -> 200
+              settings:
+                value: '{"challenge": body.challenge}'
+        else:
+          process:
+            - type: slack-event           # keep only @-mentions from humans
+              settings:
+                eventTypes: [app_mention]
+                filter: body.botId == null
+            - type: slack-send-message    # reply in the same channel
+              settings:
+                connector: slack
+                target: body.channel
+                text: '"you said: " + body.text'
+`,
+};
+
 export const EXAMPLES: Example[] = [
   HELLO_WORLD,
   BUILTINS,
@@ -479,6 +550,7 @@ export const EXAMPLES: Example[] = [
   QUEUE_LOADBALANCE,
   ERROR_HANDLING,
   AI_ROUTER,
+  SLACK_BOT,
 ];
 
 /** The example whose slug matches, or undefined. */

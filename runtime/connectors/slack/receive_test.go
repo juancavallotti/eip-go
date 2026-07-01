@@ -53,7 +53,7 @@ func TestVerifyRejectsBadSignature(t *testing.T) {
 	}
 }
 
-func TestVerifyEchoesChallenge(t *testing.T) {
+func TestVerifyFlagsChallenge(t *testing.T) {
 	proc, err := newVerify(types.Settings{"connector": "slack"}, blockDeps(t, "http://unused"))
 	if err != nil {
 		t.Fatalf("newVerify: %v", err)
@@ -64,11 +64,13 @@ func TestVerifyEchoesChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process: %v", err)
 	}
-	if out.Body != "abc123" {
-		t.Errorf("body = %v, want the challenge value abc123", out.Body)
-	}
+	// The block flags the handshake but leaves the body for the flow to echo.
 	if got, _ := out.Variables.Bool(challengeVar); !got {
 		t.Errorf("%s = %v, want true", challengeVar, out.Variables[challengeVar])
+	}
+	body, ok := out.Body.(map[string]any)
+	if !ok || body["challenge"] != "abc123" {
+		t.Errorf("body = %v, want the url_verification object left intact", out.Body)
 	}
 }
 

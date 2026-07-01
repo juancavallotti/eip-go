@@ -3,8 +3,8 @@
 // signature over the exact request bytes (the http source exposes them via its
 // rawBodyVar setting) using the slack connector's signing secret, and aborts on
 // a bad or stale signature. When the payload is Slack's URL-verification
-// handshake it sets the body to the challenge value and a marker variable, so
-// the flow can echo the challenge back and skip event handling (see the sample).
+// handshake it sets a marker variable (leaving the body untouched) so the flow
+// can branch, echo the challenge back, and skip event handling (see the sample).
 package slack
 
 import (
@@ -30,7 +30,7 @@ const (
 	// defaultRawBodyVar matches the http source's default rawBodyVar.
 	defaultRawBodyVar = "rawBody"
 	// challengeVar is set to true when the request is a URL-verification
-	// handshake, so the flow can branch and echo the challenge.
+	// handshake, so the flow can branch and echo body.challenge.
 	challengeVar = "slackChallenge"
 	// urlVerificationType is the "type" of Slack's URL-verification payload.
 	urlVerificationType = "url_verification"
@@ -83,8 +83,8 @@ func newVerify(raw types.Settings, deps core.BlockDeps) (core.MessageProcessor, 
 }
 
 // Process verifies the signature and, for a URL-verification handshake, sets the
-// body to the challenge value and the challenge marker variable. It aborts when
-// the signature is missing, invalid, or stale.
+// challenge marker variable so the flow can branch and echo body.challenge. It
+// aborts when the signature is missing, invalid, or stale.
 func (p *verifyProcessor) Process(_ context.Context, msg *types.Message) (*types.Message, error) {
 	sig, _ := msg.Variables.String(p.sigVar)
 	ts, _ := msg.Variables.String(p.tsVar)
@@ -96,8 +96,6 @@ func (p *verifyProcessor) Process(_ context.Context, msg *types.Message) (*types
 
 	if body, ok := msg.Body.(map[string]any); ok {
 		if t, _ := body["type"].(string); t == urlVerificationType {
-			challenge, _ := body["challenge"].(string)
-			msg.Body = challenge
 			msg.Variables.Set(challengeVar, true)
 		}
 	}

@@ -9,12 +9,9 @@ import {
 import { SaveProvider } from "../save/SaveContext";
 import { RunProvider } from "../run/RunContext";
 import type { RunTransport } from "../run/transport";
-import DndProvider from "./DndProvider";
-import Sidebar from "./Sidebar";
-import Canvas from "./Canvas";
-import SettingsPanel from "./SettingsPanel";
 import IntegrationLoader from "./IntegrationLoader";
 import LogPanel from "./LogPanel";
+import EditorBody from "./EditorBody";
 
 /**
  * EditorRoot is the embeddable Octo visual editor: a top bar, a left component
@@ -68,15 +65,9 @@ export default function EditorRoot({
           reloadToken={reloadToken}
         />
 
-        {/* Body: sidebar + canvas (one drag-and-drop session) above the logs */}
+        {/* Body: the canvas or YAML preview (per view mode) above the logs */}
         <div className="flex flex-1 min-h-0 flex-col">
-          <DndProvider>
-            <div className="flex flex-1 min-h-0">
-              <Sidebar />
-              <Canvas />
-              <SettingsPanel />
-            </div>
-          </DndProvider>
+          <EditorBody />
           <LogPanel />
         </div>
       </div>

@@ -14,3 +14,55 @@
   background-size: 20px 20px;
   background-position: -10px -10px;
 }
+
+/**
+ * Prism syntax-highlighting tokens for the read-only YAML preview (YamlPreview).
+ * We theme only the tokens the `yaml` grammar emits, using the Tailwind palette,
+ * instead of importing a full Prism theme. Colors auto-adapt to dark mode.
+ */
+.octo-yaml-preview .token.key,
+.octo-yaml-preview .token.atrule {
+  color: #0284c7; /* sky-600 */
+}
+.octo-yaml-preview .token.string {
+  color: #059669; /* emerald-600 */
+}
+.octo-yaml-preview .token.number,
+.octo-yaml-preview .token.boolean {
+  color: #d97706; /* amber-600 */
+}
+.octo-yaml-preview .token.comment {
+  color: #a1a1aa; /* zinc-400 */
+  font-style: italic;
+}
+.octo-yaml-preview .token.punctuation {
+  color: #71717a; /* zinc-500 */
+}
+.octo-yaml-preview .token.tag,
+.octo-yaml-preview .token.important {
+  color: #db2777; /* pink-600 */
+}
+
+@media (prefers-color-scheme: dark) {
+  .octo-yaml-preview .token.key,
+  .octo-yaml-preview .token.atrule {
+    color: #38bdf8; /* sky-400 */
+  }
+  .octo-yaml-preview .token.string {
+    color: #34d399; /* emerald-400 */
+  }
+  .octo-yaml-preview .token.number,
+  .octo-yaml-preview .token.boolean {
+    color: #fbbf24; /* amber-400 */
+  }
+  .octo-yaml-preview .token.comment {
+    color: #71717a; /* zinc-500 */
+  }
+  .octo-yaml-preview .token.punctuation {
+    color: #a1a1aa; /* zinc-400 */
+  }
+  .octo-yaml-preview .token.tag,
+  .octo-yaml-preview .token.important {
+    color: #f472b6; /* pink-400 */
+  }
+}

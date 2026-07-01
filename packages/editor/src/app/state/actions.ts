@@ -68,6 +68,8 @@ export enum EditorActionType {
   LOAD_INTEGRATION = "LOAD_INTEGRATION",
   /** Start a fresh, unsaved integration (clear metadata + document). */
   NEW_INTEGRATION = "NEW_INTEGRATION",
+  /** Switch the editor body between the visual canvas and the YAML preview. */
+  SET_VIEW_MODE = "SET_VIEW_MODE",
   /** Highlight a palette component. */
   SELECT_COMPONENT = "SELECT_COMPONENT",
   /** Clear the palette highlight. */
@@ -203,6 +205,9 @@ export interface SetFlowMetaPayload {
   field: "when" | "description" | "inputSchema" | "workers" | "buffer" | "pool";
   value: string | number | undefined;
 }
+
+/** Which view the editor body shows. */
+export type SetViewModePayload = "canvas" | "yaml";
 
 export interface SetEnvPayload {
   env: EnvVar[];

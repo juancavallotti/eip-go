@@ -5,6 +5,7 @@ import {
   RunBar,
   IntegrationTitle,
   FolderPicker,
+  ViewModeToggle,
   SaveButton,
 } from "@octo/editor";
 import AppLogo from "./AppLogo";
@@ -36,6 +37,7 @@ export default function EditorHeader({
           <span className="mx-1 h-5 w-px bg-black/10 dark:bg-white/10" />
           <IntegrationTitle />
           <FolderPicker />
+          <ViewModeToggle />
         </>
       )}
 

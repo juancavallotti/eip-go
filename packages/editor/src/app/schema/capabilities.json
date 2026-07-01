@@ -695,6 +695,277 @@
           "description": "How long to wait for a reply when Await reply is set (e.g. 30s); defaults to the queue service timeout."
         }
       ]
+    },
+    {
+      "type": "slack-send-message",
+      "label": "Slack Send Message",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Post a message to a Slack channel or user through a slack connector.",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the slack connector to use.",
+          "ref": {
+            "kind": "connector",
+            "connectorType": "slack"
+          }
+        },
+        {
+          "name": "target",
+          "label": "Target",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the channel ID or user ID (Slack DMs a user)."
+        },
+        {
+          "name": "text",
+          "label": "Text",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the message text (required unless blocks is set)."
+        },
+        {
+          "name": "threadTs",
+          "label": "Thread timestamp",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for a parent message ts, to reply in-thread."
+        },
+        {
+          "name": "blocks",
+          "label": "Blocks",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression producing Block Kit blocks (a list)."
+        },
+        {
+          "name": "failOnError",
+          "label": "Fail on error",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Turn a Slack API error into a flow error."
+        }
+      ]
+    },
+    {
+      "type": "slack-verify-request",
+      "label": "Slack Verify Request",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Verify an inbound Slack request signature and answer the URL-verification challenge.",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the slack connector to use.",
+          "ref": {
+            "kind": "connector",
+            "connectorType": "slack"
+          }
+        },
+        {
+          "name": "signatureHeader",
+          "label": "Signature variable",
+          "type": "string",
+          "required": false,
+          "default": "X-Slack-Signature",
+          "description": "Variable holding Slack's request signature."
+        },
+        {
+          "name": "timestampHeader",
+          "label": "Timestamp variable",
+          "type": "string",
+          "required": false,
+          "default": "X-Slack-Request-Timestamp",
+          "description": "Variable holding Slack's request timestamp."
+        },
+        {
+          "name": "rawBodyVar",
+          "label": "Raw body variable",
+          "type": "string",
+          "required": false,
+          "default": "rawBody",
+          "description": "Variable holding the exact request body; must match the http source's rawBodyVar."
+        }
+      ]
+    },
+    {
+      "type": "slack-event",
+      "label": "Slack Event",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Normalize a verified Slack event and filter it by type and an optional predicate.",
+      "fields": [
+        {
+          "name": "eventTypes",
+          "label": "Event types",
+          "type": "string-list",
+          "required": false,
+          "description": "Allowlist of event types (e.g. app_mention, message); empty allows all."
+        },
+        {
+          "name": "filter",
+          "label": "Filter",
+          "type": "cel",
+          "required": false,
+          "description": "CEL predicate over the normalized body; drop the event when false."
+        }
+      ]
+    },
+    {
+      "type": "slack-lookup-user",
+      "label": "Slack Lookup User",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Resolve a Slack user by email (users.lookupByEmail) into a variable.",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the slack connector to use.",
+          "ref": {
+            "kind": "connector",
+            "connectorType": "slack"
+          }
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the email address to resolve."
+        },
+        {
+          "name": "resultVar",
+          "label": "Result variable",
+          "type": "string",
+          "required": false,
+          "default": "slackUser",
+          "description": "Variable to store the user object in."
+        },
+        {
+          "name": "failOnError",
+          "label": "Fail on error",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Turn a Slack API error into a flow error."
+        }
+      ]
+    },
+    {
+      "type": "slack-add-reaction",
+      "label": "Slack Add Reaction",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Add an emoji reaction to a message (reactions.add).",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the slack connector to use.",
+          "ref": {
+            "kind": "connector",
+            "connectorType": "slack"
+          }
+        },
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the message channel ID."
+        },
+        {
+          "name": "timestamp",
+          "label": "Timestamp",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the target message ts."
+        },
+        {
+          "name": "emoji",
+          "label": "Emoji",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the reaction name without colons (e.g. white_check_mark)."
+        },
+        {
+          "name": "failOnError",
+          "label": "Fail on error",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Turn a Slack API error into a flow error."
+        }
+      ]
+    },
+    {
+      "type": "slack-update-message",
+      "label": "Slack Update Message",
+      "category": "processor",
+      "icon": "Slack",
+      "description": "Edit a message the bot posted earlier (chat.update).",
+      "fields": [
+        {
+          "name": "connector",
+          "label": "Connector",
+          "type": "string",
+          "required": true,
+          "description": "Name of the slack connector to use.",
+          "ref": {
+            "kind": "connector",
+            "connectorType": "slack"
+          }
+        },
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the message channel ID."
+        },
+        {
+          "name": "timestamp",
+          "label": "Timestamp",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the target message ts."
+        },
+        {
+          "name": "text",
+          "label": "Text",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the new text (required unless blocks is set)."
+        },
+        {
+          "name": "blocks",
+          "label": "Blocks",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression producing replacement Block Kit blocks (a list)."
+        },
+        {
+          "name": "failOnError",
+          "label": "Fail on error",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Turn a Slack API error into a flow error."
+        }
+      ]
     }
   ],
   "connectors": [
@@ -1188,6 +1459,36 @@
           "type": "string",
           "required": false,
           "description": "Overrides the API endpoint (for proxies or testing)."
+        }
+      ],
+      "sources": []
+    },
+    {
+      "type": "slack",
+      "label": "Slack",
+      "icon": "Slack",
+      "settings": [
+        {
+          "name": "botToken",
+          "label": "Bot token",
+          "type": "string",
+          "required": true,
+          "description": "Bot User OAuth token (xoxb-...) used to call the Web API."
+        },
+        {
+          "name": "signingSecret",
+          "label": "Signing secret",
+          "type": "string",
+          "required": false,
+          "description": "Verifies inbound Slack request signatures; required to receive events."
+        },
+        {
+          "name": "timeout",
+          "label": "Timeout",
+          "type": "string",
+          "required": false,
+          "default": "30s",
+          "description": "Bounds each Slack Web API call."
         }
       ],
       "sources": []

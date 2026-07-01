@@ -23,6 +23,7 @@ import {
   Box,
   type LucideIcon,
 } from "lucide-react";
+import { SlackIcon } from "./slack-icon";
 import capsJson from "./capabilities.json";
 import type {
   BlockSpec,
@@ -60,6 +61,7 @@ const ICONS: Record<string, LucideIcon> = {
   HardDriveUpload,
   Send,
   Inbox,
+  Slack: SlackIcon,
 };
 
 /** Resolve a block's icon name to a component, falling back to a generic box. */

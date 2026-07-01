@@ -1133,6 +1133,13 @@
               "description": "Header to source the CorrelationID from."
             },
             {
+              "name": "rawBodyVar",
+              "label": "Raw body variable",
+              "type": "string",
+              "required": false,
+              "description": "Capture the exact request bytes into vars.<name> (e.g. to verify an HMAC signature over the raw body)."
+            },
+            {
               "name": "timeout",
               "label": "Timeout",
               "type": "string",

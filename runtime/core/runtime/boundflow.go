@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultWorkers = 1
+	defaultWorkers = 8
 	defaultBuffer  = 64
 )
 

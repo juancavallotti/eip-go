@@ -70,7 +70,7 @@ export interface FlowDoc {
    * Root-flow-only concurrency tuning (the runtime's FlowConfig — see
    * runtime/types/flow.go). Sub-flows must not set them, so they are only edited
    * from the Flow settings panel for top-level flows and only serialize when set:
-   * `workers` sizes the message worker pool (default 1), `buffer` the inbound
+   * `workers` sizes the message worker pool (default 8), `buffer` the inbound
    * channel depth (default 64), `pool` the shared pool composites like fork draw
    * from (default 8).
    */

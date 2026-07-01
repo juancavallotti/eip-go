@@ -103,7 +103,7 @@ flowchart LR
       <h3 id="flow">Flow</h3>
       <p>An ordered list of blocks — and itself a message processor, which is what makes composition recursive.
         A <strong>root flow</strong> binds a <code>source</code> and may set <code>workers</code> (pool size,
-        default 1 = FIFO), <code>buffer</code> (channel depth, default 64), <code>pool</code> (shared pool for
+        default 8; set 1 for FIFO), <code>buffer</code> (channel depth, default 64), <code>pool</code> (shared pool for
         concurrent composites, default 8), and an <code>error</code> recovery chain. <strong>Sub-flows</strong>
         nested in composites declare only their <code>process</code> chain.</p>
     </section>

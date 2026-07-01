@@ -183,32 +183,32 @@ func (b *builder) resolve(cfg types.BlockConfig) (string, types.Settings, error)
 func (b *builder) processor(
 	cfg types.BlockConfig, effType string, effSettings types.Settings,
 ) (core.MessageProcessor, error) {
-	switch effType {
-	case blockKindHandleErrors:
-		return b.handleErrors(cfg)
-	case blockKindFork:
-		return b.fork(cfg)
-	case blockKindIf:
-		return b.ifBlock(cfg)
-	case blockKindSwitch:
-		return b.switchBlock(cfg)
-	case blockKindForeach:
-		return b.foreachBlock(cfg)
-	case blockKindEnrich:
-		return b.enrich(cfg)
-	case blockKindCacheScope:
-		return b.cacheScope(cfg)
-	case blockKindAIRouter:
-		return b.aiRouter(cfg)
-	case blockKindAIAgent:
-		return b.aiAgent(cfg)
-	case blockKindAIRetry:
-		return b.aiRetry(cfg)
-	default:
-		if err := rejectCompositeSlots(cfg); err != nil {
-			return nil, err
-		}
-		return b.reg.New(effType, effSettings, b.deps)
+	if build, ok := b.compositeBuilders()[effType]; ok {
+		return build(cfg)
+	}
+	// Any non-composite type is a leaf resolved through the registry; it must not
+	// carry composite slots.
+	if err := rejectCompositeSlots(cfg); err != nil {
+		return nil, err
+	}
+	return b.reg.New(effType, effSettings, b.deps)
+}
+
+// compositeBuilders maps each composite block kind to its builder. Composite
+// kinds are handled directly by the flow builder (they compose sub-flows via
+// typed config slots) rather than through the leaf block registry.
+func (b *builder) compositeBuilders() map[string]func(types.BlockConfig) (core.MessageProcessor, error) {
+	return map[string]func(types.BlockConfig) (core.MessageProcessor, error){
+		blockKindHandleErrors: b.handleErrors,
+		blockKindFork:         b.fork,
+		blockKindIf:           b.ifBlock,
+		blockKindSwitch:       b.switchBlock,
+		blockKindForeach:      b.foreachBlock,
+		blockKindEnrich:       b.enrich,
+		blockKindCacheScope:   b.cacheScope,
+		blockKindAIRouter:     b.aiRouter,
+		blockKindAIAgent:      b.aiAgent,
+		blockKindAIRetry:      b.aiRetry,
 	}
 }
 

@@ -36,6 +36,10 @@ const memoryKeyPrefix = "agent-memory/"
 // save, mirroring object-write.
 const memoryWriteAttempts = 5
 
+// charsPerToken is the divisor of the chars/token estimate used to size stored
+// transcripts. There is no tokenizer in the runtime, so this is an approximation.
+const charsPerToken = 4
+
 func init() {
 	core.MustRegisterBlock("clear-agent-memory", newClearAgentMemory)
 }
@@ -100,7 +104,7 @@ func estimateTokens(msgs []core.LLMMessage) int {
 			chars += len(r.Content)
 		}
 	}
-	return chars / 4
+	return chars / charsPerToken
 }
 
 // compactMemory shrinks msgs to fit maxTokens using the given strategy, returning

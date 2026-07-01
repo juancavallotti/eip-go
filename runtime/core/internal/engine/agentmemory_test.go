@@ -113,18 +113,18 @@ func TestClearAgentMemory(t *testing.T) {
 		t.Fatalf("seed memory: %v", err)
 	}
 
-	clear, err := newClearAgentMemory(types.Settings{"threadId": `"t1"`}, core.BlockDeps{})
+	clearBlock, err := newClearAgentMemory(types.Settings{"threadId": `"t1"`}, core.BlockDeps{})
 	if err != nil {
 		t.Fatalf("newClearAgentMemory: %v", err)
 	}
-	if _, err := clear.Process(ctx, mustMessage(t)); err != nil {
+	if _, err := clearBlock.Process(ctx, mustMessage(t)); err != nil {
 		t.Fatalf("clear Process: %v", err)
 	}
 	if got, _ := loadMemory(ctx, "t1"); got != nil {
 		t.Errorf("memory not cleared: %+v", got)
 	}
 	// Idempotent: clearing a missing thread is not an error.
-	if _, err := clear.Process(ctx, mustMessage(t)); err != nil {
+	if _, err := clearBlock.Process(ctx, mustMessage(t)); err != nil {
 		t.Errorf("second clear should be a no-op, got %v", err)
 	}
 }

@@ -45,6 +45,14 @@ func compileOptional(src string) (*expr.Program, error) {
 	return expr.Compile(src, exprVars...)
 }
 
+// orDefault returns value when it is non-empty, otherwise fallback.
+func orDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
 // messageActivation maps a message (and the block's resolved env) onto the
 // variables a CEL expression can reference.
 func messageActivation(msg *types.Message, env map[string]any) map[string]any {

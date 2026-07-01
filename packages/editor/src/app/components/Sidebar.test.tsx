@@ -31,4 +31,19 @@ describe("Sidebar", () => {
     expect(screen.queryByText("SQL")).not.toBeInTheDocument();
     expect(screen.getByText("Log")).toBeInTheDocument();
   });
+
+  it("collapses and expands a group section", async () => {
+    renderSidebar();
+    // Groups start expanded, so their blocks are visible.
+    const header = screen.getByRole("button", { name: /Integration/ });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("SQL")).toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("SQL")).not.toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(screen.getByText("SQL")).toBeInTheDocument();
+  });
 });

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.2.2](https://github.com/juancavallotti/octo/compare/v0.2.1...v0.2.2) (2026-07-01)
+
+
+### Features
+
+* **editor:** add a read-only YAML preview toggle (closes [#60](https://github.com/juancavallotti/octo/issues/60)) ([2ce0758](https://github.com/juancavallotti/octo/commit/2ce07584b771f0874292d6411ee9ab4708ac735f))
+* **editor:** add enrich, agent memory, and clear-agent-memory to schema ([40bd621](https://github.com/juancavallotti/octo/commit/40bd62170a5c30fdc07b2420ec3aabe2dc861752))
+* **editor:** add the slack connector and blocks to the schema ([62a3d28](https://github.com/juancavallotti/octo/commit/62a3d2808a63fc80ee7c505e037d049dc00f16e0))
+* **editor:** expose flow concurrency fields (workers/buffer/pool) ([864549b](https://github.com/juancavallotti/octo/commit/864549b79dea2612fd902b8ceb22ad4a27fa0efe))
+* **editor:** group the component palette into collapsible sections ([c303942](https://github.com/juancavallotti/octo/commit/c303942436ffb88e3c178a0af3732bae5b15314c))
+* **editor:** YAML preview, grouped palette, and flow concurrency fields ([d52b1c7](https://github.com/juancavallotti/octo/commit/d52b1c7f31df5247cf05d19c01b95f5fb2da16bf))
+* **http:** capture raw request body into an opt-in variable ([7c9f280](https://github.com/juancavallotti/octo/commit/7c9f280133b4ace1dba519ed5ece5abca680b6f5))
+* **runtime:** add enrich scope composite block ([01a7e7a](https://github.com/juancavallotti/octo/commit/01a7e7ae384f246162f12feab622c3242efc34b3))
+* **runtime:** add per-thread memory to ai-agent ([29d46d4](https://github.com/juancavallotti/octo/commit/29d46d4c5798c7ba8d041d6c30fde27e37d554a0))
+* **runtime:** default flow workers to 8 ([be7cc44](https://github.com/juancavallotti/octo/commit/be7cc445786980eb5c7dfabd9d0a83c4568681c3))
+* **slack:** add a Slack connector to the runtime ([cdae976](https://github.com/juancavallotti/octo/commit/cdae97698f7a26c81969861ba89829fa18ef9c68))
+* **slack:** add the receive path (verify-request and event blocks) ([fc0b505](https://github.com/juancavallotti/octo/commit/fc0b5056cce31e71b9d18c143409d83bb215298d))
+* **slack:** add the slack connector core ([e155e60](https://github.com/juancavallotti/octo/commit/e155e600506efd5a23003f71f9eb88744bda07b9))
+* **slack:** add the slack-send-message block ([607e09b](https://github.com/juancavallotti/octo/commit/607e09bc926da3389c0be4b56174c6d08329f763))
+* **slack:** add user lookup, reaction, and message-update blocks ([0fb1e77](https://github.com/juancavallotti/octo/commit/0fb1e7798877c6243699ec69143124f394b14b60))
+
+
+### Bug Fixes
+
+* **editor:** render the http source rawBodyVar field ([a2da0ce](https://github.com/juancavallotti/octo/commit/a2da0cebd102021ac0a2f7820e5573d8137efbe2))
+
+
+### Refactoring
+
+* **runtime:** enrich propagates via CEL expressions ([93dcddb](https://github.com/juancavallotti/octo/commit/93dcddbdbb4e802c7c6f5f13294feb7272ebdba0))
+* **slack:** leave the body intact in slack-verify-request ([d39438d](https://github.com/juancavallotti/octo/commit/d39438d74078a09d732f93b6977122d9f32fd836))
+
+
+### Documentation
+
+* cover ai-agent memory in connectors reference and homepage samples ([c026935](https://github.com/juancavallotti/octo/commit/c026935a93322d0ab834b9cae150e3243ba00e68))
+* **runtime:** add enrich and agent-memory samples, docs, and MCP examples ([a088424](https://github.com/juancavallotti/octo/commit/a088424434b671de337d147162fcd707b8021cdd))
+* **slack:** add the slack sample, MCP example, and connector reference ([5d27a94](https://github.com/juancavallotti/octo/commit/5d27a94eca15b925bc5d485708582c642f51b3fd))
+
 ## [0.2.1](https://github.com/juancavallotti/octo/compare/v0.2.0...v0.2.1) (2026-06-29)
 
 

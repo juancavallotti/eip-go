@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { fromDefinitionYaml } from "@octo/editor";
 import {
   listSnapshots,
@@ -140,8 +140,8 @@ export default function IntegrationDetail({
           href={`/platform/i/${encodeURIComponent(integration.id)}`}
           className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
         >
-          <ExternalLink size={14} />
-          Open
+          <Pencil size={14} />
+          Edit
         </Link>
         <button
           type="button"

@@ -822,6 +822,30 @@
       ]
     },
     {
+      "type": "publish-event",
+      "category": "processor",
+      "group": "Integration",
+      "label": "Publish Event",
+      "icon": "Radio",
+      "description": "Broadcast the current message to a platform topic subject, so every subscriber on that subject receives it (fire-and-forget fan-out). The message passes through unchanged.",
+      "fields": [
+        {
+          "name": "subject",
+          "label": "Subject",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the topic subject to broadcast to; enables per-message routing."
+        },
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression whose result becomes the published body. Empty publishes the whole current body."
+        }
+      ]
+    },
+    {
       "type": "slack-send-message",
       "label": "Slack Send Message",
       "category": "processor",
@@ -1147,6 +1171,35 @@
               "type": "string",
               "required": false,
               "description": "How long a handler waits for its flow to finish (e.g. 30s); defaults to the queue service timeout."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "events",
+      "label": "Platform Events",
+      "icon": "Radio",
+      "settings": [],
+      "sources": [
+        {
+          "type": "events",
+          "label": "Event subscription",
+          "icon": "Radio",
+          "fields": [
+            {
+              "name": "subject",
+              "label": "Subject",
+              "type": "string",
+              "required": true,
+              "description": "Topic subject to subscribe to. Every subscriber on the subject (including every replica) receives every message — broadcast fan-out, unlike a queue's competing consumers."
+            },
+            {
+              "name": "listeners",
+              "label": "Listeners",
+              "type": "number",
+              "required": false,
+              "description": "Number of concurrent handler goroutines; defaults to the topics service default."
             }
           ]
         }

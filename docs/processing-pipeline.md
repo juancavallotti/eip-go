@@ -529,6 +529,43 @@ See [`samples/queue-loadbalance.yaml`](../samples/queue-loadbalance.yaml) for a
 fuller example (HTTP entry point, a request worker whose reply folds back, and a
 one-way audit worker).
 
+### Platform events: the `events` source and `publish-event` block
+
+Topics are the **broadcast** counterpart of queues — also a core runtime service
+(in-process in the standalone module, NATS-backed in the k8s module, under a
+separate `octo.<id>.t.<subject>` scope). Where a queue delivers each message to
+**one** competing consumer, a topic **fans every message out to every subscriber**.
+Use it for pub/sub: one producer, many independent reactions.
+
+- **`publish-event`** (a processor block) broadcasts the current message to a
+  subject. Its `subject` is a CEL expression (per-message routing); an optional
+  `value` CEL expression replaces the published body (default: the whole body). It
+  is fire-and-forget and passes the message through unchanged.
+- The **`events` source** subscribes to a subject and runs **its own copy** of each
+  broadcast message through the flow. Every `events` source on a subject — across
+  every replica — receives every message, so it does not load-balance. Its
+  `subject` (required) and `listeners` settings mirror the queue source; there is no
+  reply.
+
+Like `queue`, the `events` connector has **no global config**, so a `source` (or
+`publish-event`) of `type: events` resolves it implicitly.
+
+```yaml
+flows:
+  - name: emitter
+    source: { type: cron, settings: { schedule: "@every 3s", payload: '{"tick": string(now)}' } }
+    process:
+      - { type: publish-event, settings: { subject: '"notifications"' } }   # broadcast
+
+  - name: subscriber-a                   # every subscriber on the subject gets every message
+    source: { type: events, settings: { subject: notifications } }
+    process:
+      - { type: log, settings: { logger: out, message: '"A saw " + body.tick' } }
+```
+
+See [`samples/events.yaml`](../samples/events.yaml) for a runnable fan-out example
+(one cron publisher, two subscribers that each receive every notification).
+
 ## Writing a connector source
 
 A connector becomes a source by implementing `core.SourceProvider`. The runtime

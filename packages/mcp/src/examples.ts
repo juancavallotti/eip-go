@@ -639,6 +639,57 @@ flows:
 `,
 };
 
+/** Broadcast pub/sub: one publisher, multiple subscribers each get every message. */
+const EVENTS: Example = {
+  slug: "events",
+  title: "events — broadcast pub/sub (publish-event + event source)",
+  summary:
+    "publish-event broadcasts the current message to a topic subject; every flow fronted by an `events` source on that subject receives its own copy — fan-out, unlike a queue where each message is handled once. Here a cron-driven flow publishes and two subscriber flows both receive every message. The `events` source resolves implicitly by type (no connector instance needed).",
+  blocks: ["publish-event", "events (source)", "cron (source)", "log"],
+  definition: `service:
+  name: events
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: emitter
+    source:
+      type: cron
+      settings:
+        schedule: "@every 3s"
+        payload: '{"tick": string(now)}'
+    process:
+      - type: publish-event
+        settings:
+          subject: '"notifications"'   # CEL subject; constant here
+  - name: subscriber-a
+    source:
+      type: events                     # implicit connector — no instance needed
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        settings:
+          logger: out
+          message: '"A saw tick " + body.tick'
+  - name: subscriber-b
+    source:
+      type: events
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        settings:
+          logger: out
+          message: '"B saw tick " + body.tick'
+`,
+};
+
 /** An ordered chain of additive CEL edits collapsed into one block. */
 const MULTI_TRANSFORM: Example = {
   slug: "multi-transform",
@@ -740,6 +791,7 @@ export const EXAMPLES: Example[] = [
   ENRICH,
   OBJECT_STORE,
   MULTI_TRANSFORM,
+  EVENTS,
   AI_AGENT_MEMORY,
 ];
 

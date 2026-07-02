@@ -76,6 +76,9 @@ func (f fakeServices) Secrets() core.SecretStore { return core.NewSecretStore(f.
 //nolint:ireturn // satisfies the RuntimeServices interface
 func (f fakeServices) Queues() core.Queues { return core.NoopQueues() }
 
+//nolint:ireturn // satisfies the RuntimeServices interface
+func (f fakeServices) Topics() core.Topics { return core.NoopTopics() }
+
 func (f fakeServices) Close() error { return nil }
 
 // withFakeServices returns a context carrying fresh in-memory services along with

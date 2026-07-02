@@ -146,6 +146,8 @@ func secretNamespace(namespace string) string {
 // RUNTIME_SERVICES_MODULE environment variable (standalone or k8s). Close releases
 // the implementation's resources; the process owner (the CLI) owns its lifecycle,
 // not an individual Service generation.
+//
+//nolint:interfacebloat // one accessor per platform capability (KV, queues, topics, ...)
 type RuntimeServices interface {
 	//nolint:ireturn // returns the LeaderElection interface a connector depends on
 	LeaderElection() LeaderElection
@@ -155,6 +157,8 @@ type RuntimeServices interface {
 	Secrets() SecretStore
 	//nolint:ireturn // returns the Queues interface a connector depends on
 	Queues() Queues
+	//nolint:ireturn // returns the Topics interface a connector depends on
+	Topics() Topics
 	Close() error
 }
 
@@ -174,6 +178,9 @@ func (noopRuntimeServices) Secrets() SecretStore { return noopKV{} }
 
 //nolint:ireturn // satisfies the RuntimeServices interface
 func (noopRuntimeServices) Queues() Queues { return noopQueues{} }
+
+//nolint:ireturn // satisfies the RuntimeServices interface
+func (noopRuntimeServices) Topics() Topics { return noopTopics{} }
 
 func (noopRuntimeServices) Close() error { return nil }
 

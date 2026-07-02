@@ -45,14 +45,7 @@ func (q *natsQueues) subject(subject string) string {
 
 // Publish sends msg to one competing consumer with no reply.
 func (q *natsQueues) Publish(_ context.Context, subject string, msg types.Message) error {
-	m, err := encodeMsg(q.subject(subject), msg)
-	if err != nil {
-		return err
-	}
-	if err := q.conn.PublishMsg(m); err != nil {
-		return fmt.Errorf("queues: publish %q: %w", subject, err)
-	}
-	return nil
+	return publishMsg(q.conn, "queues", subject, q.subject(subject), msg)
 }
 
 // Request sends msg and waits for one reply, bounded by ctx and the configured
@@ -85,39 +78,14 @@ func (q *natsQueues) Subscribe(
 ) (core.Subscription, error) {
 	cfg := core.NewSubscribeConfig(opts...)
 	scoped := q.subject(subject)
-	subCtx, cancel := context.WithCancel(ctx)
-
-	// The callback only enqueues, so a slow handler never stalls NATS delivery; the
-	// worker pool bounds concurrency. A cancelled subscription unblocks both ends.
-	work := make(chan *nats.Msg, cfg.Listeners)
-	var wg sync.WaitGroup
-	wg.Add(cfg.Listeners)
-	for i := 0; i < cfg.Listeners; i++ {
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-subCtx.Done():
-					return
-				case m := <-work:
-					q.dispatch(subCtx, m, handler)
-				}
-			}
-		}()
-	}
-
-	sub, err := q.conn.QueueSubscribe(scoped, scoped, func(m *nats.Msg) {
-		select {
-		case work <- m:
-		case <-subCtx.Done():
-		}
-	})
-	if err != nil {
-		cancel()
-		wg.Wait()
-		return nil, fmt.Errorf("queues: subscribe %q: %w", subject, err)
-	}
-	return &natsSubscription{sub: sub, cancel: cancel, wg: &wg}, nil
+	// A queue group (the scoped subject doubles as the group name) makes every
+	// replica of the deployment compete for the same messages (point-to-point).
+	return natsSubscribe(ctx, "queues", subject, cfg.Listeners,
+		func(cb nats.MsgHandler) (*nats.Subscription, error) {
+			return q.conn.QueueSubscribe(scoped, scoped, cb)
+		},
+		func(ctx context.Context, m *nats.Msg) { q.dispatch(ctx, m, handler) },
+	)
 }
 
 // dispatch decodes a delivered message, runs the handler, and replies when the
@@ -167,6 +135,70 @@ func (s *natsSubscription) Close() error {
 		return fmt.Errorf("queues: unsubscribe: %w", unsubErr)
 	}
 	return nil
+}
+
+// publishMsg encodes msg and publishes it (fire-and-forget) on the already-scoped
+// subject, shared by the queues and topics planes — the wire format and the send
+// are identical; only the deployment scoping and the error label (plane, e.g.
+// "queues" or "topics", over the user-facing subject) differ.
+func publishMsg(conn *nats.Conn, plane, subject, scoped string, msg types.Message) error {
+	m, err := encodeMsg(scoped, msg)
+	if err != nil {
+		return err
+	}
+	if err := conn.PublishMsg(m); err != nil {
+		return fmt.Errorf("%s: publish %q: %w", plane, subject, err)
+	}
+	return nil
+}
+
+// natsSubscribe wires cfg.Listeners worker goroutines fed by a NATS subscription,
+// shared by the queues and topics planes. The NATS callback only enqueues onto a
+// buffered channel, so a slow handler never stalls delivery; the workers run
+// dispatch. subscribe creates the actual subscription over that callback — a queue
+// group for point-to-point queues, a plain subscription for broadcast topics — so
+// that one call is the only real difference between the planes. Closing the
+// returned subscription stops delivery and drains the workers.
+//
+//nolint:ireturn // returns the core.Subscription the caller stores
+func natsSubscribe(
+	ctx context.Context,
+	plane, subject string,
+	listeners int,
+	subscribe func(cb nats.MsgHandler) (*nats.Subscription, error),
+	dispatch func(ctx context.Context, m *nats.Msg),
+) (core.Subscription, error) {
+	subCtx, cancel := context.WithCancel(ctx)
+
+	work := make(chan *nats.Msg, listeners)
+	var wg sync.WaitGroup
+	wg.Add(listeners)
+	for i := 0; i < listeners; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-subCtx.Done():
+					return
+				case m := <-work:
+					dispatch(subCtx, m)
+				}
+			}
+		}()
+	}
+
+	sub, err := subscribe(func(m *nats.Msg) {
+		select {
+		case work <- m:
+		case <-subCtx.Done():
+		}
+	})
+	if err != nil {
+		cancel()
+		wg.Wait()
+		return nil, fmt.Errorf("%s: subscribe %q: %w", plane, subject, err)
+	}
+	return &natsSubscription{sub: sub, cancel: cancel, wg: &wg}, nil
 }
 
 // encodeMsg builds a NATS message for subject: the body as a JSON payload, vars as

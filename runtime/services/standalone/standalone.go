@@ -22,16 +22,17 @@ func init() {
 
 // Services is the standalone runtime-services module. One in-memory store backs
 // both KV and secrets: the secret store routes to dedicated namespaces, and a single
-// process has nothing to encrypt them against. Queues are in-process channels.
+// process has nothing to encrypt them against. Queues and topics are in-process.
 type Services struct {
 	kv *store
 	q  *queues
+	t  *topics
 }
 
 // New returns a standalone services module with an empty in-memory store and
-// in-process queues.
+// in-process queues and topics.
 func New() *Services {
-	return &Services{kv: newStore(), q: newQueues()}
+	return &Services{kv: newStore(), q: newQueues(), t: newTopics()}
 }
 
 // LeaderElection returns the no-op (always-leader) election from core: with a
@@ -54,6 +55,11 @@ func (s *Services) Secrets() core.SecretStore { return core.NewSecretStore(s.kv)
 //
 //nolint:ireturn // satisfies core.RuntimeServices
 func (s *Services) Queues() core.Queues { return s.q }
+
+// Topics returns the in-process broadcast pub/sub.
+//
+//nolint:ireturn // satisfies core.RuntimeServices
+func (s *Services) Topics() core.Topics { return s.t }
 
 // Close releases resources. The standalone module holds none.
 func (s *Services) Close() error { return nil }

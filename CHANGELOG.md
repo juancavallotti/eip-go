@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.3](https://github.com/juancavallotti/octo/compare/v0.2.2...v0.2.3) (2026-07-02)
+
+
+### Features
+
+* **events:** add events connector for broadcast pub/sub ([a364ea3](https://github.com/juancavallotti/octo/commit/a364ea371d211e2484d67df7b2ceb080380cc4b0))
+* **mcp:** add invoke_flow and list_flows tools ([dfaac24](https://github.com/juancavallotti/octo/commit/dfaac24c8fa1ca5d011c86904922380fb76bb75d))
+* **mcp:** add write-effective-integrations design prompt ([4c20362](https://github.com/juancavallotti/octo/commit/4c20362e938ef0dcc9e268fb49e11e148abcbbf9))
+* **mcp:** run a single flow (output + logs) and add design-best-practices prompt ([90546dd](https://github.com/juancavallotti/octo/commit/90546dde78415df3af967f3afa662a120e2ea794))
+* **platform:** add one-click Deploy button to the editor ([5f1a74d](https://github.com/juancavallotti/octo/commit/5f1a74d8fda815451ca6664728ce46753c655bf1))
+* **platform:** download and upload integration YAMLs ([#61](https://github.com/juancavallotti/octo/issues/61)) ([3148a5d](https://github.com/juancavallotti/octo/commit/3148a5d156e10b9ee53cce6e3ec4ed4bbc9e9823))
+* **platform:** duplicate an integration from the manager and editor ([81acc97](https://github.com/juancavallotti/octo/commit/81acc97be0d2294ad32b67689275facf5be0a9a5))
+* **platform:** rename an integration from the file manager ([a533b34](https://github.com/juancavallotti/octo/commit/a533b3430f2818b80e69b44399764101ef855876))
+* **platform:** rename file-manager "Open" button to "Edit" ([c42a71b](https://github.com/juancavallotti/octo/commit/c42a71bc9f0c58787b6eaac20407b5d550718e8a))
+* **platform:** suggest next semver version tag in editor ([4970e09](https://github.com/juancavallotti/octo/commit/4970e0970649834acda3c62d2db53a7f046d573e))
+* **platform:** suggest the next version tag in the file manager ([d0e849c](https://github.com/juancavallotti/octo/commit/d0e849c1d66aa21d8a27ff06c545c52fd634095f))
+* **run-host:** add one-shot invoke() to run a single flow ([b74cbd7](https://github.com/juancavallotti/octo/commit/b74cbd7e9414564e4c5771c07903df285f4c5a6e))
+* **runtime:** add multi-transform block ([a9061fe](https://github.com/juancavallotti/octo/commit/a9061fe20e9a9a9bcbb23ea84567099e62539d16))
+* **runtime:** add object-read default and existsVar ([40d96dc](https://github.com/juancavallotti/octo/commit/40d96dc0f6f0e12a1b72efa6d5886c39b2195cea))
+* **services:** add Topics broadcast pub/sub ([a4bc435](https://github.com/juancavallotti/octo/commit/a4bc435bd48d9c2c9b1ca0cb78663780d243881a))
+* **slack:** look up users by id, not just email ([af6a67d](https://github.com/juancavallotti/octo/commit/af6a67d574b6c2dfa560cc3ef0604a2a7a6b81ca))
+
+
+### Bug Fixes
+
+* **deploy:** tolerate a missing release/oidc.json ([0d7144c](https://github.com/juancavallotti/octo/commit/0d7144cac2d0e3a5416bb944578b88ef90b58a9c))
+* **deploy:** tolerate a missing release/oidc.json in Cloud Build ([5cb010f](https://github.com/juancavallotti/octo/commit/5cb010fc1467c825f3216d83107777e6efcb1e15))
+
 ## [0.2.2](https://github.com/juancavallotti/octo/compare/v0.2.1...v0.2.2) (2026-07-01)
 
 

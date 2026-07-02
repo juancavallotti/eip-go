@@ -52,6 +52,54 @@ func TestLookupUserFoldsResult(t *testing.T) {
 	}
 }
 
+func TestLookupUserByID(t *testing.T) {
+	var path string
+	var body map[string]any
+	srv := captureServer(t, `{"ok":true,"user":{"id":"U9","name":"grace"}}`, &path, &body)
+
+	proc, err := newLookupUser(types.Settings{
+		"connector": "slack",
+		"by":        "id",
+		"user":      "body.userId",
+	}, blockDeps(t, srv.URL))
+	if err != nil {
+		t.Fatalf("newLookupUser: %v", err)
+	}
+	out, err := proc.Process(context.Background(), blockMessage(t, map[string]any{"userId": "U9"}))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if path != "/users.info" {
+		t.Errorf("path = %q, want /users.info", path)
+	}
+	if body["user"] != "U9" {
+		t.Errorf("user = %v, want U9", body["user"])
+	}
+	user, ok := out.Variables[defaultUserVar].(map[string]any)
+	if !ok || user["id"] != "U9" {
+		t.Errorf("%s = %v, want the user object", defaultUserVar, out.Variables[defaultUserVar])
+	}
+}
+
+func TestLookupUserBuildValidation(t *testing.T) {
+	deps := blockDeps(t, "http://unused")
+	tests := []struct {
+		name string
+		raw  types.Settings
+	}{
+		{name: "email mode without email", raw: types.Settings{"connector": "slack"}},
+		{name: "id mode without user", raw: types.Settings{"connector": "slack", "by": "id"}},
+		{name: "unknown by", raw: types.Settings{"connector": "slack", "by": "name", "email": `"a@x.io"`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := newLookupUser(tt.raw, deps); err == nil {
+				t.Errorf("expected an error for %s", tt.name)
+			}
+		})
+	}
+}
+
 func TestAddReactionSendsTarget(t *testing.T) {
 	var path string
 	var body map[string]any

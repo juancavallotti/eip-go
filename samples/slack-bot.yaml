@@ -5,8 +5,8 @@ service:
 # Slack's URL-verification handshake, and reply to @-mentions.
 #
 # Setup:
-#   1. Create a Slack app. Give the bot the chat:write and users:read.email
-#      scopes, and subscribe to the app_mention event.
+#   1. Create a Slack app. Give the bot the chat:write, users:read and
+#      users:read.email scopes, and subscribe to the app_mention event.
 #   2. Point the Events API Request URL at this service's /slack/events route
 #      (expose it with a tunnel such as ngrok while developing).
 #   3. Export the credentials:
@@ -74,10 +74,18 @@ flows:
               settings:
                 eventTypes: [app_mention]
                 filter: body.botId == null
-            # Reply in the same channel.
+            # Resolve the mentioning user by their Slack id (users.info) so the
+            # reply can greet them by name. vars.slackUser holds the user object.
+            - type: slack-lookup-user
+              name: whois
+              settings:
+                connector: slack
+                by: id
+                user: body.user
+            # Reply in the same channel, greeting the user by name.
             - type: slack-send-message
               name: reply
               settings:
                 connector: slack
                 target: body.channel
-                text: '"you said: " + body.text'
+                text: '"thanks " + vars.slackUser.real_name + ", you said: " + body.text'

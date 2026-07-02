@@ -477,13 +477,14 @@ const SLACK_BOT: Example = {
   slug: "slack-bot",
   title: "slack-bot — receive Slack events, verify, and reply",
   summary:
-    "Slack posts events to an http route. slack-verify-request checks the signature over the raw body (note the source's headers + rawBodyVar); an if branch echoes Slack's URL-verification challenge, otherwise slack-event filters to @-mentions and slack-send-message replies. Needs SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET; test at /slack/events.",
+    "Slack posts events to an http route. slack-verify-request checks the signature over the raw body (note the source's headers + rawBodyVar); an if branch echoes Slack's URL-verification challenge, otherwise slack-event filters to @-mentions, slack-lookup-user resolves the mentioning user by id (by: id), and slack-send-message replies by name. Needs SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET; test at /slack/events.",
   blocks: [
     "http (source)",
     "slack-verify-request",
     "if",
     "set-payload",
     "slack-event",
+    "slack-lookup-user",
     "slack-send-message",
     "slack (connector)",
   ],
@@ -535,11 +536,16 @@ flows:
               settings:
                 eventTypes: [app_mention]
                 filter: body.botId == null
-            - type: slack-send-message    # reply in the same channel
+            - type: slack-lookup-user     # resolve the user id -> vars.slackUser
+              settings:
+                connector: slack
+                by: id
+                user: body.user
+            - type: slack-send-message    # reply in the same channel, by name
               settings:
                 connector: slack
                 target: body.channel
-                text: '"you said: " + body.text'
+                text: '"thanks " + vars.slackUser.real_name + ", you said: " + body.text'
 `,
 };
 

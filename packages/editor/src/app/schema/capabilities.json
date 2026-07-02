@@ -953,7 +953,7 @@
       "category": "processor",
       "group": "Slack",
       "icon": "Slack",
-      "description": "Resolve a Slack user by email (users.lookupByEmail) into a variable.",
+      "description": "Resolve a Slack user into a variable — by email (users.lookupByEmail, the default) or by Slack user id (users.info), selected with `by`.",
       "fields": [
         {
           "name": "connector",
@@ -967,11 +967,27 @@
           }
         },
         {
+          "name": "by",
+          "label": "Look up by",
+          "type": "enum",
+          "required": false,
+          "default": "email",
+          "enum": ["email", "id"],
+          "description": "How to resolve the user: 'email' (users.lookupByEmail, the default) or 'id' (users.info)."
+        },
+        {
           "name": "email",
           "label": "Email",
           "type": "cel",
-          "required": true,
-          "description": "CEL expression for the email address to resolve."
+          "required": false,
+          "description": "CEL expression for the email address to resolve. Required when 'by' is 'email'."
+        },
+        {
+          "name": "user",
+          "label": "User ID",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the Slack user id to resolve (e.g. U123). Required when 'by' is 'id'."
         },
         {
           "name": "resultVar",

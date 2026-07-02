@@ -8,6 +8,7 @@ import {
   deleteSnapshot,
   type Snapshot,
 } from "@/app/model/orchestrator";
+import { suggestNextTag } from "@/app/model/tags";
 
 /**
  * Version tags for one integration: a create field plus the list of existing
@@ -37,15 +38,22 @@ export default function SnapshotsSection({
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Until the user edits the field, show the suggested next version (the highest
+  // existing tag's revision bumped). Derived from the current tags, so it stays
+  // fresh as they're created/deleted, and resets on a successful create below.
+  const [touched, setTouched] = useState(false);
+  const suggested = suggestNextTag(snapshots.map((s) => s.tag));
+  const value = touched ? tag : suggested;
 
   const create = async () => {
-    const name = tag.trim();
+    const name = value.trim();
     if (!name || busy) return;
     setBusy(true);
     setError(null);
     try {
       await createSnapshot(integrationId, name);
       setTag("");
+      setTouched(false);
       onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -77,10 +85,13 @@ export default function SnapshotsSection({
     <>
       <div className="mb-2 flex gap-2">
         <input
-          value={tag}
+          value={value}
           disabled={busy}
-          placeholder="New tag (e.g. v1.0)"
-          onChange={(e) => setTag(e.target.value)}
+          placeholder="New tag (e.g. v1.0.0)"
+          onChange={(e) => {
+            setTouched(true);
+            setTag(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") create();
           }}
@@ -89,7 +100,7 @@ export default function SnapshotsSection({
         <button
           type="button"
           onClick={create}
-          disabled={busy || !tag.trim()}
+          disabled={busy || !value.trim()}
           className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:opacity-50"
         >
           <Tag size={14} />

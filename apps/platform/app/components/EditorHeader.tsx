@@ -10,7 +10,9 @@ import {
 } from "@octo/editor";
 import AppLogo from "./AppLogo";
 import IntegrationsButton from "./IntegrationsButton";
+import DuplicateButton from "./DuplicateButton";
 import TagButton from "./TagButton";
+import DeployButton from "./DeployButton";
 
 /**
  * The editor's top bar. The integration controls (title, folder, Tag, Save,
@@ -45,7 +47,9 @@ export default function EditorHeader({
         {available && (
           <>
             <IntegrationsButton getIntegrationId={getIntegrationId} />
+            <DuplicateButton getIntegrationId={getIntegrationId} />
             <TagButton getIntegrationId={getIntegrationId} />
+            <DeployButton getIntegrationId={getIntegrationId} />
             <SaveButton />
           </>
         )}

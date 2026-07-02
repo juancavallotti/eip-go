@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Tag } from "lucide-react";
 import { useSave } from "@octo/editor";
-import { createSnapshot } from "@/app/model/orchestrator";
+import { createSnapshot, listSnapshots } from "@/app/model/orchestrator";
+import { DEFAULT_TAG, suggestNextTag } from "@/app/model/tags";
 
 /**
  * Editor header control that tags the current integration as a version. Tagging
@@ -46,6 +47,22 @@ export default function TagButton({
   // No filesystem capability => no tagging (mirrors how Save hides).
   if (!save) return null;
 
+  // Open the popup, prefilling the field with the suggested next version: bump the
+  // revision of the integration's highest existing tag (or the default when it's
+  // unsaved or has no tags). The user can still edit it before saving.
+  const openPopup = () => {
+    setError(null);
+    setTag(DEFAULT_TAG);
+    setOpen(true);
+    const id = getIntegrationId();
+    if (id) {
+      listSnapshots(id).then(
+        (snaps) => setTag(suggestNextTag(snaps.map((s) => s.tag))),
+        () => {},
+      );
+    }
+  };
+
   const submit = async () => {
     const name = tag.trim();
     if (!name || busy) return;
@@ -74,10 +91,7 @@ export default function TagButton({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => {
-          setError(null);
-          setOpen((o) => !o);
-        }}
+        onClick={() => (open ? setOpen(false) : openPopup())}
         disabled={save.empty}
         title={save.empty ? "Nothing to tag yet" : "Tag this version"}
         aria-haspopup="dialog"

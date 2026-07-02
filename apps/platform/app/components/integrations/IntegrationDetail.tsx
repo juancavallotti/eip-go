@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, Trash2 } from "lucide-react";
 import { fromDefinitionYaml } from "@octo/editor";
+import { downloadDefinition } from "./yamlFile";
 import {
   listSnapshots,
   type Deployment,
@@ -34,6 +35,10 @@ interface Props {
   folderId: string | null;
   busy: boolean;
   onDelete: () => void;
+  /** Duplicate this integration into a new "Copy of …" record. */
+  onCopy: () => void;
+  /** Rename this integration (its name is effectively its filename). */
+  onRename: (name: string) => void;
 }
 
 /** A labelled section wrapper; the unit future operating data plugs into. */
@@ -69,7 +74,23 @@ export default function IntegrationDetail({
   folderId,
   busy,
   onDelete,
+  onCopy,
+  onRename,
 }: Props) {
+  // Inline rename of the title. The parent keys this component by integration id,
+  // so selecting another integration remounts it and resets the draft cleanly.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(integration.name);
+  const cancelRename = useRef(false);
+  const commitRename = () => {
+    setEditingName(false);
+    if (cancelRename.current) {
+      cancelRename.current = false;
+      return;
+    }
+    const name = nameDraft.trim();
+    if (name && name !== integration.name) onRename(name);
+  };
   // The integration's version tags, owned here so creating/deleting one in the
   // Versions section immediately updates the Deployments section's change-version
   // menu (the two sections render side by side).
@@ -133,16 +154,64 @@ export default function IntegrationDetail({
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-2 px-4 py-3">
-        <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
-          {integration.name}
-        </h2>
+        {editingName ? (
+          <input
+            autoFocus
+            value={nameDraft}
+            disabled={busy}
+            aria-label="Integration name"
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              else if (e.key === "Escape") {
+                cancelRename.current = true;
+                e.currentTarget.blur();
+              }
+            }}
+            className="min-w-0 flex-1 rounded-md border border-black/10 bg-transparent px-1.5 py-0.5 text-base font-semibold outline-none focus:border-black/30 dark:border-white/15 dark:focus:border-white/30"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setNameDraft(integration.name);
+              setEditingName(true);
+            }}
+            title="Rename integration"
+            className="min-w-0 flex-1 truncate text-left text-base font-semibold hover:underline"
+          >
+            {integration.name}
+          </button>
+        )}
         <Link
           href={`/platform/i/${encodeURIComponent(integration.id)}`}
           className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
         >
-          <ExternalLink size={14} />
-          Open
+          <Pencil size={14} />
+          Edit
         </Link>
+        <button
+          type="button"
+          onClick={onCopy}
+          disabled={busy}
+          aria-label="Duplicate integration"
+          title="Duplicate integration"
+          className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.06] hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+        >
+          <Copy size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            downloadDefinition(integration.name, integration.definition)
+          }
+          aria-label="Download integration YAML"
+          title="Download YAML"
+          className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.06] hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+        >
+          <Download size={16} />
+        </button>
         <button
           type="button"
           onClick={onDelete}

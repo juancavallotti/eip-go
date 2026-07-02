@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { fromDefinitionYaml } from "@octo/editor";
 import {
   DndContext,
   DragOverlay,
@@ -12,7 +13,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Folder as FolderIcon, Plus, Workflow } from "lucide-react";
+import { Folder as FolderIcon, Plus, Upload, Workflow } from "lucide-react";
 import AppHeader from "@/app/components/AppHeader";
 import { useConfirm } from "@/app/components/ConfirmDialog";
 import { useOrchestrator } from "@/app/run/OrchestratorContext";
@@ -20,12 +21,14 @@ import { arrayMove } from "@dnd-kit/sortable";
 import {
   assignIntegration,
   createFolder,
+  createIntegration,
   deleteFolder,
   deleteIntegration,
   renameFolder,
   reorderFolderIntegrations,
   reorderFolders,
   unassignIntegration,
+  updateIntegration,
 } from "@/app/model/orchestrator";
 import {
   flatten,
@@ -40,6 +43,7 @@ import ManagementNav from "@/app/components/ManagementNav";
 import FolderTree from "./FolderTree";
 import IntegrationList from "./IntegrationList";
 import IntegrationDetail from "./IntegrationDetail";
+import { nameFromFilename } from "./yamlFile";
 import {
   INTEGRATIONS_BASE,
   buildPath,
@@ -180,6 +184,55 @@ export default function IntegrationsManager({
     run(() => deleteFolder(f.id));
   };
 
+  // Hidden file input backing the "Import" button. Importing a .yaml always
+  // creates a new integration (name from the filename); the file's contents are
+  // the runtime definition, validated before the create so malformed YAML fails
+  // fast with an inline error instead of a broken record.
+  const importInput = useRef<HTMLInputElement>(null);
+
+  const onImportFile = async (file: File) => {
+    setError(null);
+    const text = await file.text();
+    try {
+      fromDefinitionYaml(text);
+    } catch (e) {
+      setError(`Invalid integration YAML: ${(e as Error).message}`);
+      return;
+    }
+    run(async () => {
+      const created = await createIntegration({
+        name: nameFromFilename(file.name),
+        definition: text,
+      });
+      selectIntegration(created.id);
+    });
+  };
+
+  // Duplicate the selected integration into a fresh "Copy of …" record, then
+  // select the copy. Its definition is already loaded in the list, so no fetch.
+  const copySelected = () => {
+    if (!selected) return;
+    run(async () => {
+      const created = await createIntegration({
+        name: `Copy of ${selected.name}`,
+        definition: selected.definition,
+      });
+      selectIntegration(created.id);
+    });
+  };
+
+  // Rename the selected integration (its name is effectively its filename),
+  // preserving the definition. The updated name lands via the refresh.
+  const renameSelected = (name: string) => {
+    if (!selected) return;
+    run(() =>
+      updateIntegration(selected.id, {
+        name,
+        definition: selected.definition,
+      }),
+    );
+  };
+
   const removeSelected = async () => {
     if (!selected) return;
     const ok = await confirm({
@@ -308,13 +361,36 @@ export default function IntegrationsManager({
     <div className="flex h-full flex-col">
       <AppHeader userMenu={userMenu}>
         <ManagementNav />
-        <Link
-          href="/platform/new"
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
-        >
-          <Plus size={15} />
-          New integration
-        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            ref={importInput}
+            type="file"
+            accept=".yaml,.yml"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Reset first so re-selecting the same file fires onChange again.
+              e.target.value = "";
+              if (file) onImportFile(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importInput.current?.click()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md border border-black/10 px-3 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-black/[0.04] hover:text-zinc-900 disabled:opacity-50 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-zinc-100"
+          >
+            <Upload size={15} />
+            Import
+          </button>
+          <Link
+            href="/platform/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
+          >
+            <Plus size={15} />
+            New integration
+          </Link>
+        </div>
       </AppHeader>
 
       {error && (
@@ -353,11 +429,14 @@ export default function IntegrationsManager({
           <div className="min-w-0 flex-1">
             {selected ? (
               <IntegrationDetail
+                key={selected.id}
                 integration={selected}
                 folders={flat}
                 folderId={selectedFolderId}
                 busy={busy}
                 onDelete={removeSelected}
+                onCopy={copySelected}
+                onRename={renameSelected}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">

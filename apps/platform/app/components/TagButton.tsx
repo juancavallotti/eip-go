@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Tag } from "lucide-react";
 import { useSave } from "@octo/editor";
-import { createSnapshot } from "@/app/model/orchestrator";
+import { createSnapshot, listSnapshots } from "@/app/model/orchestrator";
+import { DEFAULT_TAG, suggestNextTag } from "@/app/model/tags";
 
 /**
  * Editor header control that tags the current integration as a version. Tagging
@@ -42,6 +43,26 @@ export default function TagButton({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // On opening the popup, prefill the field with the suggested next version:
+  // bump the revision of the integration's highest existing tag (or the default
+  // when it's unsaved or has no tags). The user can still edit it before saving.
+  useEffect(() => {
+    if (!open) return;
+    const id = getIntegrationId();
+    if (!id) {
+      setTag(DEFAULT_TAG);
+      return;
+    }
+    let active = true;
+    listSnapshots(id).then(
+      (snaps) => active && setTag(suggestNextTag(snaps.map((s) => s.tag))),
+      () => active && setTag(DEFAULT_TAG),
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, getIntegrationId]);
 
   // No filesystem capability => no tagging (mirrors how Save hides).
   if (!save) return null;

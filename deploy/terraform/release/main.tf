@@ -85,9 +85,25 @@ resource "null_resource" "pull_images" {
 # Build deploy step runs without the (gitignored) tfvars, passes no OIDC vars, and
 # reads them back from the bucket. The mutually-exclusive counts (write when supplied,
 # read otherwise) keep the resource and data source from referencing each other.
+#
+# The read is also gated on the object existing: on a fresh environment (or one
+# that never configured OIDC) oidc.json is absent, and reading it directly would
+# 404 the whole apply. Listing the bucket first lets a missing object mean simply
+# "OIDC disabled" instead of a hard failure.
+data "google_storage_bucket_objects" "state" {
+  bucket = local.state_bucket
+  prefix = "release/"
+}
+
 locals {
   oidc_provided = var.oidc_client_id != ""
-  oidc_stored   = local.oidc_provided ? null : jsondecode(data.google_storage_bucket_object_content.oidc[0].content)
+  oidc_exists = contains(
+    [for o in data.google_storage_bucket_objects.state.bucket_objects : o.name],
+    "release/oidc.json",
+  )
+  # Read stored OIDC only when it was not supplied locally and the object exists.
+  oidc_read   = !local.oidc_provided && local.oidc_exists
+  oidc_stored = local.oidc_read ? jsondecode(data.google_storage_bucket_object_content.oidc[0].content) : null
 
   oidc_enabled_eff       = local.oidc_provided ? var.oidc_enabled : try(local.oidc_stored.enabled, false)
   oidc_issuer_eff        = local.oidc_provided ? var.oidc_issuer : try(local.oidc_stored.issuer, var.oidc_issuer)
@@ -112,7 +128,7 @@ resource "google_storage_bucket_object" "oidc" {
 }
 
 data "google_storage_bucket_object_content" "oidc" {
-  count  = local.oidc_provided ? 0 : 1
+  count  = local.oidc_read ? 1 : 0
   bucket = local.state_bucket
   name   = "release/oidc.json"
 }

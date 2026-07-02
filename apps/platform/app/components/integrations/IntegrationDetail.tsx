@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { fromDefinitionYaml } from "@octo/editor";
 import {
   listSnapshots,
@@ -34,6 +34,8 @@ interface Props {
   folderId: string | null;
   busy: boolean;
   onDelete: () => void;
+  /** Duplicate this integration into a new "Copy of …" record. */
+  onCopy: () => void;
 }
 
 /** A labelled section wrapper; the unit future operating data plugs into. */
@@ -69,6 +71,7 @@ export default function IntegrationDetail({
   folderId,
   busy,
   onDelete,
+  onCopy,
 }: Props) {
   // The integration's version tags, owned here so creating/deleting one in the
   // Versions section immediately updates the Deployments section's change-version
@@ -143,6 +146,16 @@ export default function IntegrationDetail({
           <Pencil size={14} />
           Edit
         </Link>
+        <button
+          type="button"
+          onClick={onCopy}
+          disabled={busy}
+          aria-label="Duplicate integration"
+          title="Duplicate integration"
+          className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.06] hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+        >
+          <Copy size={16} />
+        </button>
         <button
           type="button"
           onClick={onDelete}

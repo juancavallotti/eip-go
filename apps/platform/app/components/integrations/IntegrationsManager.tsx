@@ -20,6 +20,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import {
   assignIntegration,
   createFolder,
+  createIntegration,
   deleteFolder,
   deleteIntegration,
   renameFolder,
@@ -178,6 +179,19 @@ export default function IntegrationsManager({
     if (!ok) return;
     if (typeof bucket === "object" && bucket.folder === f.id) selectBucket("all");
     run(() => deleteFolder(f.id));
+  };
+
+  // Duplicate the selected integration into a fresh "Copy of …" record, then
+  // select the copy. Its definition is already loaded in the list, so no fetch.
+  const copySelected = () => {
+    if (!selected) return;
+    run(async () => {
+      const created = await createIntegration({
+        name: `Copy of ${selected.name}`,
+        definition: selected.definition,
+      });
+      selectIntegration(created.id);
+    });
   };
 
   const removeSelected = async () => {
@@ -358,6 +372,7 @@ export default function IntegrationsManager({
                 folderId={selectedFolderId}
                 busy={busy}
                 onDelete={removeSelected}
+                onCopy={copySelected}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">

@@ -11,7 +11,16 @@ import type { RunHostPort, RunStatusLike } from "../run-host";
 /** A stub run host that records the last start() and fakes exposable runs. */
 function stubRunHost(opts: { available?: boolean } = {}) {
   const available = opts.available ?? true;
-  const calls: { startedYaml?: string; startedEnv?: Record<string, string>; ns?: string } = {};
+  const calls: {
+    startedYaml?: string;
+    startedEnv?: Record<string, string>;
+    ns?: string;
+    invoked?: {
+      yaml: string;
+      flow: string;
+      opts?: { data?: string; env?: Record<string, string>; timeoutMs?: number };
+    };
+  } = {};
   let running = false;
   let exposable = false;
   let logs: { seq: number; text: string }[] = [];
@@ -39,6 +48,18 @@ function stubRunHost(opts: { available?: boolean } = {}) {
       running = false;
       exposable = false;
       return snap();
+    },
+    invoke: async (ns, yaml, flow, opts) => {
+      calls.ns = ns;
+      calls.invoked = { yaml, flow, opts };
+      return {
+        ok: true,
+        exitCode: 0,
+        timedOut: false,
+        dropped: false,
+        output: '{"result":"ok"}',
+        logs: ["invoked greet"],
+      };
     },
     snapshot: () => logs,
     newNamespace: () => `ns-${++nsSeq}`,
@@ -192,5 +213,111 @@ describe("run tools", () => {
       arguments: {},
     })) as CallToolResult;
     expect(text(after)).toContain("starting octo");
+  });
+
+  it("invoke_flow returns the flow output and logs", async () => {
+    const { host } = stubRunHost();
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { id: "a", flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(parse(res)).toEqual({
+      ok: true,
+      timedOut: false,
+      dropped: false,
+      output: '{"result":"ok"}',
+      logs: ["invoked greet"],
+    });
+  });
+
+  it("invoke_flow errors when no runner is available", async () => {
+    const { host } = stubRunHost({ available: false });
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { id: "a", flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("OCTO_BIN_PATH");
+  });
+
+  it("invoke_flow rejects an invalid env shape", async () => {
+    const { host } = stubRunHost();
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { id: "a", flow: "greet", env: { "1bad": "x" } },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("invalid env");
+  });
+
+  it("invoke_flow forwards flow, data, env, and timeout to the runner", async () => {
+    const { host, calls } = stubRunHost();
+    const client = await connect(config(), host);
+    await client.callTool({
+      name: "invoke_flow",
+      arguments: {
+        id: "a",
+        flow: "greet",
+        data: '{"x":1}',
+        env: { API_KEY: "secret" },
+        timeoutMs: 5000,
+      },
+    });
+    expect(calls.invoked?.yaml).toBe(REC.definition);
+    expect(calls.invoked?.flow).toBe("greet");
+    expect(calls.invoked?.opts).toEqual({
+      data: '{"x":1}',
+      env: { API_KEY: "secret" },
+      timeoutMs: 5000,
+    });
+  });
+
+  it("invoke_flow runs an inline definition without touching the store", async () => {
+    const { host, calls } = stubRunHost();
+    const client = await connect(config(), host);
+    const inline = "service:\n  name: Draft\n";
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { definition: inline, flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(calls.invoked?.yaml).toBe(inline);
+  });
+
+  it("invoke_flow errors when neither id nor definition is given", async () => {
+    const { host } = stubRunHost();
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("exactly one of id or definition");
+  });
+
+  it("invoke_flow errors when both id and definition are given", async () => {
+    const { host } = stubRunHost();
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { id: "a", definition: "service:\n  name: X\n", flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("exactly one of id or definition");
+  });
+
+  it("invoke_flow errors on an unknown integration id", async () => {
+    const { host } = stubRunHost();
+    const client = await connect(config(), host);
+    const res = (await client.callTool({
+      name: "invoke_flow",
+      arguments: { id: "nope", flow: "greet" },
+    })) as CallToolResult;
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("no such integration");
   });
 });

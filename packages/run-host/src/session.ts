@@ -25,6 +25,34 @@ import { ensureReaper } from "./reaper";
 /** Grace period before a stop escalates from SIGTERM to SIGKILL. */
 const STOP_GRACE_MS = 3000;
 
+/** Default wall-clock budget for a one-shot `invoke`, matching the CLI's own default. */
+const INVOKE_DEFAULT_TIMEOUT_MS = 30000;
+
+/** Extra head-room the run-host waits beyond the CLI `-timeout` before force-killing. */
+const INVOKE_GRACE_MS = 5000;
+
+/** The line `octo invoke` logs to stderr when the flow filters (drops) the message. */
+const DROP_MARKER = "flow dropped the message";
+
+/** The outcome of a one-shot {@link invoke}: stdout (the flow result) and stderr (logs). */
+export interface InvokeResult {
+  /** True when the runner exited 0 and wasn't force-killed for exceeding the budget. */
+  ok: boolean;
+  /** The runner's exit code, or null when it was terminated by a signal. */
+  exitCode: number | null;
+  /** True when the wall-clock backstop had to kill the runner. */
+  timedOut: boolean;
+  /**
+   * True when the flow filtered the message (a block returned nothing), so there is no
+   * result body — distinct from a flow that legitimately produced an empty `output`.
+   */
+  dropped: boolean;
+  /** Everything the runner wrote to stdout (the flow's result body as JSON). */
+  output: string;
+  /** The runner's stderr, split into lines (its slog output). */
+  logs: string[];
+}
+
 export interface RunStatus {
   /** Whether a runner binary is configured (OCTO_BIN_PATH set by `task dev`). */
   available: boolean;
@@ -221,6 +249,111 @@ export async function sync(ns: string, yaml: string): Promise<RunStatus> {
   if (!s.proc || !s.configPath) return statusOf(s);
   await writeConfig(s.configPath, yaml);
   return statusOf(s);
+}
+
+/**
+ * Run a single named flow once and return its result plus logs, without starting the
+ * integration's sources. This shells out to `octo invoke`, which builds an invoke-mode
+ * service, calls the flow, prints its result body to stdout, streams slog to stderr,
+ * and tears down. It is deliberately session-free: it writes a throwaway config,
+ * captures the child's stdout/stderr locally (kept separate — result vs. logs), and
+ * never touches the namespace's long-running run or its {@link LogBuffer}/port, so a
+ * concurrent `run` in the same namespace is undisturbed.
+ *
+ * The child's own `-timeout` bounds only the flow call; a wall-clock backstop here
+ * force-kills a runner that hangs in startup or teardown so this never blocks forever.
+ */
+export async function invoke(
+  ns: string,
+  yaml: string,
+  flow: string,
+  opts?: { data?: string; env?: Record<string, string>; timeoutMs?: number },
+): Promise<InvokeResult> {
+  const bin = process.env.OCTO_BIN_PATH;
+  if (!bin) {
+    throw new Error("OCTO_BIN_PATH is not set; launch the editor with `task dev`.");
+  }
+
+  const dir = namespaceDir(ns);
+  await mkdir(dir, { recursive: true });
+  const configPath = join(dir, `octo-invoke-${randomUUID()}.yaml`);
+  await writeConfig(configPath, yaml);
+
+  const timeoutMs = opts?.timeoutMs ?? INVOKE_DEFAULT_TIMEOUT_MS;
+  const args = [
+    "invoke",
+    "-config",
+    configPath,
+    "-flow",
+    flow,
+    "-timeout",
+    `${timeoutMs}ms`,
+  ];
+  if (opts?.data !== undefined) args.push("-data", opts.data);
+
+  // Base process env, then the caller's env values. No HTTP_PORT wiring — invoke is
+  // not networked; it calls the flow directly and exits.
+  const env: NodeJS.ProcessEnv = { ...process.env, ...(opts?.env ?? {}) };
+
+  const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env });
+
+  let output = "";
+  let errText = "";
+  proc.stdout?.setEncoding("utf8");
+  proc.stdout?.on("data", (chunk: string) => {
+    output += chunk;
+  });
+  proc.stderr?.setEncoding("utf8");
+  proc.stderr?.on("data", (chunk: string) => {
+    errText += chunk;
+  });
+
+  let timedOut = false;
+  let kill: NodeJS.Timeout | undefined;
+  let force: NodeJS.Timeout | undefined;
+  const result = await new Promise<InvokeResult>((resolve) => {
+    const finish = (exitCode: number | null) => {
+      if (kill) clearTimeout(kill);
+      if (force) clearTimeout(force);
+      const logs = splitLines(errText);
+      const ok = exitCode === 0 && !timedOut;
+      resolve({
+        ok,
+        exitCode,
+        timedOut,
+        dropped: ok && logs.some((l) => l.includes(DROP_MARKER)),
+        output,
+        logs,
+      });
+    };
+    // Wall-clock backstop: give the child its `-timeout` plus head-room, then escalate
+    // SIGTERM → SIGKILL exactly like stop() does.
+    kill = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      force = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+      }, STOP_GRACE_MS);
+    }, timeoutMs + INVOKE_GRACE_MS);
+    proc.on("error", (err) => {
+      errText += `✖ failed to start runner: ${err.message}\n`;
+      finish(null);
+    });
+    proc.on("exit", (code) => finish(code));
+  });
+
+  await rm(configPath, { force: true }).catch(() => {});
+  return result;
+}
+
+/** Split captured stderr into lines, dropping a trailing empty line and CRs. */
+function splitLines(text: string): string[] {
+  if (text === "") return [];
+  return text.replace(/\n$/, "").split("\n").map((l) => l.replace(/\r$/, ""));
 }
 
 /** Stop the namespace's runner (SIGTERM, then SIGKILL after a grace period) and remove its config. */

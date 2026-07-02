@@ -35,6 +35,32 @@ export function registerPrompts(server: McpServer, config: OctoMcpConfig): void 
       ],
     }),
   );
+
+  server.registerPrompt(
+    "write-effective-integrations",
+    {
+      title: "Write effective Octo integrations",
+      description:
+        "Design best practices for Octo integrations: how to structure flows, when to use queues vs. topics, simplifying transforms, error handling, concurrency tuning, and visualizing the design for the user.",
+      argsSchema: {
+        focus: z
+          .string()
+          .optional()
+          .describe("A specific concern to emphasize (woven into the guidance)."),
+      },
+    },
+    ({ focus }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: effectiveIntegrationsGuide(focus, config.docsUrl),
+          },
+        },
+      ],
+    }),
+  );
 }
 
 function createIntegrationGuide(goal?: string, docsUrl?: string): string {
@@ -59,11 +85,56 @@ ${objective}Follow this loop:
 2. Read the "${EXAMPLES_INDEX_URI}" resource: it lists each worked example and the blocks it demonstrates. Read the "${EXAMPLES_INDEX_URI}/<slug>" resource(s) covering the blocks you need and adapt them — don't invent syntax.
 3. Draft the definition and call \`validate_definition\` to check it against the runtime schema BEFORE saving; fix the descriptive \`errors\` it returns and re-validate until clean. Then call \`create_integration\` (new) or \`update_integration\` (existing).
 4. Call \`can_start_integration\` — a best-effort pre-flight on the saved integration. Fix what it reports under \`errors\`, but treat it (and \`validate_definition\`) as advisory: the runtime is the final judge, so a definition it flags may still run (and a clean one may still fail at load).
-5. Call \`run_integration\`. If the integration declares an HTTP_PORT (a networked \`http\` connector), the result includes a \`testUrl\` you can curl to exercise its endpoints; otherwise it runs internally (e.g. cron-driven). Read \`get_run_logs\` to see the runtime's own load errors.
-6. Call \`get_run_logs\` to observe behavior, iterate with \`update_integration\` + \`run_integration\`, and \`stop_integration\` when done.
+5. Test a single flow fast with \`invoke_flow\` (\`flow\` + optional \`data\`/\`env\`): it runs one flow WITHOUT starting sources and returns its result \`output\` and \`logs\` in one call — the quickest author→test→iterate loop. It accepts a saved \`id\` or an inline \`definition\` (so you can try a draft before saving). Use \`list_flows\` to see the flow names in an integration.
+6. Call \`run_integration\` for a full run. If the integration declares an HTTP_PORT (a networked \`http\` connector), the result includes a \`testUrl\` you can curl to exercise its endpoints; otherwise it runs internally (e.g. cron-driven). Read \`get_run_logs\` to see the runtime's own load errors, iterate with \`update_integration\`, and \`stop_integration\` when done.
+
+For DESIGN guidance (how to structure flows, when to use queues vs. topics, simplifying transforms, error handling), read the "write-effective-integrations" prompt.
 
 Tips:
 - To make an integration testable over HTTP, add an \`http\` connector and declare HTTP_PORT in \`env\`; use that connector as a flow's source.
 - Keep \`service.name\` stable; renaming may change the integration's id.
 - CEL expressions (e.g. log messages, payloads) can read body, vars, eventID, and correlationID.${docs}`;
+}
+
+function effectiveIntegrationsGuide(focus?: string, docsUrl?: string): string {
+  const emphasis = focus?.trim()
+    ? `Pay special attention to: ${focus.trim()}.\n\n`
+    : "";
+  const docs = docsUrl?.trim()
+    ? `\n\nReference documentation: ${docsUrl.trim()} — the full block & connector reference, CEL syntax, and the processing-pipeline model (workers/buffer/pool). Consult it for exact field names.`
+    : "";
+  return `Best practices for designing effective Octo integrations. These are DESIGN principles — for exact block/connector syntax read the "${RUNTIME_SCHEMA_URI}" resource and adapt the worked examples under "${EXAMPLES_INDEX_URI}/<slug>" rather than inventing fields. Validate drafts with \`validate_definition\` and test single flows fast with \`invoke_flow\` as you go.
+
+${emphasis}Principles:
+
+1. Split functionality across small, single-purpose flows. Give each flow one clear job. Extract logic shared by several flows into a sourceless flow (a flow with no \`source\`, callable by name) and invoke it with a \`flow-ref\` block — two-way by default (you get the called flow's result back), or set \`oneWay: true\` for fire-and-forget. This keeps flows readable and reusable instead of one sprawling chain.
+
+2. Choose queues vs. topics by delivery semantics.
+   - QUEUE (competing consumers): a \`queue-dispatch\` block sends to a subject; a flow with a \`queue\` source consumes it, and each message is handled by exactly ONE replica. Use for load-balancing/decoupling work across replicas, or offloading slow work from a request path. Set \`awaitReply: true\` for request/reply, omit it for fire-and-forget. See the queue-load-balance example.
+   - TOPIC (broadcast pub/sub): a \`publish-event\` block broadcasts to a subject; EVERY flow with an \`events\` source on that subject receives the message. Use for fan-out — notifying multiple independent handlers of the same event. See the events example.
+   Rule of thumb: one worker should handle it → queue; many interested parties should all see it → topic.
+
+3. Simplify transformation chains with \`multi-transform\`. Instead of stringing together several \`set-payload\`/\`set-variable\` blocks, use one \`multi-transform\` with an ordered \`transforms\` list (\`setBody: <CEL>\` to reshape the body, or \`setVar: <name>\` + \`value: <CEL>\` to stash a variable). Later steps see the results of earlier ones, so a whole compute-then-reshape sequence lives in a single readable block. See the multi-transform example.
+
+4. Handle errors deliberately, at the right scope.
+   - Inline boundary: wrap a risky chain in a \`handle-errors\` block — its \`process\` is the protected chain and its \`error\` chain runs on failure with \`vars.error\` ({ message, flow, block }) available to build a fallback/degraded response.
+   - Whole-flow fallback: add a flow-level \`error:\` chain (a sibling of \`process\` on a root flow) to recover from any failure in the flow; a successful recovery becomes the flow's result.
+   Don't leave failures implicit — decide per risky step whether to recover locally or fall through. See the error-handling example.
+
+5. Use composite blocks for control flow instead of inflating a flow. \`if\`/\`switch\` for routing on a CEL condition, \`foreach\` to iterate an array (binds each element, default \`item\`), \`fork\` to run branches in parallel (each on its own clone; joins before returning), and \`enrich\` to compute derived data on an isolated clone without polluting the main message. Reach for these before duplicating logic or building deeply nested flows.
+
+6. Tune concurrency only when a real need appears. Root flows expose \`workers\` (per-flow worker pool, default 8; set 1 for strict FIFO/no cross-message parallelism), \`buffer\` (source→worker queue depth, default 64; raise to absorb bursts), and \`pool\` (shared pool for fan-out composites like fork, default 8; size it to your widest fan-out to avoid exhaustion). Start with defaults and change a knob only when ordering or throughput demands it.
+
+7. Show the design back to the user as a Mermaid diagram. As you design (and again once it settles), render the flow(s) as a Mermaid \`flowchart\` so the user can eyeball the topology before running it: the source as the entry node, the \`process\` blocks in order, branches for composites (\`if\`/\`switch\`/\`foreach\`/\`fork\`), \`flow-ref\` calls as edges into the referenced flow, and queue/topic hops as edges to/from the subject. Template to adapt:
+
+\`\`\`mermaid
+flowchart TD
+  src["cron: every 30s"] --> greet["log: greet"]
+  greet --> route{"if: body.vip"}
+  route -->|true| vip["flow-ref: notify-vip"]
+  route -->|false| std["queue-dispatch: work"]
+  std -.->|queue: work| worker["flow: worker"]
+\`\`\`
+
+Then verify a flow end to end with \`invoke_flow\` and iterate.${docs}`;
 }

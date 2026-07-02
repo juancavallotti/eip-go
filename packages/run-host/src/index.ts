@@ -12,9 +12,11 @@ export {
   start,
   stop,
   sync,
+  invoke,
   snapshot,
   subscribe,
   runningPort,
+  type InvokeResult,
 } from "./session";
 export { probeVersion, cachedVersion } from "./version";
 export {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   currentConfigPath,
+  invoke,
   snapshot,
   start,
   status,
@@ -130,5 +131,116 @@ describe("run session", () => {
     delete process.env.OCTO_BIN_PATH;
     const result = await sync(NS, "service:\n  name: x\n");
     expect(result.running).toBe(false);
+  });
+
+  describe("invoke", () => {
+    it("returns stdout as the result and stderr as separate log lines", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(
+        dir,
+        "octo-invoke",
+        'printf \'{"ok":true}\\n\'\n>&2 printf "log one\\nlog two\\n"',
+      );
+
+      const r = await invoke(NS, "service:\n  name: t\n", "greet");
+      expect(r.ok).toBe(true);
+      expect(r.exitCode).toBe(0);
+      expect(r.timedOut).toBe(false);
+      expect(r.output).toContain('{"ok":true}');
+      expect(r.logs).toEqual(["log one", "log two"]);
+    });
+
+    it("reports a non-zero exit as not ok", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(dir, "octo-fail", "exit 1");
+      const r = await invoke(NS, "service:\n  name: t\n", "greet");
+      expect(r.ok).toBe(false);
+      expect(r.exitCode).toBe(1);
+      expect(r.dropped).toBe(false);
+    });
+
+    it("flags a dropped message from the runner's stderr marker", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(
+        dir,
+        "octo-drop",
+        '>&2 echo \'time=... level=INFO msg="flow dropped the message" flow=greet\'',
+      );
+      const r = await invoke(NS, "service:\n  name: t\n", "greet");
+      expect(r.ok).toBe(true);
+      expect(r.dropped).toBe(true);
+      expect(r.output).toBe("");
+    });
+
+    it("forwards the flow, data, and timeout as argv", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(dir, "octo-args", 'echo "$@"');
+      const r = await invoke(NS, "service:\n  name: t\n", "greet", {
+        data: '{"x":1}',
+        timeoutMs: 5000,
+      });
+      expect(r.output).toContain("invoke");
+      expect(r.output).toContain("-flow greet");
+      expect(r.output).toContain("-data {\"x\":1}");
+      expect(r.output).toContain("-timeout 5000ms");
+    });
+
+    it("injects env vars into the runner", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(
+        dir,
+        "octo-env",
+        'echo "$API_KEY"',
+      );
+      const r = await invoke(NS, "service:\n  name: t\n", "greet", {
+        env: { API_KEY: "sekret" },
+      });
+      expect(r.output).toContain("sekret");
+    });
+
+    it("force-kills a runner that exceeds the wall-clock budget and cleans up", async () => {
+      // The backstop fires at timeoutMs + INVOKE_GRACE_MS (~5.1s here, since the fake
+      // ignores the CLI -timeout), so allow more than vitest's default 5s per-test cap.
+      process.env.OCTO_BIN_PATH = await fakeBin(dir, "octo-hang", "sleep 30");
+      const r = await invoke(NS, "service:\n  name: t\n", "greet", {
+        timeoutMs: 100,
+      });
+      expect(r.timedOut).toBe(true);
+      expect(r.ok).toBe(false);
+      // The throwaway config is removed even when the run had to be killed.
+      const left = await readdir(join(dir, NS));
+      expect(left.some((f) => f.startsWith("octo-invoke-"))).toBe(false);
+    }, 10000);
+
+    it("removes the throwaway config after a successful run", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(dir, "octo-ok", "echo done");
+      await invoke(NS, "service:\n  name: t\n", "greet");
+      const left = await readdir(join(dir, NS));
+      expect(left.some((f) => f.startsWith("octo-invoke-"))).toBe(false);
+    });
+
+    it("does not disturb a concurrent long-running run in the same namespace", async () => {
+      process.env.OCTO_BIN_PATH = await fakeBin(
+        dir,
+        "octo-both",
+        'if [ "$1" = "invoke" ]; then printf \'{"r":1}\\n\'; else echo ready; sleep 5; fi',
+      );
+
+      const yaml =
+        "service:\n  name: net\nenv:\n  - name: HTTP_PORT\n    default: \"8080\"\n";
+      const started = await start(NS, yaml);
+      await vi.waitFor(() => expect(texts()).toContain("ready"), { timeout: 4000 });
+      const port = started.port;
+
+      const r = await invoke(NS, "service:\n  name: t\n", "greet");
+      expect(r.output).toContain('{"r":1}');
+
+      // The long-running run's log buffer and allocated port are untouched by invoke.
+      expect(texts()).toContain("ready");
+      expect(status(NS).port).toBe(port);
+      expect(status(NS).running).toBe(true);
+    });
+
+    it("throws when OCTO_BIN_PATH is unset", async () => {
+      delete process.env.OCTO_BIN_PATH;
+      await expect(invoke(NS, "service:\n  name: t\n", "greet")).rejects.toThrow(
+        /OCTO_BIN_PATH/,
+      );
+    });
   });
 });

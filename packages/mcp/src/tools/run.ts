@@ -88,6 +88,72 @@ export function registerRunTools(
   );
 
   server.registerTool(
+    "invoke_flow",
+    {
+      title: "Invoke a single flow",
+      description:
+        "Run ONE named flow once and return its result and logs — without starting the integration's sources. Supply either a saved integration `id` or an inline `definition` (raw runtime YAML), the `flow` name, and optional `data` (JSON request body) and `env`. This is the fast way to test a flow: returns { ok, timedOut, dropped, output, logs } where `output` is the flow's result body, `dropped` is true when the flow filtered the message (no result), and `logs` are the runner's stderr lines. Use `list_flows` to discover flow names.",
+      inputSchema: {
+        id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("The saved integration id to run (mutually exclusive with `definition`)."),
+        definition: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Inline runtime YAML to run unsaved (mutually exclusive with `id`)."),
+        flow: z.string().min(1).describe("The name of the flow to invoke."),
+        data: z
+          .string()
+          .optional()
+          .describe("Optional JSON request body passed to the flow."),
+        env: z
+          .record(z.string())
+          .optional()
+          .describe("Optional env vars injected into the run (name → value)."),
+        timeoutMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Max time to wait for the flow, in milliseconds (default 30000)."),
+      },
+    },
+    ({ id, definition, flow, data, env, timeoutMs }, extra) =>
+      guard(async () => {
+        if ((id === undefined) === (definition === undefined)) {
+          return errorResult("provide exactly one of id or definition");
+        }
+        const yaml =
+          definition !== undefined ? definition : (await store.get(id!)).definition;
+        const ns = resolveNamespace(extra.sessionId);
+        if (!runHost.status(ns).available) {
+          return errorResult("Runner not available (OCTO_BIN_PATH unset).");
+        }
+        let parsedEnv: Record<string, string> | undefined;
+        if (env !== undefined) {
+          const sane = parseEnv(env);
+          if (!sane) return errorResult("invalid env (names must match [A-Za-z_][A-Za-z0-9_]* with string values)");
+          parsedEnv = sane;
+        }
+        const r = await runHost.invoke(ns, yaml, flow, {
+          data,
+          env: parsedEnv,
+          timeoutMs,
+        });
+        return jsonResult({
+          ok: r.ok,
+          timedOut: r.timedOut,
+          dropped: r.dropped,
+          output: r.output,
+          logs: r.logs,
+        });
+      }),
+  );
+
+  server.registerTool(
     "stop_integration",
     {
       title: "Stop integration",

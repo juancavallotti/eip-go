@@ -136,6 +136,43 @@ describe("integration tools", () => {
     expect(store.rows.size).toBe(0);
   });
 
+  it("lists flows with their source type, null for sourceless flows", async () => {
+    const definition = [
+      "service:",
+      "  name: Demo",
+      "flows:",
+      "  - name: greet",
+      "    source:",
+      "      connector: ticker",
+      "      type: cron",
+      "    process: []",
+      "  - name: helper",
+      "    process: []",
+    ].join("\n");
+    const store = fakeStore([{ id: "a", name: "Demo", definition }]);
+    const client = await connect(baseConfig(store));
+    const res = (await client.callTool({
+      name: "list_flows",
+      arguments: { id: "a" },
+    })) as CallToolResult;
+    expect(parse(res)).toEqual([
+      { name: "greet", source: "cron" },
+      { name: "helper", source: null },
+    ]);
+  });
+
+  it("returns [] when the definition declares no flows", async () => {
+    const store = fakeStore([
+      { id: "a", name: "Empty", definition: "service:\n  name: Empty\n" },
+    ]);
+    const client = await connect(baseConfig(store));
+    const res = (await client.callTool({
+      name: "list_flows",
+      arguments: { id: "a" },
+    })) as CallToolResult;
+    expect(parse(res)).toEqual([]);
+  });
+
   it("updates an integration's definition and name", async () => {
     const store = fakeStore([{ id: "a", name: "Old", definition: "v1" }]);
     const client = await connect(baseConfig(store));

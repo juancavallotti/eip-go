@@ -24,6 +24,17 @@ export interface RunLogLine {
   text: string;
 }
 
+/** The outcome of a one-shot `invoke`: the flow's stdout result and its stderr logs. */
+export interface InvokeResultLike {
+  ok: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+  /** True when the flow filtered the message, so there is no result body. */
+  dropped: boolean;
+  output: string;
+  logs: string[];
+}
+
 export interface RunHostPort {
   status(ns: string): RunStatusLike;
   start(
@@ -32,6 +43,13 @@ export interface RunHostPort {
     env?: Record<string, string>,
   ): Promise<RunStatusLike>;
   stop(ns: string): Promise<RunStatusLike>;
+  /** Run a single named flow once (sources not started) and return its result + logs. */
+  invoke(
+    ns: string,
+    yaml: string,
+    flow: string,
+    opts?: { data?: string; env?: Record<string, string>; timeoutMs?: number },
+  ): Promise<InvokeResultLike>;
   snapshot(ns: string): RunLogLine[];
   /** Mint a fresh, valid namespace slug. */
   newNamespace(): string;

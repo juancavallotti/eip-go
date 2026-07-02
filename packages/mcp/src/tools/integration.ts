@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parse as parseYaml } from "yaml";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { OctoMcpConfig } from "../backend";
 import { guard, jsonResult } from "../result";
@@ -35,6 +36,21 @@ export function registerIntegrationTools(
       inputSchema: { id: z.string().min(1).describe("The integration id.") },
     },
     ({ id }) => guard(async () => jsonResult(await store.get(id))),
+  );
+
+  server.registerTool(
+    "list_flows",
+    {
+      title: "List flows",
+      description:
+        "List the flows declared in a saved integration as { name, source } — `source` is the flow's trigger type (e.g. http, cron, queue, events) or null for a sourceless flow callable by name. Use this to discover flow names for `invoke_flow`.",
+      inputSchema: { id: z.string().min(1).describe("The integration id.") },
+    },
+    ({ id }) =>
+      guard(async () => {
+        const rec = await store.get(id);
+        return jsonResult(listFlows(rec.definition));
+      }),
   );
 
   server.registerTool(
@@ -94,4 +110,31 @@ export function registerIntegrationTools(
     ({ id, name, definition }) =>
       guard(async () => jsonResult(await store.update(id, name, definition))),
   );
+}
+
+/** A flow's name and the type of its trigger (null when it has no source). */
+interface FlowSummary {
+  name: string;
+  source: string | null;
+}
+
+/**
+ * Parse a runtime-YAML definition and summarize its top-level flows. A flow's
+ * `source.type` (its trigger, e.g. http/cron/queue/events) is reported when present;
+ * a sourceless flow (callable by name via flow-ref/invoke) reports `source: null`.
+ * Returns [] when the definition has no parseable flows.
+ */
+export function listFlows(definition: string): FlowSummary[] {
+  const doc = parseYaml(definition) as unknown;
+  const flows = (doc as { flows?: unknown } | null)?.flows;
+  if (!Array.isArray(flows)) return [];
+  const out: FlowSummary[] = [];
+  for (const flow of flows) {
+    if (typeof flow !== "object" || flow === null) continue;
+    const f = flow as { name?: unknown; source?: { type?: unknown } | null };
+    if (typeof f.name !== "string") continue;
+    const type = f.source?.type;
+    out.push({ name: f.name, source: typeof type === "string" ? type : null });
+  }
+  return out;
 }

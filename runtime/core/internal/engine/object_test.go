@@ -166,6 +166,103 @@ func TestObjectReadMissingKey(t *testing.T) {
 	})
 }
 
+func TestObjectReadExistsVar(t *testing.T) {
+	ctx, _ := withFakeServices(context.Background())
+
+	writer, err := newObjectWrite(types.Settings{"key": `"k"`, "value": `{"v": 1}`}, core.BlockDeps{})
+	if err != nil {
+		t.Fatalf("newObjectWrite: %v", err)
+	}
+	reader, err := newObjectRead(types.Settings{"key": `"k"`, "existsVar": "found"}, core.BlockDeps{})
+	if err != nil {
+		t.Fatalf("newObjectRead: %v", err)
+	}
+
+	// Miss: the presence variable is false.
+	miss, err := reader.Process(ctx, mustMessage(t))
+	if err != nil {
+		t.Fatalf("read miss: %v", err)
+	}
+	if got, ok := miss.Variables.Bool("found"); !ok || got {
+		t.Errorf("found = %v, %v; want false, true on a miss", got, ok)
+	}
+
+	// Hit: the presence variable is true.
+	if _, err = writer.Process(ctx, mustMessage(t)); err != nil {
+		t.Fatalf("write Process: %v", err)
+	}
+	hit, err := reader.Process(ctx, mustMessage(t))
+	if err != nil {
+		t.Fatalf("read hit: %v", err)
+	}
+	if got, ok := hit.Variables.Bool("found"); !ok || !got {
+		t.Errorf("found = %v, %v; want true, true on a hit", got, ok)
+	}
+}
+
+func TestObjectReadNoExistsVarByDefault(t *testing.T) {
+	// Without existsVar the block writes no presence variable, preserving the
+	// pre-existing behavior for flows that never opted in.
+	ctx, _ := withFakeServices(context.Background())
+	reader, err := newObjectRead(types.Settings{"key": `"absent"`}, core.BlockDeps{})
+	if err != nil {
+		t.Fatalf("newObjectRead: %v", err)
+	}
+	out, err := reader.Process(ctx, mustMessage(t))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if _, ok := out.Variables["objectExists"]; ok {
+		t.Error("objectExists should be unset when existsVar is not configured")
+	}
+}
+
+func TestObjectReadDefault(t *testing.T) {
+	ctx, _ := withFakeServices(context.Background())
+
+	t.Run("body mode folds the default", func(t *testing.T) {
+		reader, err := newObjectRead(
+			types.Settings{"key": `"absent"`, "default": `{"status": "new"}`, "existsVar": "found"},
+			core.BlockDeps{},
+		)
+		if err != nil {
+			t.Fatalf("newObjectRead: %v", err)
+		}
+		msg := mustMessage(t)
+		msg.Body = "stale"
+		out, err := reader.Process(ctx, msg)
+		if err != nil {
+			t.Fatalf("Process: %v", err)
+		}
+		body, ok := out.Body.(map[string]any)
+		if !ok || body["status"] != "new" {
+			t.Errorf("body = %v, want {status:new}", out.Body)
+		}
+		if got, ok := out.Variables.Bool("found"); !ok || got {
+			t.Errorf("found = %v, %v; want false, true", got, ok)
+		}
+	})
+
+	t.Run("as mode folds the default into the variable", func(t *testing.T) {
+		reader, err := newObjectRead(
+			types.Settings{"key": `"absent"`, "as": "x", "default": "body.fallback"},
+			core.BlockDeps{},
+		)
+		if err != nil {
+			t.Fatalf("newObjectRead: %v", err)
+		}
+		msg := mustMessage(t)
+		msg.Body = map[string]any{"fallback": float64(9)}
+		out, err := reader.Process(ctx, msg)
+		if err != nil {
+			t.Fatalf("Process: %v", err)
+		}
+		if got, ok := out.Variables.Int("x"); !ok || got != 9 {
+			t.Errorf("vars.x = %d, %v; want 9, true", got, ok)
+		}
+	})
+}
+
 func TestObjectDeleteRemovesKey(t *testing.T) {
 	ctx, kv := withFakeServices(context.Background())
 
@@ -231,6 +328,7 @@ func TestObjectBuildValidation(t *testing.T) {
 	}{
 		{name: "object-read without key", factory: newObjectRead, raw: nil},
 		{name: "object-read bad key expr", factory: newObjectRead, raw: types.Settings{"key": "body."}},
+		{name: "object-read bad default expr", factory: newObjectRead, raw: types.Settings{"key": `"k"`, "default": "body."}},
 		{name: "object-write without key", factory: newObjectWrite, raw: nil},
 		{name: "object-write bad key expr", factory: newObjectWrite, raw: types.Settings{"key": "body."}},
 		{name: "object-write bad value expr", factory: newObjectWrite, raw: types.Settings{"key": `"k"`, "value": "body."}},

@@ -301,6 +301,14 @@ Other call sites expose their own variables:
 - **`queue-dispatch` block** (`subject` setting) sees the same surface as the
   message-driven blocks (`body`, `vars`, `eventID`, `correlationID`, `env`, `now`),
   so a flow can route or shard work per message — e.g. `'"orders." + vars.region'`.
+- **`object-read` block** (`key`, `default`, `existsVar` settings) reads an object
+  from the runtime store into the body or the `as` variable. On a miss, the
+  **`default`** CEL expression — when set — is folded in exactly like a hit (into
+  `as`, or the body); with no default a miss nulls the body (body mode) or leaves
+  the variable unset. Set **`existsVar`** to also record presence: the block writes
+  that variable a boolean (true on a hit), so a flow can branch without a second
+  read. When `existsVar` is omitted no such variable is written (the prior
+  behavior). See `samples/object-store.yaml`.
 
 ### The `log` block and `logger` connectors
 

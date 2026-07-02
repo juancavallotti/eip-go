@@ -584,6 +584,55 @@ flows:
 `,
 };
 
+/** The object store: write a value, read it back with a presence flag + default. */
+const OBJECT_STORE: Example = {
+  slug: "object-store",
+  title: "object-store — object-write / object-read with default + objectExists",
+  summary:
+    "Persists a value with object-write and reads it back with object-read. Setting existsVar makes object-read write a boolean (true on a hit), and its `default` CEL expression is folded in on a miss (into `as`, or the body) so the flow never handles a null. The in-process standalone store is per-run, so this flow reads the key before and after writing it to show both states.",
+  blocks: ["object-read", "object-write", "log"],
+  definition: `service:
+  name: object-store
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: profile
+    process:
+      # Cold read: key absent -> default folded in, objectExists false.
+      - type: object-read
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        settings:
+          logger: out
+          message: '"before: exists=" + string(vars.profileExists) + " plan=" + vars.profile.plan'
+      - type: object-write
+        settings:
+          key: '"profile:" + body.id'
+          value: '{"plan": body.plan}'
+      # Warm read: key now exists -> stored value wins, profileExists true.
+      - type: object-read
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        settings:
+          logger: out
+          message: '"after: exists=" + string(vars.profileExists) + " plan=" + vars.profile.plan'
+`,
+};
+
 /** An ordered chain of additive CEL edits collapsed into one block. */
 const MULTI_TRANSFORM: Example = {
   slug: "multi-transform",
@@ -683,6 +732,7 @@ export const EXAMPLES: Example[] = [
   AI_ROUTER,
   SLACK_BOT,
   ENRICH,
+  OBJECT_STORE,
   MULTI_TRANSFORM,
   AI_AGENT_MEMORY,
 ];

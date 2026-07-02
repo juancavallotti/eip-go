@@ -716,7 +716,7 @@
       "category": "processor",
       "group": "Storage & Cache",
       "icon": "HardDriveDownload",
-      "description": "Read an object from the runtime store into the body or a variable.",
+      "description": "Read an object from the runtime store into the body or a variable. When the key is absent and `default` is set, the default is folded in exactly like a hit; otherwise the body is nulled (body mode) or the variable is left unset. Set `existsVar` to also record whether the key was found.",
       "fields": [
         {
           "name": "key",
@@ -731,6 +731,20 @@
           "type": "string",
           "required": false,
           "description": "Variable to store the object under; empty replaces the body."
+        },
+        {
+          "name": "default",
+          "label": "Default",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression evaluated when the key is absent; its result is folded in like a hit (into the variable, or the body). Empty leaves a miss as a null body / unset variable. Set existsVar to tell a default apart from a hit."
+        },
+        {
+          "name": "existsVar",
+          "label": "Exists variable",
+          "type": "string",
+          "required": false,
+          "description": "When set, names a variable the block writes a boolean into: true when the key was found, false when the default/null path was taken. Empty writes no variable (the legacy behavior)."
         }
       ]
     },

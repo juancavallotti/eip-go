@@ -477,13 +477,14 @@ const SLACK_BOT: Example = {
   slug: "slack-bot",
   title: "slack-bot — receive Slack events, verify, and reply",
   summary:
-    "Slack posts events to an http route. slack-verify-request checks the signature over the raw body (note the source's headers + rawBodyVar); an if branch echoes Slack's URL-verification challenge, otherwise slack-event filters to @-mentions and slack-send-message replies. Needs SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET; test at /slack/events.",
+    "Slack posts events to an http route. slack-verify-request checks the signature over the raw body (note the source's headers + rawBodyVar); an if branch echoes Slack's URL-verification challenge, otherwise slack-event filters to @-mentions, slack-lookup-user resolves the mentioning user by id (by: id), and slack-send-message replies by name. Needs SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET; test at /slack/events.",
   blocks: [
     "http (source)",
     "slack-verify-request",
     "if",
     "set-payload",
     "slack-event",
+    "slack-lookup-user",
     "slack-send-message",
     "slack (connector)",
   ],
@@ -535,11 +536,16 @@ flows:
               settings:
                 eventTypes: [app_mention]
                 filter: body.botId == null
-            - type: slack-send-message    # reply in the same channel
+            - type: slack-lookup-user     # resolve the user id -> vars.slackUser
+              settings:
+                connector: slack
+                by: id
+                user: body.user
+            - type: slack-send-message    # reply in the same channel, by name
               settings:
                 connector: slack
                 target: body.channel
-                text: '"you said: " + body.text'
+                text: '"thanks " + vars.slackUser.real_name + ", you said: " + body.text'
 `,
 };
 
@@ -581,6 +587,141 @@ flows:
         settings:
           logger: out
           message: '"order " + body.orderId + " total=" + string(vars.total)'
+`,
+};
+
+/** The object store: write a value, read it back with a presence flag + default. */
+const OBJECT_STORE: Example = {
+  slug: "object-store",
+  title: "object-store — object-write / object-read with default + objectExists",
+  summary:
+    "Persists a value with object-write and reads it back with object-read. Setting existsVar makes object-read write a boolean (true on a hit), and its `default` CEL expression is folded in on a miss (into `as`, or the body) so the flow never handles a null. The in-process standalone store is per-run, so this flow reads the key before and after writing it to show both states.",
+  blocks: ["object-read", "object-write", "log"],
+  definition: `service:
+  name: object-store
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: profile
+    process:
+      # Cold read: key absent -> default folded in, objectExists false.
+      - type: object-read
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        settings:
+          logger: out
+          message: '"before: exists=" + string(vars.profileExists) + " plan=" + vars.profile.plan'
+      - type: object-write
+        settings:
+          key: '"profile:" + body.id'
+          value: '{"plan": body.plan}'
+      # Warm read: key now exists -> stored value wins, profileExists true.
+      - type: object-read
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        settings:
+          logger: out
+          message: '"after: exists=" + string(vars.profileExists) + " plan=" + vars.profile.plan'
+`,
+};
+
+/** Broadcast pub/sub: one publisher, multiple subscribers each get every message. */
+const EVENTS: Example = {
+  slug: "events",
+  title: "events — broadcast pub/sub (publish-event + event source)",
+  summary:
+    "publish-event broadcasts the current message to a topic subject; every flow fronted by an `events` source on that subject receives its own copy — fan-out, unlike a queue where each message is handled once. Here a cron-driven flow publishes and two subscriber flows both receive every message. The `events` source resolves implicitly by type (no connector instance needed).",
+  blocks: ["publish-event", "events (source)", "cron (source)", "log"],
+  definition: `service:
+  name: events
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: emitter
+    source:
+      type: cron
+      settings:
+        schedule: "@every 3s"
+        payload: '{"tick": string(now)}'
+    process:
+      - type: publish-event
+        settings:
+          subject: '"notifications"'   # CEL subject; constant here
+  - name: subscriber-a
+    source:
+      type: events                     # implicit connector — no instance needed
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        settings:
+          logger: out
+          message: '"A saw tick " + body.tick'
+  - name: subscriber-b
+    source:
+      type: events
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        settings:
+          logger: out
+          message: '"B saw tick " + body.tick'
+`,
+};
+
+/** An ordered chain of additive CEL edits collapsed into one block. */
+const MULTI_TRANSFORM: Example = {
+  slug: "multi-transform",
+  title: "multi-transform — additive edits in one block",
+  summary:
+    "Applies an ordered list of CEL edits in one block: each step either sets the body (setBody) or a variable (setVar/value), and the edits accumulate so a later step reads what an earlier one produced. Collapses a chain of set-payload / set-variable blocks. The transforms list sits under settings.",
+  blocks: ["multi-transform", "log"],
+  definition: `service:
+  name: multi-transform
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: order
+    process:
+      - type: multi-transform
+        name: price-order
+        settings:
+          transforms:
+            - setBody: '{"orderId": body.orderId, "subtotal": body.qty * body.price}'
+            - setVar: subtotal
+              value: body.subtotal
+            - setBody: '{"orderId": body.orderId, "subtotal": vars.subtotal, "total": vars.subtotal * 1.1}'
+      - type: log
+        settings:
+          logger: out
+          message: '"order " + body.orderId + " total=" + string(body.total)'
 `,
 };
 
@@ -648,6 +789,9 @@ export const EXAMPLES: Example[] = [
   AI_ROUTER,
   SLACK_BOT,
   ENRICH,
+  OBJECT_STORE,
+  MULTI_TRANSFORM,
+  EVENTS,
   AI_AGENT_MEMORY,
 ];
 

@@ -59,6 +59,23 @@
       ]
     },
     {
+      "type": "multi-transform",
+      "label": "Multi Transform",
+      "category": "processor",
+      "group": "Data",
+      "icon": "Layers",
+      "description": "Apply an ordered list of additive CEL edits in one block. Each step sets the body (setBody) or a variable (setVar/value); the edits accumulate, so a later step sees the results of the earlier ones. Compresses a chain of set-payload / set-variable blocks into one.",
+      "fields": [
+        {
+          "name": "transforms",
+          "label": "Transforms",
+          "type": "transform-list",
+          "required": true,
+          "description": "Ordered list of edits. Each entry is either {setBody: <CEL>} to replace the body, or {setVar: <name>, value: <CEL>} to set a variable. Applied top to bottom; later expressions see body/vars produced by earlier steps. Expressions see body, vars, eventID, correlationID, env, now."
+        }
+      ]
+    },
+    {
       "type": "log",
       "label": "Log",
       "category": "processor",
@@ -699,7 +716,7 @@
       "category": "processor",
       "group": "Storage & Cache",
       "icon": "HardDriveDownload",
-      "description": "Read an object from the runtime store into the body or a variable.",
+      "description": "Read an object from the runtime store into the body or a variable. When the key is absent and `default` is set, the default is folded in exactly like a hit; otherwise the body is nulled (body mode) or the variable is left unset. Set `existsVar` to also record whether the key was found.",
       "fields": [
         {
           "name": "key",
@@ -714,6 +731,20 @@
           "type": "string",
           "required": false,
           "description": "Variable to store the object under; empty replaces the body."
+        },
+        {
+          "name": "default",
+          "label": "Default",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression evaluated when the key is absent; its result is folded in like a hit (into the variable, or the body). Empty leaves a miss as a null body / unset variable. Set existsVar to tell a default apart from a hit."
+        },
+        {
+          "name": "existsVar",
+          "label": "Exists variable",
+          "type": "string",
+          "required": false,
+          "description": "When set, names a variable the block writes a boolean into: true when the key was found, false when the default/null path was taken. Empty writes no variable (the legacy behavior)."
         }
       ]
     },
@@ -787,6 +818,30 @@
           "type": "string",
           "required": false,
           "description": "How long to wait for a reply when Await reply is set (e.g. 30s); defaults to the queue service timeout."
+        }
+      ]
+    },
+    {
+      "type": "publish-event",
+      "category": "processor",
+      "group": "Integration",
+      "label": "Publish Event",
+      "icon": "Radio",
+      "description": "Broadcast the current message to a platform topic subject, so every subscriber on that subject receives it (fire-and-forget fan-out). The message passes through unchanged.",
+      "fields": [
+        {
+          "name": "subject",
+          "label": "Subject",
+          "type": "cel",
+          "required": true,
+          "description": "CEL expression for the topic subject to broadcast to; enables per-message routing."
+        },
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression whose result becomes the published body. Empty publishes the whole current body."
         }
       ]
     },
@@ -922,7 +977,7 @@
       "category": "processor",
       "group": "Slack",
       "icon": "Slack",
-      "description": "Resolve a Slack user by email (users.lookupByEmail) into a variable.",
+      "description": "Resolve a Slack user into a variable — by email (users.lookupByEmail, the default) or by Slack user id (users.info), selected with `by`.",
       "fields": [
         {
           "name": "connector",
@@ -936,11 +991,27 @@
           }
         },
         {
+          "name": "by",
+          "label": "Look up by",
+          "type": "enum",
+          "required": false,
+          "default": "email",
+          "enum": ["email", "id"],
+          "description": "How to resolve the user: 'email' (users.lookupByEmail, the default) or 'id' (users.info)."
+        },
+        {
           "name": "email",
           "label": "Email",
           "type": "cel",
-          "required": true,
-          "description": "CEL expression for the email address to resolve."
+          "required": false,
+          "description": "CEL expression for the email address to resolve. Required when 'by' is 'email'."
+        },
+        {
+          "name": "user",
+          "label": "User ID",
+          "type": "cel",
+          "required": false,
+          "description": "CEL expression for the Slack user id to resolve (e.g. U123). Required when 'by' is 'id'."
         },
         {
           "name": "resultVar",
@@ -1100,6 +1171,35 @@
               "type": "string",
               "required": false,
               "description": "How long a handler waits for its flow to finish (e.g. 30s); defaults to the queue service timeout."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "events",
+      "label": "Platform Events",
+      "icon": "Radio",
+      "settings": [],
+      "sources": [
+        {
+          "type": "events",
+          "label": "Event subscription",
+          "icon": "Radio",
+          "fields": [
+            {
+              "name": "subject",
+              "label": "Subject",
+              "type": "string",
+              "required": true,
+              "description": "Topic subject to subscribe to. Every subscriber on the subject (including every replica) receives every message — broadcast fan-out, unlike a queue's competing consumers."
+            },
+            {
+              "name": "listeners",
+              "label": "Listeners",
+              "type": "number",
+              "required": false,
+              "description": "Number of concurrent handler goroutines; defaults to the topics service default."
             }
           ]
         }

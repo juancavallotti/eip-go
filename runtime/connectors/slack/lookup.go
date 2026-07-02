@@ -1,6 +1,7 @@
-// This file provides the "slack-lookup-user" block: it resolves a Slack user by
-// email (users.lookupByEmail) and folds the returned user object into a
-// variable, so a flow can enrich a message with the user's id and profile.
+// This file provides the "slack-lookup-user" block: it resolves a Slack user and
+// folds the returned user object into a variable, so a flow can enrich a message
+// with the user's id and profile. It looks up by email (users.lookupByEmail, the
+// default) or by Slack user id (users.info), selected with the "by" setting.
 package slack
 
 import (
@@ -19,12 +20,25 @@ func init() {
 // defaultUserVar names the variable the looked-up user object is stored in.
 const defaultUserVar = "slackUser"
 
+// Lookup modes for the "by" setting.
+const (
+	lookupByEmail = "email"
+	lookupByID    = "id"
+)
+
 // lookupSettings is the slack-lookup-user block's typed configuration.
 type lookupSettings struct {
 	// Connector names the slack connector to look up through (required).
 	Connector string `json:"connector"`
-	// Email is a CEL expression producing the email address to resolve (required).
+	// By selects the lookup method: "email" (the default, users.lookupByEmail) or
+	// "id" (users.info).
+	By string `json:"by"`
+	// Email is a CEL expression producing the email address to resolve (required
+	// when By is "email").
 	Email string `json:"email"`
+	// User is a CEL expression producing the Slack user id to resolve (required
+	// when By is "id").
+	User string `json:"user"`
 	// ResultVar names the variable the user object is stored in (default
 	// "slackUser").
 	ResultVar string `json:"resultVar"`
@@ -33,10 +47,14 @@ type lookupSettings struct {
 	FailOnError *bool `json:"failOnError"`
 }
 
-// lookupProcessor resolves a user by email and stores the result.
+// lookupProcessor resolves a user (by email or id) and stores the result. method
+// is the Slack Web API method to call and param the request field the resolved
+// expression fills, so Process is method-agnostic.
 type lookupProcessor struct {
 	conn        *Connector
-	email       *expr.Program
+	method      string
+	param       string
+	arg         *expr.Program
 	resultVar   string
 	failOnError bool
 	env         map[string]any
@@ -52,27 +70,41 @@ func newLookupUser(raw types.Settings, deps core.BlockDeps) (core.MessageProcess
 	if err != nil {
 		return nil, fmt.Errorf("slack-lookup-user: %w", err)
 	}
-	email, err := compileRequired("slack-lookup-user", "email", cfg.Email)
-	if err != nil {
-		return nil, err
-	}
-	return &lookupProcessor{
+
+	block := &lookupProcessor{
 		conn:        conn,
-		email:       email,
 		resultVar:   orDefault(cfg.ResultVar, defaultUserVar),
 		failOnError: failOnErrorDefault(cfg.FailOnError),
 		env:         envActivation(deps.Env),
-	}, nil
+	}
+
+	switch orDefault(cfg.By, lookupByEmail) {
+	case lookupByEmail:
+		arg, argErr := compileRequired("slack-lookup-user", "email", cfg.Email)
+		if argErr != nil {
+			return nil, argErr
+		}
+		block.method, block.param, block.arg = "users.lookupByEmail", "email", arg
+	case lookupByID:
+		arg, argErr := compileRequired("slack-lookup-user", "user", cfg.User)
+		if argErr != nil {
+			return nil, argErr
+		}
+		block.method, block.param, block.arg = "users.info", "user", arg
+	default:
+		return nil, fmt.Errorf("slack-lookup-user: unknown by %q (want %q or %q)", cfg.By, lookupByEmail, lookupByID)
+	}
+	return block, nil
 }
 
-// Process resolves the email and folds the returned user object into the result
-// variable.
+// Process resolves the argument (email or user id) and folds the returned user
+// object into the result variable.
 func (p *lookupProcessor) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
-	email, err := p.email.EvalString(messageActivation(msg, p.env))
+	arg, err := p.arg.EvalString(messageActivation(msg, p.env))
 	if err != nil {
-		return nil, fmt.Errorf("slack-lookup-user email: %w", err)
+		return nil, fmt.Errorf("slack-lookup-user %s: %w", p.param, err)
 	}
-	resp, err := p.conn.Call(ctx, "users.lookupByEmail", map[string]any{"email": email})
+	resp, err := p.conn.Call(ctx, p.method, map[string]any{p.param: arg})
 	if err != nil {
 		return onCallError(msg, err, p.failOnError)
 	}

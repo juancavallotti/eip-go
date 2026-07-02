@@ -119,14 +119,24 @@ type objectReadSettings struct {
 	// As names a variable to store the object under (readable later as
 	// vars.<As>). When empty the object replaces the message body.
 	As string `json:"as"`
+	// Default is a CEL expression evaluated when the key is absent; its result is
+	// folded in exactly like a hit (into As, or the body). When empty a miss keeps
+	// the legacy behavior (null body / unset variable).
+	Default string `json:"default"`
+	// ExistsVar, when set, names a variable the block writes a boolean into
+	// reporting whether the key was found (true) or the default/null path was taken
+	// (false). When empty the block writes no such variable (legacy behavior).
+	ExistsVar string `json:"existsVar"`
 }
 
 // objectRead reads an object from the user KV namespace into the message body or
 // a named variable.
 type objectRead struct {
-	key *expr.Program
-	as  string // empty folds the object into the body
-	env map[string]any
+	key         *expr.Program
+	as          string        // empty folds the object into the body
+	defaultProg *expr.Program // nil leaves a miss as null/unset
+	existsVar   string        // empty writes no presence variable
+	env         map[string]any
 }
 
 //nolint:ireturn // a BlockFactory returns the MessageProcessor interface
@@ -142,14 +152,26 @@ func newObjectRead(raw types.Settings, deps core.BlockDeps) (core.MessageProcess
 	if err != nil {
 		return nil, err
 	}
-	return &objectRead{key: key, as: cfg.As, env: envActivation(deps.Env)}, nil
+
+	block := &objectRead{key: key, as: cfg.As, existsVar: cfg.ExistsVar, env: envActivation(deps.Env)}
+	if cfg.Default != "" {
+		defaultProg, defErr := expr.Compile(cfg.Default, exprVarNames...)
+		if defErr != nil {
+			return nil, defErr
+		}
+		block.defaultProg = defaultProg
+	}
+	return block, nil
 }
 
 // Process evaluates the key, reads the object, and folds it into the body (or the
-// named variable when As is set). A missing key yields a null body or leaves the
-// variable unset.
+// named variable when As is set). When ExistsVar is set it also writes a boolean
+// reporting whether the key was found. A miss folds in the default expression when
+// one is configured; otherwise it keeps the legacy behavior (null body / unset
+// variable).
 func (p *objectRead) Process(ctx context.Context, msg *types.Message) (*types.Message, error) {
-	key, err := p.key.EvalString(messageActivation(msg, p.env))
+	activation := messageActivation(msg, p.env)
+	key, err := p.key.EvalString(activation)
 	if err != nil {
 		return nil, fmt.Errorf("object-read key: %w", err)
 	}
@@ -159,25 +181,48 @@ func (p *objectRead) Process(ctx context.Context, msg *types.Message) (*types.Me
 	if err != nil {
 		return nil, fmt.Errorf("object-read %q: %w", key, err)
 	}
+	if p.existsVar != "" {
+		msg.Variables.Set(p.existsVar, ok)
+	}
+
 	if !ok {
+		return p.miss(msg, key, activation)
+	}
+
+	var value any
+	if unmarshalErr := json.Unmarshal(entry.Value, &value); unmarshalErr != nil {
+		return nil, fmt.Errorf("object-read %q: decode value: %w", key, unmarshalErr)
+	}
+	p.fold(msg, value)
+	return msg, nil
+}
+
+// miss handles an absent key: it folds in the default expression when one is
+// configured, otherwise keeps the legacy behavior (null body in body mode, an
+// unset variable in As mode).
+func (p *objectRead) miss(msg *types.Message, key string, activation map[string]any) (*types.Message, error) {
+	if p.defaultProg == nil {
 		if p.as == "" {
 			msg.Body = nil
 		}
 		return msg, nil
 	}
-
-	if p.as != "" {
-		var value any
-		if unmarshalErr := json.Unmarshal(entry.Value, &value); unmarshalErr != nil {
-			return nil, fmt.Errorf("object-read %q: decode value: %w", key, unmarshalErr)
-		}
-		msg.Variables.Set(p.as, value)
-		return msg, nil
+	value, err := p.defaultProg.Eval(activation)
+	if err != nil {
+		return nil, fmt.Errorf("object-read %q: default: %w", key, err)
 	}
-	if setErr := msg.SetBodyJSON(entry.Value); setErr != nil {
-		return nil, fmt.Errorf("object-read %q: %w", key, setErr)
-	}
+	p.fold(msg, value)
 	return msg, nil
+}
+
+// fold places value into the named variable when As is set, or into the body
+// otherwise — the single target rule shared by a hit and a default.
+func (p *objectRead) fold(msg *types.Message, value any) {
+	if p.as != "" {
+		msg.Variables.Set(p.as, value)
+		return
+	}
+	msg.Body = value
 }
 
 // objectDeleteSettings configures the object-delete block.

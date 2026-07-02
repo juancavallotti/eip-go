@@ -272,13 +272,20 @@ a map of variable names to values. Results come back as JSON-native Go values, s
 they slot straight into a message body. Each call site decides which variables it
 exposes.
 
-The message-driven blocks — `set-payload`, `set-variable`, the `if`/`switch`/`foreach`
-guards, and the `rest` block — all see the same surface: `body`, `vars`, `eventID`,
-`correlationID`, and `env`. The `env` object holds the config's declared
+The message-driven blocks — `set-payload`, `set-variable`, `multi-transform`, the
+`if`/`switch`/`foreach` guards, and the `rest` block — all see the same surface:
+`body`, `vars`, `eventID`, `correlationID`, and `env`. The `env` object holds the config's declared
 environment variables resolved to their values (the same ones available for
 `${NAME}` substitution), so `env.HTTP_PORT` reads a declared variable at runtime —
 e.g. `'"listening on " + env.HTTP_PORT'`. Only **declared** variables appear;
 referencing an undeclared key is a CEL no-such-key error.
+
+The **`multi-transform`** block folds a whole chain of `set-payload` /
+`set-variable` steps into one: its `transforms` setting is an **ordered list** of
+edits, each either `{setBody: <CEL>}` (replace the body) or `{setVar: <name>, value:
+<CEL>}` (set a variable). The edits are **additive** — the activation is rebuilt
+before each step, so a later expression sees the `body`/`vars` produced by the
+earlier ones. See `samples/multi-transform.yaml`.
 
 Other call sites expose their own variables:
 
@@ -294,6 +301,14 @@ Other call sites expose their own variables:
 - **`queue-dispatch` block** (`subject` setting) sees the same surface as the
   message-driven blocks (`body`, `vars`, `eventID`, `correlationID`, `env`, `now`),
   so a flow can route or shard work per message — e.g. `'"orders." + vars.region'`.
+- **`object-read` block** (`key`, `default`, `existsVar` settings) reads an object
+  from the runtime store into the body or the `as` variable. On a miss, the
+  **`default`** CEL expression — when set — is folded in exactly like a hit (into
+  `as`, or the body); with no default a miss nulls the body (body mode) or leaves
+  the variable unset. Set **`existsVar`** to also record presence: the block writes
+  that variable a boolean (true on a hit), so a flow can branch without a second
+  read. When `existsVar` is omitted no such variable is written (the prior
+  behavior). See `samples/object-store.yaml`.
 
 ### The `log` block and `logger` connectors
 
@@ -513,6 +528,43 @@ flows:
 See [`samples/queue-loadbalance.yaml`](../samples/queue-loadbalance.yaml) for a
 fuller example (HTTP entry point, a request worker whose reply folds back, and a
 one-way audit worker).
+
+### Platform events: the `events` source and `publish-event` block
+
+Topics are the **broadcast** counterpart of queues — also a core runtime service
+(in-process in the standalone module, NATS-backed in the k8s module, under a
+separate `octo.<id>.t.<subject>` scope). Where a queue delivers each message to
+**one** competing consumer, a topic **fans every message out to every subscriber**.
+Use it for pub/sub: one producer, many independent reactions.
+
+- **`publish-event`** (a processor block) broadcasts the current message to a
+  subject. Its `subject` is a CEL expression (per-message routing); an optional
+  `value` CEL expression replaces the published body (default: the whole body). It
+  is fire-and-forget and passes the message through unchanged.
+- The **`events` source** subscribes to a subject and runs **its own copy** of each
+  broadcast message through the flow. Every `events` source on a subject — across
+  every replica — receives every message, so it does not load-balance. Its
+  `subject` (required) and `listeners` settings mirror the queue source; there is no
+  reply.
+
+Like `queue`, the `events` connector has **no global config**, so a `source` (or
+`publish-event`) of `type: events` resolves it implicitly.
+
+```yaml
+flows:
+  - name: emitter
+    source: { type: cron, settings: { schedule: "@every 3s", payload: '{"tick": string(now)}' } }
+    process:
+      - { type: publish-event, settings: { subject: '"notifications"' } }   # broadcast
+
+  - name: subscriber-a                   # every subscriber on the subject gets every message
+    source: { type: events, settings: { subject: notifications } }
+    process:
+      - { type: log, settings: { logger: out, message: '"A saw " + body.tick' } }
+```
+
+See [`samples/events.yaml`](../samples/events.yaml) for a runnable fan-out example
+(one cron publisher, two subscribers that each receive every notification).
 
 ## Writing a connector source
 

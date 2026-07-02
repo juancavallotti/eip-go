@@ -5,6 +5,7 @@ import { Variable } from "lucide-react";
 import type { FieldSpec } from "../schema/types";
 import StringListEditor from "./fields/StringListEditor";
 import StringMapEditor from "./fields/StringMapEditor";
+import TransformListEditor from "./fields/TransformListEditor";
 import ReferenceField from "./fields/ReferenceField";
 import EnvValueField, { isEnvRef } from "./fields/EnvValueField";
 
@@ -175,6 +176,9 @@ function renderInput(
 
     case "string-map":
       return <StringMapEditor value={value} onChange={onChange} />;
+
+    case "transform-list":
+      return <TransformListEditor value={value} onChange={onChange} />;
 
     case "object":
       return <ObjectGroup field={field} value={value} onChange={onChange} />;

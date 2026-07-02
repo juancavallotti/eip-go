@@ -1,0 +1,65 @@
+service:
+  name: events
+
+# Demonstrates the events connector: a broadcast (topic) pub/sub. publish-event
+# broadcasts the current message to a subject, and every flow fronted by an `event`
+# source on that subject receives its own copy — the fan-out counterpart to the
+# queue connector's competing consumers (where each message is handled once).
+#
+# Here a cron-driven flow publishes a "notifications" event every few seconds, and
+# TWO subscriber flows each receive every notification, so you see both handle each
+# one. In the standalone module the topic is in-process; in the k8s module it is a
+# NATS pub/sub (a plain, non-queue subscription), and every replica's subscribers
+# receive every message.
+#
+# Run it (starts the sources; watch the log):
+#   go run ./cli -config samples/events.yaml
+#   # -> every few seconds: "subscriber A saw tick N" and "subscriber B saw tick N"
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  # Publisher: fire on a schedule and broadcast a notification.
+  - name: emitter
+    source:
+      type: cron                 # implicit connector — no instance needed
+      settings:
+        schedule: "@every 3s"
+        payload: '{"tick": string(now)}'
+    process:
+      - type: publish-event
+        name: broadcast
+        settings:
+          # CEL subject, so a flow can route dynamically; here it is constant.
+          subject: '"notifications"'
+
+  # Subscriber A: receives every notification broadcast to the subject.
+  - name: subscriber-a
+    source:
+      type: events               # implicit connector — no instance needed
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        name: emit-a
+        settings:
+          logger: out
+          message: '"subscriber A saw tick " + body.tick'
+
+  # Subscriber B: also receives every notification (broadcast fan-out).
+  - name: subscriber-b
+    source:
+      type: events
+      settings:
+        subject: notifications
+    process:
+      - type: log
+        name: emit-b
+        settings:
+          logger: out
+          message: '"subscriber B saw tick " + body.tick'

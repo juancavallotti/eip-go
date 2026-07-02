@@ -24,6 +24,9 @@ func (fakeServices) Secrets() core.SecretStore { return nil }
 
 //nolint:ireturn // implements core.RuntimeServices
 func (fakeServices) Queues() core.Queues { return core.NoopQueues() }
+
+//nolint:ireturn // implements core.RuntimeServices
+func (fakeServices) Topics() core.Topics { return core.NoopTopics() }
 func (fakeServices) Close() error        { return nil }
 
 type fakeLeaderElection struct{ leader bool }

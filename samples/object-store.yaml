@@ -1,0 +1,69 @@
+service:
+  name: object-store
+
+# Demonstrates the object store: object-write persists a value under a key, and
+# object-read reads it back. object-read can report presence — set `existsVar` and
+# it writes a boolean (here `profileExists`) telling a hit from a miss — and a
+# `default` expression supplies a fallback on a miss so the flow never has to
+# branch on a null body.
+#
+# The standalone store is in-process, so this one flow reads a key before and
+# after writing it to show both states in a single run.
+#
+# Run it (standalone services module, in-process store):
+#   octo invoke --config samples/object-store.yaml --flow profile \
+#     --data '{"id":"A-1","plan":"pro"}'
+#   # -> logs "before write: A-1 exists=false plan=free"  (miss -> default)
+#   #    then "after write: A-1 exists=true plan=pro"      (hit)
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: profile
+    process:
+      # Cold read: the key is absent, so the default is folded in and
+      # objectExists is false.
+      - type: object-read
+        name: load-before
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        name: emit-before
+        settings:
+          logger: out
+          message: >
+            "before write: " + body.id +
+            " exists=" + string(vars.profileExists) +
+            " plan=" + vars.profile.plan
+
+      - type: object-write
+        name: save-profile
+        settings:
+          key: '"profile:" + body.id'
+          value: '{"plan": body.plan}'
+
+      # Warm read: the key now exists, so the stored value wins over the default
+      # and objectExists is true.
+      - type: object-read
+        name: load-after
+        settings:
+          key: '"profile:" + body.id'
+          as: profile
+          default: '{"plan": "free"}'
+          existsVar: profileExists
+      - type: log
+        name: emit-after
+        settings:
+          logger: out
+          message: >
+            "after write: " + body.id +
+            " exists=" + string(vars.profileExists) +
+            " plan=" + vars.profile.plan

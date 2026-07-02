@@ -45,6 +45,7 @@ type Services struct {
 	le      *leaderElection
 	kv      *httpStore
 	q       *natsQueues
+	t       *natsTopics
 	conn    *nats.Conn
 	logSink slog.Handler
 }
@@ -93,6 +94,7 @@ func New(_ context.Context) (core.RuntimeServices, error) {
 		le:      newLeaderElection(cs.CoordinationV1(), namespace, identity, deploymentID),
 		kv:      newHTTPStore(orchestrator, deploymentID, os.Getenv(envOrchestrToken)),
 		q:       newNATSQueues(conn, deploymentID),
+		t:       newNATSTopics(conn, deploymentID),
 		conn:    conn,
 		logSink: newLogSink(conn, deploymentID, os.Getenv(envDeploymentName), os.Getenv(envDeploymentVer)),
 	}, nil
@@ -117,6 +119,11 @@ func (s *Services) Secrets() core.SecretStore { return core.NewSecretStore(s.kv)
 //
 //nolint:ireturn // satisfies core.RuntimeServices
 func (s *Services) Queues() core.Queues { return s.q }
+
+// Topics returns the NATS-backed broadcast pub/sub.
+//
+//nolint:ireturn // satisfies core.RuntimeServices
+func (s *Services) Topics() core.Topics { return s.t }
 
 // LogSink returns the handler that ships log records to the shared internal.logs
 // subject, satisfying core.LogShipper so the runtime tees its loggers through it.

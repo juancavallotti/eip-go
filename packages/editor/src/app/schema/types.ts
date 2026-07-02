@@ -29,7 +29,10 @@ export type FieldType =
   // A nested group of fields serialized as an object under its field name — e.g.
   // the http-client connector's `auth`. Its sub-fields are declared in `fields`,
   // and each may use `showIf` to appear only for a given sibling value.
-  | "object";
+  | "object"
+  // An ordered list of additive edits — multi-transform's `transforms`. Each entry
+  // serializes as {setBody} or {setVar, value}; order is the apply order.
+  | "transform-list";
 
 /**
  * Condition that gates a field's visibility on a sibling field's value within the

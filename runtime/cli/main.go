@@ -16,6 +16,7 @@ import (
 
 	_ "github.com/juancavallotti/octo/connectors/cron"
 	_ "github.com/juancavallotti/octo/connectors/database" // registers the "database" connector and "sql" block
+	_ "github.com/juancavallotti/octo/connectors/events"   // registers the "events" connector + source and the "publish-event" block
 	_ "github.com/juancavallotti/octo/connectors/http"
 	_ "github.com/juancavallotti/octo/connectors/httpclient"    // registers the "http-client" connector and "rest" block
 	_ "github.com/juancavallotti/octo/connectors/llm/aiblocks"  // registers the "ai-mapping" block

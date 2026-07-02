@@ -28,6 +28,7 @@ import {
   reorderFolderIntegrations,
   reorderFolders,
   unassignIntegration,
+  updateIntegration,
 } from "@/app/model/orchestrator";
 import {
   flatten,
@@ -218,6 +219,18 @@ export default function IntegrationsManager({
       });
       selectIntegration(created.id);
     });
+  };
+
+  // Rename the selected integration (its name is effectively its filename),
+  // preserving the definition. The updated name lands via the refresh.
+  const renameSelected = (name: string) => {
+    if (!selected) return;
+    run(() =>
+      updateIntegration(selected.id, {
+        name,
+        definition: selected.definition,
+      }),
+    );
   };
 
   const removeSelected = async () => {
@@ -416,12 +429,14 @@ export default function IntegrationsManager({
           <div className="min-w-0 flex-1">
             {selected ? (
               <IntegrationDetail
+                key={selected.id}
                 integration={selected}
                 folders={flat}
                 folderId={selectedFolderId}
                 busy={busy}
                 onDelete={removeSelected}
                 onCopy={copySelected}
+                onRename={renameSelected}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-400">

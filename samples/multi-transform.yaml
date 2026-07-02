@@ -1,0 +1,39 @@
+service:
+  name: multi-transform
+
+# Demonstrates multi-transform: an ordered list of additive CEL edits applied in
+# one block. Each step sets the body (setBody) or a variable (setVar/value), and
+# because the edits accumulate, a later step reads what an earlier one produced —
+# so a whole chain of set-payload / set-variable steps collapses into one block.
+#
+# Run it (standalone services module, in-process store):
+#   octo invoke --config samples/multi-transform.yaml --flow order \
+#     --data '{"orderId":"A-1","qty":3,"price":10.0}'
+#   # -> logs "order A-1 subtotal=30 total=33" (10% tax added by the last step).
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: order
+    process:
+      - type: multi-transform
+        name: price-order
+        settings:
+          transforms:
+            # 1) compute the subtotal on the body.
+            - setBody: '{"orderId": body.orderId, "subtotal": body.qty * body.price}'
+            # 2) stash it in a variable (reads the body step 1 produced).
+            - setVar: subtotal
+              value: body.subtotal
+            # 3) add tax to the body (reads the subtotal variable step 2 set).
+            - setBody: '{"orderId": body.orderId, "subtotal": vars.subtotal, "total": vars.subtotal * 1.1}'
+      - type: log
+        name: emit
+        settings:
+          logger: out
+          message: '"order " + body.orderId + " subtotal=" + string(body.subtotal) + " total=" + string(body.total)'

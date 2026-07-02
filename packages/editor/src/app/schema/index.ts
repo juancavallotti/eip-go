@@ -21,6 +21,7 @@ import {
   HardDriveUpload,
   Send,
   Inbox,
+  Layers,
   Box,
   type LucideIcon,
 } from "lucide-react";
@@ -63,6 +64,7 @@ const ICONS: Record<string, LucideIcon> = {
   HardDriveUpload,
   Send,
   Inbox,
+  Layers,
   Slack: SlackIcon,
 };
 

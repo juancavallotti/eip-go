@@ -59,6 +59,23 @@
       ]
     },
     {
+      "type": "multi-transform",
+      "label": "Multi Transform",
+      "category": "processor",
+      "group": "Data",
+      "icon": "Layers",
+      "description": "Apply an ordered list of additive CEL edits in one block. Each step sets the body (setBody) or a variable (setVar/value); the edits accumulate, so a later step sees the results of the earlier ones. Compresses a chain of set-payload / set-variable blocks into one.",
+      "fields": [
+        {
+          "name": "transforms",
+          "label": "Transforms",
+          "type": "transform-list",
+          "required": true,
+          "description": "Ordered list of edits. Each entry is either {setBody: <CEL>} to replace the body, or {setVar: <name>, value: <CEL>} to set a variable. Applied top to bottom; later expressions see body/vars produced by earlier steps. Expressions see body, vars, eventID, correlationID, env, now."
+        }
+      ]
+    },
+    {
       "type": "log",
       "label": "Log",
       "category": "processor",

@@ -584,6 +584,41 @@ flows:
 `,
 };
 
+/** An ordered chain of additive CEL edits collapsed into one block. */
+const MULTI_TRANSFORM: Example = {
+  slug: "multi-transform",
+  title: "multi-transform — additive edits in one block",
+  summary:
+    "Applies an ordered list of CEL edits in one block: each step either sets the body (setBody) or a variable (setVar/value), and the edits accumulate so a later step reads what an earlier one produced. Collapses a chain of set-payload / set-variable blocks. The transforms list sits under settings.",
+  blocks: ["multi-transform", "log"],
+  definition: `service:
+  name: multi-transform
+
+connectors:
+  - name: out
+    type: logger
+    settings:
+      format: json
+      level: info
+
+flows:
+  - name: order
+    process:
+      - type: multi-transform
+        name: price-order
+        settings:
+          transforms:
+            - setBody: '{"orderId": body.orderId, "subtotal": body.qty * body.price}'
+            - setVar: subtotal
+              value: body.subtotal
+            - setBody: '{"orderId": body.orderId, "subtotal": vars.subtotal, "total": vars.subtotal * 1.1}'
+      - type: log
+        settings:
+          logger: out
+          message: '"order " + body.orderId + " total=" + string(body.total)'
+`,
+};
+
 /** The ai-agent with per-thread memory, plus clearing a thread. */
 const AI_AGENT_MEMORY: Example = {
   slug: "ai-agent-memory",
@@ -648,6 +683,7 @@ export const EXAMPLES: Example[] = [
   AI_ROUTER,
   SLACK_BOT,
   ENRICH,
+  MULTI_TRANSFORM,
   AI_AGENT_MEMORY,
 ];
 

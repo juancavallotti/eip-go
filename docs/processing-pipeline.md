@@ -272,13 +272,20 @@ a map of variable names to values. Results come back as JSON-native Go values, s
 they slot straight into a message body. Each call site decides which variables it
 exposes.
 
-The message-driven blocks — `set-payload`, `set-variable`, the `if`/`switch`/`foreach`
-guards, and the `rest` block — all see the same surface: `body`, `vars`, `eventID`,
-`correlationID`, and `env`. The `env` object holds the config's declared
+The message-driven blocks — `set-payload`, `set-variable`, `multi-transform`, the
+`if`/`switch`/`foreach` guards, and the `rest` block — all see the same surface:
+`body`, `vars`, `eventID`, `correlationID`, and `env`. The `env` object holds the config's declared
 environment variables resolved to their values (the same ones available for
 `${NAME}` substitution), so `env.HTTP_PORT` reads a declared variable at runtime —
 e.g. `'"listening on " + env.HTTP_PORT'`. Only **declared** variables appear;
 referencing an undeclared key is a CEL no-such-key error.
+
+The **`multi-transform`** block folds a whole chain of `set-payload` /
+`set-variable` steps into one: its `transforms` setting is an **ordered list** of
+edits, each either `{setBody: <CEL>}` (replace the body) or `{setVar: <name>, value:
+<CEL>}` (set a variable). The edits are **additive** — the activation is rebuilt
+before each step, so a later expression sees the `body`/`vars` produced by the
+earlier ones. See `samples/multi-transform.yaml`.
 
 Other call sites expose their own variables:
 

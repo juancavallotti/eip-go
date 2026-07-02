@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, Trash2 } from "lucide-react";
 import { fromDefinitionYaml } from "@octo/editor";
+import { downloadDefinition } from "./yamlFile";
 import {
   listSnapshots,
   type Deployment,
@@ -155,6 +156,17 @@ export default function IntegrationDetail({
           className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.06] hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-zinc-200"
         >
           <Copy size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            downloadDefinition(integration.name, integration.definition)
+          }
+          aria-label="Download integration YAML"
+          title="Download YAML"
+          className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-black/[0.06] hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+        >
+          <Download size={16} />
         </button>
         <button
           type="button"

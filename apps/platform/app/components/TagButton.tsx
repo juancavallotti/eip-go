@@ -44,28 +44,24 @@ export default function TagButton({
     };
   }, [open]);
 
-  // On opening the popup, prefill the field with the suggested next version:
-  // bump the revision of the integration's highest existing tag (or the default
-  // when it's unsaved or has no tags). The user can still edit it before saving.
-  useEffect(() => {
-    if (!open) return;
-    const id = getIntegrationId();
-    if (!id) {
-      setTag(DEFAULT_TAG);
-      return;
-    }
-    let active = true;
-    listSnapshots(id).then(
-      (snaps) => active && setTag(suggestNextTag(snaps.map((s) => s.tag))),
-      () => active && setTag(DEFAULT_TAG),
-    );
-    return () => {
-      active = false;
-    };
-  }, [open, getIntegrationId]);
-
   // No filesystem capability => no tagging (mirrors how Save hides).
   if (!save) return null;
+
+  // Open the popup, prefilling the field with the suggested next version: bump the
+  // revision of the integration's highest existing tag (or the default when it's
+  // unsaved or has no tags). The user can still edit it before saving.
+  const openPopup = () => {
+    setError(null);
+    setTag(DEFAULT_TAG);
+    setOpen(true);
+    const id = getIntegrationId();
+    if (id) {
+      listSnapshots(id).then(
+        (snaps) => setTag(suggestNextTag(snaps.map((s) => s.tag))),
+        () => {},
+      );
+    }
+  };
 
   const submit = async () => {
     const name = tag.trim();
@@ -95,10 +91,7 @@ export default function TagButton({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => {
-          setError(null);
-          setOpen((o) => !o);
-        }}
+        onClick={() => (open ? setOpen(false) : openPopup())}
         disabled={save.empty}
         title={save.empty ? "Nothing to tag yet" : "Tag this version"}
         aria-haspopup="dialog"
